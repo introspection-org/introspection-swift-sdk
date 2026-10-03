@@ -146,6 +146,10 @@ public struct RunHandle: Sendable {
     public func text(options: RunStreamOptions = RunStreamOptions()) async throws -> String {
         var text = ""
         for try await event in stream(options: options) {
+            if event.isResumeGap {
+                throw IntrospectionError(
+                    kind: .streamIncomplete, message: "The replay buffer lost output; read the conversation transcript")
+            }
             switch event.eventType {
             case .textMessageContent, .textMessageChunk:
                 text += event.delta ?? ""

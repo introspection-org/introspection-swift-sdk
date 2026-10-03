@@ -51,6 +51,7 @@ let package = Package(
                     name: "Configuration", package: "swift-configuration",
                     condition: .when(traits: ["Configuration"])),
             ],
+            resources: [.copy("Fixtures")],
             swiftSettings: swiftSettings
         ),
         .executableTarget(

@@ -34,6 +34,8 @@ public struct IntrospectionError: Error, Sendable, CustomStringConvertible {
         case cancelled
         /// The run ended with an AG-UI `RUN_ERROR`; `message` and `code` are the agent's.
         case runFailed
+        /// Replay was incomplete or the stream ended without a confirmed outcome.
+        case streamIncomplete
     }
 
     public let kind: Kind

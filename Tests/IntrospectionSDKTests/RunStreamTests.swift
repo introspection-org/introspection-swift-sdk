@@ -47,7 +47,7 @@ import Testing
         #expect(events[1].isResumeGap)
         #expect(transport.requests.count == 1)
         #expect(transport.last?.path == "/v1/tasks/t1/runs/current/stream")
-        #expect(transport.last?.request.headers["Last-Event-ID"] == nil)
+        #expect(transport.last?.request.headers["Last-Event-ID"] == "0")
         #expect(transport.last?.query["wait_for_start"] == nil)
     }
 
@@ -143,7 +143,7 @@ import Testing
         let options = RunStreamOptions(maxReconnects: 1, backoff: 0.001)
         let events = try await collect(client.tasks.runs.stream("t1", "r1", options: options))
         #expect(events.count == 5)
-        #expect(transport.requests.map { $0.request.headers["Last-Event-ID"] } == [nil, "1", "2", "3", "4"])
+        #expect(transport.requests.map { $0.request.headers["Last-Event-ID"] } == ["0", "1", "2", "3", "4"])
     }
 
     @Test func connectErrorsCountAndNotFoundFailsFast() async throws {
