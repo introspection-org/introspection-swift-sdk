@@ -159,7 +159,7 @@ public actor AuthClient {
     public func signInWithOTP(email: String) async throws {
         try requireMethod(.emailCode)
         try await api.http.empty(
-            "POST", "/v1/oauth/email-code",
+            "POST", "/v1/oauth/email/code",
             body: .encode(
                 EmailCodeRequest(
                     clientId: configuration.clientID, email: email, project: configuration.project

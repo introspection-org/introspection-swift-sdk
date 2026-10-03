@@ -231,10 +231,10 @@ import Testing
             "GET /v1/projects", "GET /v1/projects/{project}", "GET /v1/members", "GET /v1/members/{member_id}",
             "GET /v1/oidc/me", "GET /v1/recipes", "GET /v1/recipes/{recipe_id}",
             "POST /v1/oauth/token", "POST /v1/oauth/device/code", "GET /v1/oauth/authorize", "POST /v1/oauth/revoke",
-            "POST /v1/tokens", "POST /v1/oauth/email-code",
+            "POST /v1/tokens", "POST /v1/oauth/email/code",
         ]
         // Email-code sign-in is proposed for the Control Plane but not served yet.
-        let unpublished: Set<String> = ["POST /v1/oauth/email-code"]
+        let unpublished: Set<String> = ["POST /v1/oauth/email/code"]
         func missing(_ routes: [String], _ reference: OpenAPIReference) -> Set<String> {
             Set(
                 routes.filter { route in

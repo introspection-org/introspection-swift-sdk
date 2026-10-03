@@ -43,7 +43,7 @@ import Testing
     @Test func emailCodeSignInStoresSessionAndEmitsEvents() async throws {
         let access = jwt(["member_id": "m1", "org_id": "o1", "member_type": "business", "jti": "s1", "exp": 4_102_444_800])
         let transport = MockTransport { request, _ in
-            request.url.path == "/v1/oauth/email-code" ? .response(.json("", status: 202)) : .response(.json(self.tokenJSON(access)))
+            request.url.path == "/v1/oauth/email/code" ? .response(.json("", status: 202)) : .response(.json(self.tokenJSON(access)))
         }
         let storage = InMemorySessionStorage()
         let auth = AuthClient(configuration: config(transport, method: .emailCode, storage: storage))
