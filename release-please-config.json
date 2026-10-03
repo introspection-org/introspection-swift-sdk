@@ -7,7 +7,7 @@
       "changelog-path": "CHANGELOG.md",
       "bump-minor-pre-major": true,
       "bump-patch-for-minor-pre-major": false,
-      "extra-files": ["Sources/IntrospectionSDK/IntrospectionClient.swift", "README.md"]
+      "extra-files": ["Sources/IntrospectionSDK/Client.swift", "README.md"]
     }
   }
 }

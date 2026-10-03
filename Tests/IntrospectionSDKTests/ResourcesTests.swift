@@ -35,7 +35,7 @@ private func member(_ id: String, _ email: String?, deactivated: Bool = false) -
         #"{"id": "\#(id)", "org_id": "o", "email": \#(emailJSON), "name": null, "role": "member", "member_type": "business", "is_deactivated": \#(deactivated), "tags": [], "is_external_credential_agent": false, "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z"}"#
 }
 
-final class ControlPlaneTests: XCTestCase {
+final class ResourcesTests: XCTestCase {
     // MARK: Recipes
 
     func testRecipesListAndGet() async throws {
