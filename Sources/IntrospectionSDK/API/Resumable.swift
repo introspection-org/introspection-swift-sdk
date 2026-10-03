@@ -7,7 +7,7 @@ public struct RunStreamOptions: Sendable, Hashable {
     public var maxReconnects: Int
     /// Base step (seconds) of the capped exponential reconnect and readiness backoff.
     public var backoff: TimeInterval
-    /// Wall-clock deadline (seconds) after which no further reconnect or readiness wait is attempted.
+    /// Recovery window (seconds), renewed by each new content cursor; checked before retrying.
     public var timeout: TimeInterval
     /// Yield a `CUSTOM` event named `introspection.reconnect` on each reconnect or readiness wait.
     public var emitReconnectEvents: Bool
@@ -79,10 +79,11 @@ enum RunStream {
         options: RunStreamOptions,
         emit: (AGUIEvent) -> Void
     ) async throws {
-        let path = "/v1/tasks/\(pathSegment(taskId))/runs/\(pathSegment(runId))/stream"
+        let runPath = "/v1/tasks/\(pathSegment(taskId))/runs/\(pathSegment(runId))"
+        let path = runPath + "/stream"
         var query = Query()
         query.add("wait_for_start", options.waitForStart)
-        let deadline = Date().addingTimeInterval(options.timeout)
+        var deadline = Date().addingTimeInterval(options.timeout)
         // Control frames carry non-numeric `c-...` ids that are not resume cursors.
         var lastEventId = "0"
         var reconnects = 0
@@ -144,6 +145,7 @@ enum RunStream {
                         if !control, let id = frame.id, isResumeCursor(id), let cursor = UInt64(id) {
                             guard cursor > (UInt64(lastEventId) ?? 0) else { continue }
                             lastEventId = id
+                            deadline = Date().addingTimeInterval(options.timeout)
                             progressed = true
                         }
                         if event.eventType == .runFinished, event.raw["result"]?["reason"]?.stringValue == "stream_close" {
@@ -161,7 +163,7 @@ enum RunStream {
                 interruption = error
             }
             if interruption == nil {
-                let state = try? await http.json("GET", String(path.dropLast(7)), as: TaskRun.self)
+                let state = try? await http.json("GET", runPath, as: TaskRun.self)
                 try Task.checkCancellation()
                 if let status = state?.status {
                     if status == .failed || status == .cancelled {

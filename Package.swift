@@ -47,6 +47,7 @@ let package = Package(
             name: "IntrospectionSDKTests",
             dependencies: [
                 "IntrospectionSDK",
+                .product(name: "Crypto", package: "swift-crypto"),
                 .product(
                     name: "Configuration", package: "swift-configuration",
                     condition: .when(traits: ["Configuration"])),

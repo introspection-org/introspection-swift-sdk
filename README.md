@@ -31,14 +31,12 @@ It supports iOS 18, macOS 15, tvOS 18, watchOS 11, visionOS 2 and Linux.
 ## Install
 
 In Xcode, use File > Add Package Dependencies with the repository URL and the
-"Branch" rule with `main`. In `Package.swift`:
+"Up to Next Minor Version" rule. In `Package.swift`, with `X.Y.Z` the
+[latest release](https://github.com/introspection-org/introspection-swift-sdk/releases/latest):
 
 ```swift
 dependencies: [
-    .package(
-        url: "https://github.com/introspection-org/introspection-swift-sdk",
-        branch: "main"
-    ),
+    .package(url: "https://github.com/introspection-org/introspection-swift-sdk", .upToNextMinor(from: "X.Y.Z")),
 ],
 targets: [
     .target(name: "App", dependencies: [
@@ -46,8 +44,6 @@ targets: [
     ]),
 ]
 ```
-
-SwiftPM records the selected commit in `Package.resolved`; updating package dependencies picks up newer commits on `main`.
 
 | Trait | Adds |
 | --- | --- |
@@ -115,18 +111,15 @@ export INTROSPECTION_BASE_API_URL="https://api.introspection.dev"   # optional
 - [Authentication](https://docs.introspection.dev/sdk/authentication)
 - [AGENTS.md](AGENTS.md) for contributors
 
-## License
-
-Apache-2.0
-
-
 ## Stream recovery
 
 Run streams request replay from cursor `0`, including output produced before the
 first connection. Only a settling `RUN_FINISHED` or `RUN_ERROR` confirms completion;
 `RUN_FINISHED` with `result.reason = "stream_close"` is suppressed. A nonterminal
 EOF checks the specific run's status and reconnects within the recovery budget.
-Lifecycle events and duplicate content do not reset that budget.
+Each new content cursor renews both the timeout window and the reconnect budget.
+Lifecycle events, heartbeats and duplicate content renew neither. The timeout is
+checked when recovery is needed; it does not interrupt an open connection.
 
 A raw stream exposes `CUSTOM resume_gap` when the server cannot replay every
 frame. The text helper raises an incomplete-output error instead of returning
@@ -134,10 +127,22 @@ partial text; it also raises on run failure or cancellation. If the status read
 says the run settled but the stream never confirmed completion, it raises an
 incomplete-output error. Recover final output from the conversation transcript
 when needed; the SDK does not automatically hydrate it or require an additional
-`conversations:read` scope just to stream. Recovery timeouts bound retries, not
-how long a healthy stream may remain open.
+`conversations:read` scope just to stream. A long stream can therefore
+reconnect after its original timeout as long as content has continued to advance.
+
+Use a concrete run ID when consuming one turn. `runs/current` is a moving alias: a
+reconnect or status read may resolve to the next turn if another run has started.
+
+The in-process fake sandbox (`mock://`) supplies replies through the conversation
+transcript, not SSE. Its attach-only `stream_close` cannot satisfy `.text()`; use
+transcript reads for fake-sandbox tests, or a real runtime for `.text()` tests.
 
 The shared `run-stream-contract.json` fixtures pin these behaviors across Swift,
-JavaScript, Rust and Python. Keep the copies in those repositories in sync.
+JavaScript, Rust and Python. Each test suite pins the fixture SHA-256; intentional
+contract changes must update all four copies and their expected hashes together.
 
 Swift exposes `.streamIncomplete` and `.runFailed` on `IntrospectionError.kind`.
+
+## License
+
+Apache-2.0

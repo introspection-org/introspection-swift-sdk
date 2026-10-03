@@ -1,3 +1,4 @@
+import Crypto
 import Foundation
 import Testing
 
@@ -12,10 +13,14 @@ import Testing
         let deltas: [String]
         let error: String?
         let textError: String?
+        let streamDelaysMs: [Int]?
+        let timeoutMs: Int?
 
         enum CodingKeys: String, CodingKey {
             case name, streams, statuses, cursors, deltas, error
             case textError = "text_error"
+            case streamDelaysMs = "stream_delays_ms"
+            case timeoutMs = "timeout_ms"
         }
     }
 
@@ -23,6 +28,12 @@ import Testing
         let url = Bundle.module.url(forResource: "run-stream-contract", withExtension: "json", subdirectory: "Fixtures")!
         return try! JSONDecoder().decode([Scenario].self, from: Data(contentsOf: url))
     }()
+
+    @Test func fixtureHash() throws {
+        let url = try #require(Bundle.module.url(forResource: "run-stream-contract", withExtension: "json", subdirectory: "Fixtures"))
+        let digest = SHA256.hash(data: try Data(contentsOf: url)).map { String(format: "%02x", $0) }.joined()
+        #expect(digest == "f1dfd4501a3466442e1201210fc5c7a17150b03787405f22def762aaf511ea78")
+    }
 
     @Test(arguments: scenarios) func sharedContract(_ scenario: Scenario) async throws {
         let transport = ContractTransport(scenario)
@@ -32,7 +43,8 @@ import Testing
         var failure: IntrospectionError?
         do {
             for try await event in RunStream.events(
-                http: http, taskId: "t", runId: "run-1", options: .init(maxReconnects: 2, backoff: 0.001))
+                http: http, taskId: "t", runId: "run-1",
+                options: .init(maxReconnects: 2, backoff: 0.001, timeout: Double(scenario.timeoutMs ?? 300000) / 1000))
             {
                 events.append(event)
             }
@@ -71,9 +83,13 @@ private actor ContractTransport: HTTPTransport {
         return .json(#"{"id":"run-1","task_id":"t","status":"\#(status)"}"#)
     }
 
-    func stream(_ request: HTTPRequest) -> HTTPStreamResponse {
+    func stream(_ request: HTTPRequest) async throws -> HTTPStreamResponse {
         #expect(request.url.path == "/v1/tasks/t/runs/run-1/stream")
-        let body = scenario.streams[min(cursors.count, scenario.streams.count - 1)]
+        let index = min(cursors.count, scenario.streams.count - 1)
+        let body = scenario.streams[index]
+        if let delay = scenario.streamDelaysMs?[index] {
+            try await Task.sleep(for: .milliseconds(delay))
+        }
         cursors.append(request.headers["Last-Event-ID"] ?? "missing")
         return HTTPStreamResponse(
             status: 200, headers: [:],
