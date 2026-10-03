@@ -4,11 +4,11 @@ Add the package, create a client, and run your first task.
 
 ## Add the package
 
-Swift Package Manager installs the SDK from its git tags:
+Swift Package Manager installs the SDK from its git tags. Replace `X.Y.Z` with the [latest release](https://github.com/introspection-org/introspection-swift-sdk/releases/latest):
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/introspection-org/introspection-swift-sdk", .upToNextMinor(from: "0.1.0")),
+    .package(url: "https://github.com/introspection-org/introspection-swift-sdk", .upToNextMinor(from: "X.Y.Z")),
 ],
 targets: [
     .target(name: "App", dependencies: [

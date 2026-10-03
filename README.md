@@ -6,12 +6,17 @@ It covers the REST surface of the JavaScript and Rust SDKs. OpenTelemetry export
 
 ## Install
 
-```swift
-.package(url: "https://github.com/introspection-org/introspection-swift-sdk", from: "0.1.0"),  // x-release-please-version
-```
+In Xcode, use File > Add Package Dependencies with the repository URL and the "Up to Next Minor Version" rule. In `Package.swift`, add the package and the product, with `X.Y.Z` the [latest release](https://github.com/introspection-org/introspection-swift-sdk/releases/latest):
 
 ```swift
-.product(name: "IntrospectionSDK", package: "introspection-swift-sdk")
+dependencies: [
+    .package(url: "https://github.com/introspection-org/introspection-swift-sdk", .upToNextMinor(from: "X.Y.Z")),
+],
+targets: [
+    .target(name: "App", dependencies: [
+        .product(name: "IntrospectionSDK", package: "introspection-swift-sdk"),
+    ]),
+]
 ```
 
 ## Signing in
