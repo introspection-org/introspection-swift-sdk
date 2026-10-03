@@ -7,7 +7,10 @@
       "changelog-path": "CHANGELOG.md",
       "bump-minor-pre-major": true,
       "bump-patch-for-minor-pre-major": false,
-      "extra-files": ["Sources/IntrospectionSDK/Client.swift"]
+      "extra-files": [
+        "Sources/IntrospectionSDK/Client.swift"
+      ],
+      "release-as": "0.1.0"
     }
   }
 }
