@@ -1,14 +1,20 @@
 # Runs LiveIdentityTests against a real deployment: every identity mode (API
 # key, service account, federated Supabase member) creates a task, streams an
-# answer and reads it back. Scheduled and manual rather than on pull requests:
-# it spends real agent turns and goes red when the platform changes. Tests whose
-# settings are missing in the `build` environment are skipped, not failed.
+# answer and reads it back. Scheduled and manual rather than on every pull
+# request: it spends real agent turns and goes red when the platform changes.
+# Tests whose settings are missing in `build` are skipped, not failed.
 name: Live Tests
 
 on:
   schedule:
     - cron: "0 6 * * *"
   workflow_dispatch:
+  # Also when a pull request changes the live suite itself. Pull requests from
+  # forks receive no secrets, so every test skips there.
+  pull_request:
+    paths:
+      - "Tests/IntrospectionSDKTests/LiveIdentityTests.swift"
+      - ".github/workflows/live-tests.yml"
 
 permissions:
   contents: read
@@ -29,6 +35,7 @@ jobs:
       INTROSPECTION_PROJECT: ${{ vars.INTROSPECTION_PROJECT }}
       INTROSPECTION_RUNTIME: ${{ vars.INTROSPECTION_RUNTIME }}
       INTROSPECTION_TOKEN: ${{ secrets.INTROSPECTION_TOKEN }}
+      INTROSPECTION_BASE_URL: ${{ vars.INTROSPECTION_BASE_URL || secrets.INTROSPECTION_BASE_URL }}
       INTROSPECTION_CLIENT_ID: ${{ vars.INTROSPECTION_CLIENT_ID }}
       INTROSPECTION_CLIENT_SECRET: ${{ secrets.INTROSPECTION_CLIENT_SECRET }}
       INTROSPECTION_FEDERATED_CLIENT_ID: ${{ vars.INTROSPECTION_FEDERATED_CLIENT_ID }}
@@ -41,4 +48,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Live identity tests
-        run: swift test --filter LiveIdentityTests
+        shell: bash
+        run: |
+          set -o pipefail
+          swift test --filter LiveIdentityTests 2>&1 | tee live.log
+      - name: Summary
+        if: always()
+        run: grep -E "Test Case .*(passed|failed|skipped)|error:" live.log | tee -a "$GITHUB_STEP_SUMMARY" || true

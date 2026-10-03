@@ -9,7 +9,8 @@ import XCTest
 /// `build` environment.
 ///
 /// Settings: `INTROSPECTION_BASE_API_URL` (or `INTROSPECTION_BASE_URL`), the Control
-/// Plane; `INTROSPECTION_RUNTIME`, the runtime group to run on; `INTROSPECTION_TOKEN`,
+/// Plane; `INTROSPECTION_RUNTIME`, the runtime group to run on (the project's
+/// newest runtime when unset, for the runner modes); `INTROSPECTION_TOKEN`,
 /// an API key; `INTROSPECTION_CLIENT_ID` / `INTROSPECTION_CLIENT_SECRET`, a service
 /// account; `INTROSPECTION_PROJECT`; and for federation
 /// `INTROSPECTION_FEDERATED_CLIENT_ID`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`,
@@ -49,12 +50,20 @@ final class LiveIdentityTests: XCTestCase {
     func testAPIKeyRunnerCarriesAnEndUserIdentity() async throws {
         let client = IntrospectionClient(
             controlPlaneURL: try controlPlaneURL(), credentials: BearerToken(try setting("INTROSPECTION_TOKEN")))
-        let runner = try await client.runtime(try setting("INTROSPECTION_RUNTIME"), project: project).run(
+        let runner = try await client.runtime(try await runtime(client), project: project).run(
             identity: RunnerIdentity(userId: "swift-sdk-live-\(UUID().uuidString.lowercased())"),
             ttlSeconds: 900
         )
         defer { runner.close() }
         try await exerciseDataPlane(runner)
+    }
+
+    /// `INTROSPECTION_RUNTIME`, or the project's newest runtime when it is unset.
+    private func runtime(_ client: IntrospectionClient) async throws -> String {
+        if let runtime = env["INTROSPECTION_RUNTIME"], !runtime.isEmpty { return runtime }
+        let page = try await client.runtimes.list(RuntimeListParams(project: project, limit: 1)).firstPage()
+        guard let first = page.records.first else { throw XCTSkip("The project has no runtimes and INTROSPECTION_RUNTIME is not set") }
+        return first.id
     }
 
     // MARK: Service account
@@ -66,7 +75,7 @@ final class LiveIdentityTests: XCTestCase {
             project: try setting("INTROSPECTION_PROJECT"),
             controlPlaneURL: try controlPlaneURL()
         )
-        let runner = try await client.runtime(try setting("INTROSPECTION_RUNTIME"), project: project).run(ttlSeconds: 900)
+        let runner = try await client.runtime(try await runtime(client), project: project).run(ttlSeconds: 900)
         defer { runner.close() }
         try await exerciseDataPlane(runner)
     }
