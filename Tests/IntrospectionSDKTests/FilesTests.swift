@@ -108,6 +108,22 @@ private let fileJSON = #"""
         #expect(transport.requests.count == 1)
     }
 
+    @Test func createStampsTagsInBothShapes() async throws {
+        let transport = MockTransport(status: 201, json: fileJSON)
+        let client = makeClient(transport)
+        _ = try await client.files.createText(FileCreateText(content: "goal", name: "ark/goals/g1.md", tags: ["ark:goal"]))
+        #expect(transport.last?.json == ["content": "goal", "name": "ark/goals/g1.md", "tags": ["ark:goal"]])
+
+        _ = try await client.files.upload(
+            FileUpload(data: Data("story".utf8), filename: "s1.md", tags: ["ark:story", "feed:f1"]))
+        let body = try #require(transport.last).bodyString
+        #expect(body.contains("name=\"tags\"\r\n\r\nark:story\r\n"))
+        #expect(body.contains("name=\"tags\"\r\n\r\nfeed:f1\r\n"))
+
+        _ = try await client.files.upload(FileUpload(data: Data("x".utf8), filename: "x.md"))
+        #expect(!(try #require(transport.last).bodyString.contains("name=\"tags\"")))
+    }
+
     @Test func getUpdateDeleteDownload() async throws {
         let transport = MockTransport { request, _ in
             switch (request.method, request.url.path) {

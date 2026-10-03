@@ -226,12 +226,14 @@ public struct FileUpload: Sendable {
     /// Defaults to a type guessed from `filename`.
     public var contentType: String?
     public var metadata: JSONObject?
+    /// Tags stamped on the file when this request creates it; a new version keeps the file's tags (change them with `update`).
+    public var tags: [String]?
     /// Lifetime in seconds (1 to 30 days); omit for a file that never expires.
     public var ttlSeconds: Int?
 
     public init(
         data: Data, filename: String, name: String? = nil, fileType: FileType? = nil, contentType: String? = nil,
-        metadata: JSONObject? = nil, ttlSeconds: Int? = nil
+        metadata: JSONObject? = nil, tags: [String]? = nil, ttlSeconds: Int? = nil
     ) {
         self.data = data
         self.filename = filename
@@ -239,6 +241,7 @@ public struct FileUpload: Sendable {
         self.fileType = fileType
         self.contentType = contentType
         self.metadata = metadata
+        self.tags = tags
         self.ttlSeconds = ttlSeconds
     }
 
@@ -256,6 +259,7 @@ public struct FileUpload: Sendable {
             }
             form.append(name: "metadata", value: String(decoding: encoded, as: UTF8.self))
         }
+        for tag in tags ?? [] { form.append(name: "tags", value: tag) }
         if let ttlSeconds { form.append(name: "ttl_seconds", value: String(ttlSeconds)) }
         return form
     }
@@ -271,25 +275,28 @@ public struct FileCreateText: Encodable, Sendable, Hashable {
     /// Server default `text/markdown`.
     public var mimeType: String?
     public var metadata: JSONObject?
+    /// Tags stamped on the file when this request creates it; a new version keeps the file's tags (change them with `update`).
+    public var tags: [String]?
     /// Conditional save: the current version's SHA-256 must match, or the server answers 409.
     public var expectedSha256: String?
     public var ttlSeconds: Int?
 
     public init(
         content: String, name: String? = nil, fileId: String? = nil, mimeType: String? = nil,
-        metadata: JSONObject? = nil, expectedSha256: String? = nil, ttlSeconds: Int? = nil
+        metadata: JSONObject? = nil, tags: [String]? = nil, expectedSha256: String? = nil, ttlSeconds: Int? = nil
     ) {
         self.content = content
         self.name = name
         self.fileId = fileId
         self.mimeType = mimeType
         self.metadata = metadata
+        self.tags = tags
         self.expectedSha256 = expectedSha256
         self.ttlSeconds = ttlSeconds
     }
 
     private enum CodingKeys: String, CodingKey {
-        case content, name, metadata
+        case content, name, metadata, tags
         case fileId = "file_id"
         case mimeType = "mime_type"
         case expectedSha256 = "expected_sha256"
