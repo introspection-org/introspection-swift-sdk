@@ -1,6 +1,6 @@
 # Authentication
 
-Choose a credential for each kind of caller: servers, service accounts, the end users of your app, and interactive sign-in.
+Choose a credential for each kind of caller: servers, service accounts, and the end users of your app.
 
 ## Overview
 
@@ -9,7 +9,6 @@ Choose a credential for each kind of caller: servers, service accounts, the end 
 | Server or script | API key | `IntrospectionClient(controlPlaneURL:credentials:)` with ``BearerToken`` |
 | Backend acting for your users | Service account | `IntrospectionClient.fromServiceAccount(clientId:clientSecret:project:controlPlaneURL:)` |
 | End users signed in with your identity provider | Federated token exchange | `IntrospectionClient.federated(subjectToken:clientID:project:controlPlaneURL:)` |
-| End users signed in with Introspection | Hosted login | ``AuthClient`` |
 
 ## API keys and service accounts
 
@@ -50,27 +49,6 @@ The member is the same on every sign-in, because it is derived from the federati
 A federated token is not a runner token, so a task runs on your agent only when its create and runs name the runtime version (`runtimeId`). Customer tokens are refused on Control Plane routes, so resolve that id on your backend with a service account (`GET /v1/runtimes`, through ``RuntimesAPI``) and hand it to the app with the session, the same way the JavaScript browser client receives it. A runtime gets a new version id on every deploy, so fetch it per session rather than hard-coding it.
 
 The provider must sign with asymmetric keys (ES256 or RS256), and the Application's federation must name its issuer, for Supabase `https://<ref>.supabase.co/auth/v1`.
-
-## Hosted login
-
-``AuthClient`` manages an Introspection session the way the Supabase Auth client does: sign in, persist, refresh, sign out, and observe changes.
-
-```swift
-let auth = AuthClient(configuration: .init(
-    controlPlaneURL: URL(string: "https://api.introspection.dev")!,
-    clientID: "intro_app_...",
-    project: "my-project",
-    method: .hostedLogin,
-    storage: KeychainSessionStorage()
-))
-
-let presenter = HostedLoginPresenter(anchor: window)
-try await presenter.signIn(with: auth, redirectURI: "https://app.example.com/auth/callback")
-
-let client = try await auth.client()
-```
-
-`HostedLoginPresenter` uses `ASWebAuthenticationSession`, and `KeychainSessionStorage` keeps the session in the Keychain, readable only after first unlock and never synced off the device. Both are available on Apple platforms.
 
 ## Every grant
 
