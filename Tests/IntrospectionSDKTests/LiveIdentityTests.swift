@@ -126,7 +126,8 @@ final class LiveIdentityTests: XCTestCase {
     // MARK: Shared Data Plane walk
 
     /// Start a task, wait for its answer, send a follow-up, read the task back,
-    /// round-trip a file, and clean up.
+    /// round-trip a file, and archive the task. The file is left in place: runner
+    /// and customer tokens cannot hold `files:delete`.
     @discardableResult
     private func exerciseDataPlane(_ connection: some DataPlaneConnection) async throws -> IntrospectionTask {
         let marker = "swift-sdk-live:\(UUID().uuidString.lowercased())"
@@ -145,7 +146,6 @@ final class LiveIdentityTests: XCTestCase {
         )
         let content = try await connection.files.download(file.id)
         XCTAssertEqual(String(decoding: content, as: UTF8.self), "# \(marker)\n")
-        try await connection.files.delete(file.id)
 
         try await connection.tasks.archive(task.id)
         return task
