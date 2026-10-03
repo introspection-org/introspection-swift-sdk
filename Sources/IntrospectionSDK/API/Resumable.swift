@@ -49,7 +49,9 @@ extension AGUIEvent {
 /// so the server replays what was missed. A `429` (run not attachable yet) is a readiness
 /// wait that honours `Retry-After` and is bounded by the timeout, not the reconnect budget.
 /// Only a settling event completes the sequence. A bare EOF checks run status before retrying.
-/// Replay gaps are yielded to consumers; `RunHandle.text` rejects incomplete output.
+/// A reconnect behind the replay buffer yields one `MESSAGES_SNAPSHOT` of the run so far;
+/// a `410` (history gone) throws `.streamIncomplete`. A legacy `resume_gap` is yielded to
+/// consumers; `RunHandle.text` rejects incomplete output.
 enum RunStream {
     static func events(
         http: HTTPClient,
@@ -100,6 +102,13 @@ enum RunStream {
             } catch {
                 if error is CancellationError || Task.isCancelled { throw CancellationError() }
                 let introspectionError = error as? IntrospectionError
+                // 410: the runtime holds neither the frames after this cursor nor a
+                // snapshot covering them, so no reconnect can complete the stream.
+                if introspectionError?.status == 410 {
+                    throw IntrospectionError(
+                        kind: .streamIncomplete,
+                        message: "The stream history is no longer available; read the conversation transcript")
+                }
                 if let introspectionError, isFatalAttachError(introspectionError) { throw error }
                 let isRateLimit = introspectionError?.kind == .rateLimited
                 if isRateLimit { readinessWaits += 1 } else { reconnects += 1 }

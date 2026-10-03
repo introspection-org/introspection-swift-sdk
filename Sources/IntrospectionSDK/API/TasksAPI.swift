@@ -151,6 +151,12 @@ public struct RunHandle: Sendable {
                     kind: .streamIncomplete, message: "The replay buffer lost output; read the conversation transcript")
             }
             switch event.eventType {
+            case .messagesSnapshot:
+                // A snapshot carries the whole run so far, so it replaces what was read.
+                text = (event.raw["messages"]?.arrayValue ?? [])
+                    .filter { $0["role"]?.stringValue == "assistant" }
+                    .compactMap { $0["content"]?.stringValue }
+                    .joined()
             case .textMessageContent, .textMessageChunk:
                 text += event.delta ?? ""
             case .runError:
