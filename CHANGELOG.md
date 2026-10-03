@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.2.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.1.0...v0.2.0) (2026-10-03)
+
+
+### ⚠ BREAKING CHANGES
+
+* harden stream recovery and session transitions ([#12](https://github.com/introspection-org/introspection-swift-sdk/issues/12))
+
+### Features
+
+* **files:** filter file lists by metadata ([#10](https://github.com/introspection-org/introspection-swift-sdk/issues/10)) ([93e7083](https://github.com/introspection-org/introspection-swift-sdk/commit/93e708373f4a92a5377d618867b722459e9e1c30))
+
+
+### Bug Fixes
+
+* harden stream recovery and session transitions ([#12](https://github.com/introspection-org/introspection-swift-sdk/issues/12)) ([2e09a10](https://github.com/introspection-org/introspection-swift-sdk/commit/2e09a10398598c0190f0418597403336876ba43f))
+
 ## 0.1.0 (2026-10-03)
 
 
