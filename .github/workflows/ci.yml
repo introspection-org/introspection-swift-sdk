@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  secrets-scan:
+    name: Secrets Scan
+    runs-on: ubuntu-latest
+    environment: build
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
+  lint-actions:
+    name: Lint GitHub Actions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Run actionlint
+        uses: raven-actions/actionlint@v2
+
+  lint:
+    name: Format & Lint
+    runs-on: ubuntu-latest
+    container: swift:6.4-noble
+    steps:
+      - uses: actions/checkout@v7
+      - name: swift format lint
+        run: scripts/lint.sh
+
+  linux:
+    name: Tests (Linux)
+    runs-on: ubuntu-latest
+    needs: lint
+    container: swift:6.4-noble
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/cache@v6
+        with:
+          path: .build
+          key: linux-swift-6.4-${{ hashFiles('Package.swift', 'Package.resolved') }}
+      # Package.swift treats warnings as errors, the counterpart of clippy -D warnings.
+      - name: Build (all traits)
+        run: swift build --build-tests --enable-all-traits
+      - name: Tests with coverage floor
+        run: scripts/coverage.sh
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: coverage-report
+          path: coverage.txt
+          if-no-files-found: ignore
+
+  apple:
+    name: Tests (Apple platforms)
+    runs-on: macos-26
+    needs: lint
+    steps:
+      - uses: actions/checkout@v7
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - name: Build (all traits)
+        run: swift build --build-tests --enable-all-traits
+      - name: Tests
+        run: swift test
+      # The Keychain storage and the hosted-login sheet compile only here.
+      - name: Build for iOS
+        run: |
+          xcodebuild build -scheme IntrospectionSDK \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO
+      # Broken symbol links in documentation comments fail here, like cargo doc -D warnings.
+      - name: Build documentation
+        run: |
+          xcodebuild docbuild -scheme IntrospectionSDK \
+            -destination 'generic/platform=macOS' \
+            OTHER_DOCC_FLAGS="--warnings-as-errors"
