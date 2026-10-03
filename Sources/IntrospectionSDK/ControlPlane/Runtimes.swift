@@ -63,7 +63,10 @@ public struct RuntimeImageBuildMetadata: Codable, Sendable, Hashable {
     public var externalImageName: String?
     public var externalArtifacts: [String: String]?
 
-    public init(imageTag: String? = nil, builtAt: Date? = nil, sizeBytes: Int? = nil, externalImageName: String? = nil, externalArtifacts: [String: String]? = nil) {
+    public init(
+        imageTag: String? = nil, builtAt: Date? = nil, sizeBytes: Int? = nil, externalImageName: String? = nil,
+        externalArtifacts: [String: String]? = nil
+    ) {
         self.imageTag = imageTag
         self.builtAt = builtAt
         self.sizeBytes = sizeBytes

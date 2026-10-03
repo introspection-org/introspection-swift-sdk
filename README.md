@@ -7,7 +7,7 @@ It covers the REST surface of the JavaScript and Rust SDKs. OpenTelemetry export
 ## Install
 
 ```swift
-.package(url: "https://github.com/introspection-org/introspection-swift-sdk", branch: "main")
+.package(url: "https://github.com/introspection-org/introspection-swift-sdk", from: "0.1.0"),  // x-release-please-version
 ```
 
 ```swift
@@ -99,6 +99,11 @@ Every failure is an `IntrospectionError` with a `kind` (`.authentication`, `.ins
 ```sh
 swift build
 swift test
+scripts/lint.sh          # swift format lint, as CI runs it (--fix to rewrite)
+scripts/coverage.sh      # tests with the line-coverage floor
+scripts/setup-hooks.sh   # install the pre-commit hook
 ```
 
-`./scripts-test.sh` runs the tests in the official `swift:6.1-noble` image, for machines without a Swift toolchain. `KeychainSessionStorage` and `HostedLoginPresenter` compile only on Apple platforms; CI builds them on macOS.
+`scripts/docker-test.sh` runs the tests in the official `swift:6.1-noble` image, for machines without a Swift toolchain. `KeychainSessionStorage` and `HostedLoginPresenter` compile only on Apple platforms; CI builds them for macOS and iOS. Read [AGENTS.md](AGENTS.md) before contributing.
+
+Releases are cut by release-please from Conventional Commit PR titles; Swift Package Manager installs from the resulting tags.

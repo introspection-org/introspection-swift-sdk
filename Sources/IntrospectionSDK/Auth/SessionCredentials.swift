@@ -12,8 +12,8 @@ public struct JWTClaims: Sendable, Hashable {
     public init(token: String) throws {
         let segments = token.split(separator: ".", omittingEmptySubsequences: false)
         guard segments.count >= 2,
-              let data = OAuthBase64URL.decode(String(segments[1])),
-              let object = try? JSONCoding.decoder.decode(JSONObject.self, from: data)
+            let data = OAuthBase64URL.decode(String(segments[1])),
+            let object = try? JSONCoding.decoder.decode(JSONObject.self, from: data)
         else {
             throw IntrospectionError(kind: .decoding, message: "Not a JWT: the payload segment is not base64url JSON")
         }
@@ -317,8 +317,8 @@ extension SessionCredentials {
     ) -> SessionCredentials {
         SessionCredentials(token: token, leeway: leeway, onTokenUpdate: onTokenUpdate) { current in
             guard let refreshToken = current.refreshToken,
-                  let sessionId = current.sessionId ?? current.claims?.jti,
-                  let orgId = current.orgId ?? current.claims?.orgId
+                let sessionId = current.sessionId ?? current.claims?.jti,
+                let orgId = current.orgId ?? current.claims?.orgId
             else {
                 throw IntrospectionError(
                     kind: .authentication,

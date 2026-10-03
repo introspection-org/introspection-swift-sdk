@@ -70,7 +70,9 @@ public struct ExperimentGoalComponent: Codable, Sendable, Hashable {
     }
 
     /// A telemetry-column component.
-    public static func telemetry(column: String, aggregation: String? = nil, weight: Double = 1, guard: ExperimentGoalGuard? = nil) -> ExperimentGoalComponent {
+    public static func telemetry(
+        column: String, aggregation: String? = nil, weight: Double = 1, guard: ExperimentGoalGuard? = nil
+    ) -> ExperimentGoalComponent {
         ExperimentGoalComponent(source: "telemetry", column: column, aggregation: aggregation, weight: weight, guard: `guard`)
     }
 
@@ -113,7 +115,9 @@ public struct ExperimentArm: Codable, Sendable, Hashable {
     public var agentOverrides: [String: String]?
     public var initialWeight: Int?
 
-    public init(id: String? = nil, runtimeId: String, armLabel: String? = nil, agentOverrides: [String: String]? = nil, initialWeight: Int? = nil) {
+    public init(
+        id: String? = nil, runtimeId: String, armLabel: String? = nil, agentOverrides: [String: String]? = nil, initialWeight: Int? = nil
+    ) {
         self.id = id
         self.runtimeId = runtimeId
         self.armLabel = armLabel

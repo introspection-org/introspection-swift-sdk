@@ -157,18 +157,23 @@ public actor AuthClient {
     /// email has an account.
     public func signInWithOTP(email: String) async throws {
         try requireMethod(.emailCode)
-        try await api.http.empty("POST", "/v1/oauth/email-code", body: .encode(EmailCodeRequest(
-            clientId: configuration.clientID, email: email, project: configuration.project
-        )))
+        try await api.http.empty(
+            "POST", "/v1/oauth/email-code",
+            body: .encode(
+                EmailCodeRequest(
+                    clientId: configuration.clientID, email: email, project: configuration.project
+                )))
     }
 
     /// Verify the code sent to `email` and sign in.
     @discardableResult
     public func verifyOTP(email: String, token code: String) async throws -> AuthSession {
         try requireMethod(.emailCode)
-        let response = try await api.token(grantType: OAuthGrantType.emailCode, clientId: configuration.clientID, parameters: [
-            ("email", email), ("code", code), ("project", configuration.project),
-        ])
+        let response = try await api.token(
+            grantType: OAuthGrantType.emailCode, clientId: configuration.clientID,
+            parameters: [
+                ("email", email), ("code", code), ("project", configuration.project),
+            ])
         return try await signedIn(SessionToken(oauth: response, receivedAt: now()))
     }
 
@@ -242,8 +247,8 @@ public actor AuthClient {
         let session = current
         await clear()
         if let sessionId = session?.token.sessionId ?? session?.token.claims?.jti,
-           let orgId = session?.token.orgId ?? session?.user.orgId,
-           session?.token.refreshToken != nil
+            let orgId = session?.token.orgId ?? session?.user.orgId,
+            session?.token.refreshToken != nil
         {
             try await api.revoke(sessionId: sessionId, orgId: orgId, clientId: configuration.clientID)
         }
@@ -271,13 +276,14 @@ public actor AuthClient {
         guard let session = try await session else {
             throw IntrospectionError(kind: .authentication, message: "Not signed in")
         }
-        return IntrospectionClient(configuration: .init(
-            controlPlaneURL: configuration.controlPlaneURL,
-            dataPlaneURL: dataPlaneURL ?? session.dataPlaneURL ?? configuration.controlPlaneURL,
-            controlPlaneCredentials: credentials,
-            transport: configuration.transport,
-            options: options
-        ))
+        return IntrospectionClient(
+            configuration: .init(
+                controlPlaneURL: configuration.controlPlaneURL,
+                dataPlaneURL: dataPlaneURL ?? session.dataPlaneURL ?? configuration.controlPlaneURL,
+                controlPlaneCredentials: credentials,
+                transport: configuration.transport,
+                options: options
+            ))
     }
 
     // MARK: Internals
@@ -290,8 +296,8 @@ public actor AuthClient {
 
     private func renew(_ token: SessionToken) async throws -> SessionToken {
         guard let refreshToken = token.refreshToken,
-              let sessionId = token.sessionId ?? token.claims?.jti,
-              let orgId = token.orgId ?? token.claims?.orgId
+            let sessionId = token.sessionId ?? token.claims?.jti,
+            let orgId = token.orgId ?? token.claims?.orgId
         else {
             throw IntrospectionError(kind: .authentication, message: "The session has no refresh token")
         }
@@ -326,7 +332,7 @@ public actor AuthClient {
         guard !restored else { return }
         restored = true
         if let data = try? await configuration.storage.load(key: configuration.storageKey),
-           let session = try? JSONCoding.decoder.decode(AuthSession.self, from: data)
+            let session = try? JSONCoding.decoder.decode(AuthSession.self, from: data)
         {
             current = session
         }

@@ -274,7 +274,7 @@ public struct DataPlaneToken: Codable, Sendable, Hashable {
     /// deployments, whose audience is a fixed sentinel.
     public var dataPlaneURL: URL? {
         guard let audience = (try? JWTClaims(token: accessToken))?.audience.first,
-              audience.hasPrefix("https://") || audience.hasPrefix("http://")
+            audience.hasPrefix("https://") || audience.hasPrefix("http://")
         else { return nil }
         return URL(string: audience)
     }
@@ -325,9 +325,11 @@ public struct AuthAPI: Sendable {
         project: String,
         scope: String? = nil
     ) async throws -> OAuthToken {
-        try await token(grantType: OAuthGrantType.clientCredentials, clientId: clientId, parameters: [
-            ("client_secret", clientSecret), ("project", project), ("scope", scope),
-        ])
+        try await token(
+            grantType: OAuthGrantType.clientCredentials, clientId: clientId,
+            parameters: [
+                ("client_secret", clientSecret), ("project", project), ("scope", scope),
+            ])
     }
 
     /// RFC 8693 token exchange. With a federated Application's `clientId`, trades an end user's
@@ -340,10 +342,12 @@ public struct AuthAPI: Sendable {
         subjectTokenType: String = OAuthTokenType.idToken,
         scope: String? = nil
     ) async throws -> OAuthToken {
-        try await token(grantType: OAuthGrantType.tokenExchange, clientId: clientId, parameters: [
-            ("subject_token", subjectToken), ("subject_token_type", subjectTokenType),
-            ("project", project), ("scope", scope),
-        ])
+        try await token(
+            grantType: OAuthGrantType.tokenExchange, clientId: clientId,
+            parameters: [
+                ("subject_token", subjectToken), ("subject_token_type", subjectTokenType),
+                ("project", project), ("scope", scope),
+            ])
     }
 
     /// RFC 7523 `jwt-bearer`: exchange an enterprise IdP's ID-JAG assertion (only on servers with an MCP resource id).
@@ -353,9 +357,11 @@ public struct AuthAPI: Sendable {
         project: String? = nil,
         resource: String? = nil
     ) async throws -> OAuthToken {
-        try await token(grantType: OAuthGrantType.jwtBearer, clientId: clientId, parameters: [
-            ("assertion", assertion), ("project", project), ("resource", resource),
-        ])
+        try await token(
+            grantType: OAuthGrantType.jwtBearer, clientId: clientId,
+            parameters: [
+                ("assertion", assertion), ("project", project), ("resource", resource),
+            ])
     }
 
     /// `authorization_code` for a code issued by the CP's own `/v1/oauth/authorize` (PKCE verifier when one was used).
@@ -365,9 +371,11 @@ public struct AuthAPI: Sendable {
         redirectURI: String,
         codeVerifier: String? = nil
     ) async throws -> OAuthToken {
-        try await token(grantType: OAuthGrantType.authorizationCode, clientId: clientId, parameters: [
-            ("code", code), ("redirect_uri", redirectURI), ("code_verifier", codeVerifier),
-        ])
+        try await token(
+            grantType: OAuthGrantType.authorizationCode, clientId: clientId,
+            parameters: [
+                ("code", code), ("redirect_uri", redirectURI), ("code_verifier", codeVerifier),
+            ])
     }
 
     /// `refresh_token`. The server keys refresh on (refresh_token, session_id, org_id) and rotates the
@@ -378,9 +386,11 @@ public struct AuthAPI: Sendable {
         sessionId: String,
         orgId: String
     ) async throws -> OAuthToken {
-        try await token(grantType: OAuthGrantType.refreshToken, clientId: clientId, parameters: [
-            ("refresh_token", refreshToken), ("session_id", sessionId), ("org_id", orgId),
-        ])
+        try await token(
+            grantType: OAuthGrantType.refreshToken, clientId: clientId,
+            parameters: [
+                ("refresh_token", refreshToken), ("session_id", sessionId), ("org_id", orgId),
+            ])
     }
 
     /// Start the RFC 8628 device flow: `POST /v1/oauth/device/code`. Only the `cli` client may.
@@ -432,7 +442,8 @@ public struct AuthAPI: Sendable {
                 }
             }
             if now().addingTimeInterval(interval) > deadline {
-                throw IntrospectionError(kind: .authentication, message: "The device code expired before it was approved", code: "expired_token")
+                throw IntrospectionError(
+                    kind: .authentication, message: "The device code expired before it was approved", code: "expired_token")
             }
         }
     }
@@ -566,13 +577,14 @@ extension IntrospectionClient {
             let next = try await auth.clientCredentials(clientId: clientId, clientSecret: clientSecret, project: project, scope: scope)
             return SessionToken(oauth: next)
         }
-        return IntrospectionClient(configuration: .init(
-            controlPlaneURL: controlPlaneURL,
-            dataPlaneURL: dataPlaneURL ?? first.dpUrl.flatMap(URL.init(string:)),
-            controlPlaneCredentials: credentials,
-            transport: transport,
-            options: options
-        ))
+        return IntrospectionClient(
+            configuration: .init(
+                controlPlaneURL: controlPlaneURL,
+                dataPlaneURL: dataPlaneURL ?? first.dpUrl.flatMap(URL.init(string:)),
+                controlPlaneCredentials: credentials,
+                transport: transport,
+                options: options
+            ))
     }
 }
 
@@ -655,7 +667,8 @@ public struct OIDCCallback: Sendable, Hashable {
             throw IntrospectionError(kind: .authentication, message: errorDescription ?? error, code: error)
         }
         guard state == expectedState else {
-            throw IntrospectionError(kind: .authentication, message: "OAuth callback state does not match the request", code: "invalid_state")
+            throw IntrospectionError(
+                kind: .authentication, message: "OAuth callback state does not match the request", code: "invalid_state")
         }
         guard let code, !code.isEmpty else {
             throw IntrospectionError(kind: .authentication, message: "OAuth callback carries no code", code: "invalid_request")
@@ -688,7 +701,8 @@ public enum OIDC {
         state: String = PKCE.randomURLSafeString(),
         nonce: String = PKCE.randomURLSafeString()
     ) -> OIDCAuthorizationRequest {
-        var components = URLComponents(url: authorizationEndpoint, resolvingAgainstBaseURL: false)
+        var components =
+            URLComponents(url: authorizationEndpoint, resolvingAgainstBaseURL: false)
             ?? URLComponents()
         var items = components.queryItems ?? []
         items += [
@@ -702,7 +716,8 @@ public enum OIDC {
             URLQueryItem(name: "code_challenge_method", value: pkce.method),
         ]
         items += additionalParameters.map { URLQueryItem(name: $0.0, value: $0.1) }
-        components.percentEncodedQuery = items
+        components.percentEncodedQuery =
+            items
             .map { "\(formEncode($0.name))=\(formEncode($0.value ?? "").replacingOccurrences(of: "+", with: "%20"))" }
             .joined(separator: "&")
         return OIDCAuthorizationRequest(

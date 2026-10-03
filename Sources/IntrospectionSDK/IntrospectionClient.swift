@@ -86,15 +86,16 @@ public final class IntrospectionClient: DataPlaneConnection {
         credentials: (any CredentialProvider)? = nil,
         transport: any HTTPTransport = URLSessionTransport()
     ) {
-        self.init(configuration: Configuration(
-            controlPlaneURL: controlPlaneURL,
-            dataPlaneURL: dataPlaneURL,
-            controlPlaneCredentials: credentials,
-            transport: transport
-        ))
+        self.init(
+            configuration: Configuration(
+                controlPlaneURL: controlPlaneURL,
+                dataPlaneURL: dataPlaneURL,
+                controlPlaneCredentials: credentials,
+                transport: transport
+            ))
     }
 }
 
 public enum IntrospectionSDK {
-    public static let version = "0.1.0"
+    public static let version = "0.1.0"  // x-release-please-version
 }

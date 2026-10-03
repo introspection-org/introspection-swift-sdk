@@ -316,7 +316,10 @@ public struct ConnectorApp: Codable, Sendable, Hashable {
     public var mcpUrl: String?
     public var docsUrl: String?
 
-    public init(slug: String, name: String? = nil, iconUrl: String? = nil, description: String? = nil, authType: String? = nil, mcpUrl: String? = nil, docsUrl: String? = nil) {
+    public init(
+        slug: String, name: String? = nil, iconUrl: String? = nil, description: String? = nil, authType: String? = nil,
+        mcpUrl: String? = nil, docsUrl: String? = nil
+    ) {
         self.slug = slug
         self.name = name
         self.iconUrl = iconUrl
@@ -581,7 +584,10 @@ public struct ConnectionCreate: Encodable, Sendable, Hashable {
     public var refreshToken: String?
     public var tokenExpiresAt: Date?
 
-    public init(accessToken: String, subjectType: ConnectionSubjectType? = nil, scopesGranted: [String]? = nil, refreshToken: String? = nil, tokenExpiresAt: Date? = nil) {
+    public init(
+        accessToken: String, subjectType: ConnectionSubjectType? = nil, scopesGranted: [String]? = nil, refreshToken: String? = nil,
+        tokenExpiresAt: Date? = nil
+    ) {
         self.accessToken = accessToken
         self.subjectType = subjectType
         self.scopesGranted = scopesGranted
@@ -620,7 +626,10 @@ public struct ConnectionMissionConstraints: Codable, Sendable, Hashable {
     /// SHA-256 of the approved artifact.
     public var payloadBinding: String?
 
-    public init(host: String? = nil, resource: String? = nil, limits: JSONObject? = nil, windowStart: Date? = nil, windowEnd: Date? = nil, payloadBinding: String? = nil) {
+    public init(
+        host: String? = nil, resource: String? = nil, limits: JSONObject? = nil, windowStart: Date? = nil, windowEnd: Date? = nil,
+        payloadBinding: String? = nil
+    ) {
         self.host = host
         self.resource = resource
         self.limits = limits
@@ -647,7 +656,10 @@ public struct ConnectionTokenParams: Sendable, Hashable {
     public var action: String?
     public var requestedPermissions: ConnectionMissionConstraints?
 
-    public init(connectionId: String? = nil, subject: ConnectionSubjectType? = nil, action: String? = nil, requestedPermissions: ConnectionMissionConstraints? = nil) {
+    public init(
+        connectionId: String? = nil, subject: ConnectionSubjectType? = nil, action: String? = nil,
+        requestedPermissions: ConnectionMissionConstraints? = nil
+    ) {
         self.connectionId = connectionId
         self.subject = subject
         self.action = action
@@ -784,7 +796,9 @@ public struct ConnectionsAPI: Sendable {
     }
 
     /// `POST /v1/oauth/connections/token`: resolve the subject's provider token, or a pending approval.
-    public func getToken(_ connectorId: String, _ params: ConnectionTokenParams = ConnectionTokenParams(), project: String? = nil) async throws -> ConnectionTokenResult {
+    public func getToken(
+        _ connectorId: String, _ params: ConnectionTokenParams = ConnectionTokenParams(), project: String? = nil
+    ) async throws -> ConnectionTokenResult {
         try await http.json(
             "POST", "/v1/oauth/connections/token", query: cpProjectQuery(project),
             body: .encode(ConnectionTokenBody(connectorId: connectorId, params: params))
@@ -830,7 +844,9 @@ public struct ConnectorsAPI: Sendable {
     }
 
     /// Search a connector's provider app catalogue (Pipedream today).
-    public func listApps(_ connectorId: String, query search: String? = nil, limit: Int? = nil, project: String? = nil) async throws -> [ConnectorApp] {
+    public func listApps(
+        _ connectorId: String, query search: String? = nil, limit: Int? = nil, project: String? = nil
+    ) async throws -> [ConnectorApp] {
         var query = cpProjectQuery(project)
         query.add("q", search)
         query.add("limit", limit)
@@ -858,7 +874,9 @@ public struct ConnectorsAPI: Sendable {
     }
 
     /// `POST /v1/oauth/connections/authorize`: mint a single-use consent URL a business hands its customer.
-    public func authorize(_ connectorId: String, _ params: ConnectorAuthorizeParams = ConnectorAuthorizeParams(), project: String? = nil) async throws -> ConnectorAuthorization {
+    public func authorize(
+        _ connectorId: String, _ params: ConnectorAuthorizeParams = ConnectorAuthorizeParams(), project: String? = nil
+    ) async throws -> ConnectorAuthorization {
         try await http.json(
             "POST", "/v1/oauth/connections/authorize", query: cpProjectQuery(project),
             body: .encode(ConnectorAuthorizeBody(connectorId: connectorId, params: params))

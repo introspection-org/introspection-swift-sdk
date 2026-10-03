@@ -1,0 +1,15 @@
+#!/bin/sh
+# Pre-commit hook: format, warnings-as-errors build, tests with the coverage floor.
+# Install with scripts/setup-hooks.sh.
+set -e
+
+echo "Checking formatting..."
+scripts/lint.sh || { echo "Formatting issues. Run 'scripts/lint.sh --fix'."; exit 1; }
+
+echo "Building with warnings as errors..."
+swift build -Xswiftc -warnings-as-errors
+
+echo "Running tests with coverage..."
+scripts/coverage.sh
+
+echo "All checks passed."

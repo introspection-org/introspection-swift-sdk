@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+
 @testable import IntrospectionSDK
 
 final class CoreTests: XCTestCase {
@@ -34,7 +35,8 @@ final class CoreTests: XCTestCase {
             status: 403, headers: [:], body: Data(#"{"detail":"no","code":"insufficient_scope","missing_capability":"tasks:write"}"#.utf8)
         )
         XCTAssertEqual(scope.kind, .insufficientScope(missingCapability: "tasks:write"))
-        XCTAssertEqual(IntrospectionError.fromResponse(status: 401, headers: [:], body: Data(#"{"code":"runner_expired"}"#.utf8)).kind, .runnerExpired)
+        XCTAssertEqual(
+            IntrospectionError.fromResponse(status: 401, headers: [:], body: Data(#"{"code":"runner_expired"}"#.utf8)).kind, .runnerExpired)
         XCTAssertEqual(IntrospectionError.parseRetryAfter("3"), 3)
         XCTAssertEqual(IntrospectionError.parseRetryAfter("-2"), 0)
         XCTAssertNotNil(IntrospectionError.parseRetryAfter("Wed, 21 Oct 2099 07:28:00 GMT"))
@@ -106,11 +108,13 @@ final class CoreTests: XCTestCase {
         var frames = parser.push(Data("id: 1\nevent: ag_ui\ndata: {\"a\":1}\n".utf8))
         XCTAssertTrue(frames.isEmpty)
         frames = parser.push(Data("\r\n: comment\n\nevent: heartbeat\ndata:\n\ndata: a\ndata: b\n\nevent: partial\n".utf8))
-        XCTAssertEqual(frames, [
-            SSEFrame(event: "ag_ui", data: "{\"a\":1}", id: "1"),
-            SSEFrame(event: "heartbeat", data: ""),
-            SSEFrame(event: "message", data: "a\nb"),
-        ])
+        XCTAssertEqual(
+            frames,
+            [
+                SSEFrame(event: "ag_ui", data: "{\"a\":1}", id: "1"),
+                SSEFrame(event: "heartbeat", data: ""),
+                SSEFrame(event: "message", data: "a\nb"),
+            ])
     }
 
     func testMultipartAndForm() {

@@ -106,13 +106,17 @@ enum RunStream {
                 let attempt = isRateLimit ? readinessWaits : reconnects
                 let retryAfter = isRateLimit ? introspectionError?.retryAfter : nil
                 if options.emitReconnectEvents {
-                    emit(.custom(AGUIEvent.reconnectEventName, value: [
-                        "reason": isRateLimit ? "readiness" : "connect_error",
-                        "attempt": .number(Double(attempt)),
-                        "lastEventId": lastEventId.map(JSONValue.string) ?? .null,
-                        "phase": isRateLimit ? (introspectionError?.body?["status"]?.stringValue).map(JSONValue.string) ?? .null : .null,
-                        "retryAfterMs": retryAfter.map { .number(($0 * 1000).rounded()) } ?? .null,
-                    ]))
+                    emit(
+                        .custom(
+                            AGUIEvent.reconnectEventName,
+                            value: [
+                                "reason": isRateLimit ? "readiness" : "connect_error",
+                                "attempt": .number(Double(attempt)),
+                                "lastEventId": lastEventId.map(JSONValue.string) ?? .null,
+                                "phase": isRateLimit
+                                    ? (introspectionError?.body?["status"]?.stringValue).map(JSONValue.string) ?? .null : .null,
+                                "retryAfterMs": retryAfter.map { .number(($0 * 1000).rounded()) } ?? .null,
+                            ]))
                 }
                 let delay = Backoff.delay(attempt: attempt, retryAfter: retryAfter, base: options.backoff)
                 try await Backoff.sleep(min(delay, deadline.timeIntervalSinceNow))
@@ -150,11 +154,14 @@ enum RunStream {
                 reconnects = progressed ? 0 : reconnects + 1
                 if reconnects > options.maxReconnects || Date() >= deadline { throw error }
                 if options.emitReconnectEvents {
-                    emit(.custom(AGUIEvent.reconnectEventName, value: [
-                        "reason": "severed",
-                        "attempt": .number(Double(reconnects)),
-                        "lastEventId": lastEventId.map(JSONValue.string) ?? .null,
-                    ]))
+                    emit(
+                        .custom(
+                            AGUIEvent.reconnectEventName,
+                            value: [
+                                "reason": "severed",
+                                "attempt": .number(Double(reconnects)),
+                                "lastEventId": lastEventId.map(JSONValue.string) ?? .null,
+                            ]))
                 }
                 let delay = Backoff.delay(attempt: reconnects, retryAfter: nil, base: options.backoff)
                 try await Backoff.sleep(min(delay, deadline.timeIntervalSinceNow))

@@ -116,7 +116,10 @@ public struct AnnotationNavigation: Codable, Sendable, Hashable {
     public var currentPosition: Int?
     public var totalCount: Int?
 
-    public init(previous: AnnotationState? = nil, current: AnnotationState? = nil, next: AnnotationState? = nil, currentPosition: Int? = nil, totalCount: Int? = nil) {
+    public init(
+        previous: AnnotationState? = nil, current: AnnotationState? = nil, next: AnnotationState? = nil, currentPosition: Int? = nil,
+        totalCount: Int? = nil
+    ) {
         self.previous = previous
         self.current = current
         self.next = next
@@ -421,7 +424,9 @@ public struct AnnotationsAPI: Sendable {
 
     /// Append one annotation event. Pass `eventId` (a UUIDv7) to make a retry idempotent.
     @discardableResult
-    public func create(_ target: AnnotationTarget, _ mutation: AnnotationMutation, eventId: String? = nil) async throws -> AnnotationWriteResult {
+    public func create(
+        _ target: AnnotationTarget, _ mutation: AnnotationMutation, eventId: String? = nil
+    ) async throws -> AnnotationWriteResult {
         let snapshots = [mutation.labels != nil, mutation.assigneeMemberIds != nil, mutation.reviewerEmails != nil].filter { $0 }.count
         if snapshots > 1 {
             throw annotationValidationError(

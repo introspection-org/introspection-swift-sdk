@@ -16,9 +16,10 @@ public struct PKCE: Sendable, Hashable {
     public init(length: Int = 64) {
         let clamped = min(max(length, 43), 128)
         var generator = SystemRandomNumberGenerator()
-        let verifier = String((0..<clamped).map { _ in
-            Self.alphabet[Int.random(in: 0..<Self.alphabet.count, using: &generator)]
-        })
+        let verifier = String(
+            (0..<clamped).map { _ in
+                Self.alphabet[Int.random(in: 0..<Self.alphabet.count, using: &generator)]
+            })
         self.verifier = verifier
         challenge = Self.challenge(for: verifier)
         method = "S256"

@@ -1,0 +1,31 @@
+name: Dependabot auto-merge
+
+# Asks GitHub to auto-merge a Dependabot PR once required checks pass; it never
+# bypasses CI. Requires "Allow auto-merge" in Settings > General > Pull Requests.
+# `pull_request`, not `pull_request_target`: the latter runs in base-branch
+# context with a writable token, so a later checkout step would execute
+# PR-authored code with it.
+
+on: pull_request
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - id: meta
+        uses: dependabot/fetch-metadata@v3
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Majors are breaking under semver; everything else waits for green CI.
+      - name: Enable auto-merge
+        if: steps.meta.outputs.update-type != 'version-update:semver-major'
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

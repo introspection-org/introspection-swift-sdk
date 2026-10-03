@@ -41,12 +41,13 @@ extension IntrospectionClient {
                 message: "The token exchange returned no Data Plane URL; pass dataPlaneURL explicitly"
             )
         }
-        return IntrospectionClient(configuration: .init(
-            controlPlaneURL: controlPlaneURL,
-            dataPlaneURL: resolved,
-            controlPlaneCredentials: credentials,
-            transport: transport,
-            options: options
-        ))
+        return IntrospectionClient(
+            configuration: .init(
+                controlPlaneURL: controlPlaneURL,
+                dataPlaneURL: resolved,
+                controlPlaneCredentials: credentials,
+                transport: transport,
+                options: options
+            ))
     }
 }

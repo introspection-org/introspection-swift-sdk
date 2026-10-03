@@ -96,7 +96,8 @@ public struct IntrospectionError: Error, Sendable, CustomStringConvertible {
         switch status {
         case 401: kind = code == "runner_expired" ? .runnerExpired : .authentication
         case 403:
-            kind = code == "insufficient_scope"
+            kind =
+                code == "insufficient_scope"
                 ? .insufficientScope(missingCapability: decoded?["missing_capability"]?.stringValue)
                 : .forbidden
         case 404: kind = .notFound

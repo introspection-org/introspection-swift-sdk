@@ -1,0 +1,18 @@
+# Run with: pip install pre-commit && pre-commit install && pre-commit run --all-files
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-merge-conflict
+  - repo: local
+    hooks:
+      - id: swift-format
+        name: swift format lint
+        entry: scripts/lint.sh
+        language: system
+        pass_filenames: false
+        files: \.swift$

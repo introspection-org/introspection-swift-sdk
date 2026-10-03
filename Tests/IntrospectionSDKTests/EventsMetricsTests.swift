@@ -1,24 +1,27 @@
 import Foundation
 import XCTest
+
 @testable import IntrospectionSDK
 
 final class EventsMetricsTests: XCTestCase {
     func testEventsListSerializesFamilyFiltersAndWindow() async throws {
         let page = #"""
-        {"records":[
-          {"id":"e1","timestamp":"2026-10-01T12:00:00Z","event_name":"introspection.feedback","trace_id":"t1",
-           "conversation_id":"c1","payload":{"name":"thumbs_up","value":1,"sentiment":"positive","properties":{"x":1}}},
-          {"id":"e2","timestamp":"2026-10-01T12:00:00Z","event_name":"introspection.someday","payload":{"z":true}}
-        ],"count":2,"total_count":null,"next":null}
-        """#
+            {"records":[
+              {"id":"e1","timestamp":"2026-10-01T12:00:00Z","event_name":"introspection.feedback","trace_id":"t1",
+               "conversation_id":"c1","payload":{"name":"thumbs_up","value":1,"sentiment":"positive","properties":{"x":1}}},
+              {"id":"e2","timestamp":"2026-10-01T12:00:00Z","event_name":"introspection.someday","payload":{"z":true}}
+            ],"count":2,"total_count":null,"next":null}
+            """#
         let transport = MockTransport(json: page)
         let client = makeClient(transport)
         let now = Date(timeIntervalSince1970: 1_790_000_000)
-        let events = try await client.events.list(EventListParams(
-            eventName: .feedback, limit: 50, sort: .timestamp, order: .desc, lookback: .days(7),
-            conversationIds: ["c1", "c2"], ownerKey: "user:u1", eventIds: ["e1"], includeSuperseded: true,
-            latestRequests: true
-        ), now: now).collect()
+        let events = try await client.events.list(
+            EventListParams(
+                eventName: .feedback, limit: 50, sort: .timestamp, order: .desc, lookback: .days(7),
+                conversationIds: ["c1", "c2"], ownerKey: "user:u1", eventIds: ["e1"], includeSuperseded: true,
+                latestRequests: true
+            ), now: now
+        ).collect()
 
         let q = try XCTUnwrap(transport.last).query
         XCTAssertEqual(transport.last?.path, "/v1/events")
@@ -48,10 +51,10 @@ final class EventsMetricsTests: XCTestCase {
 
     func testEventGetAndTypedPayloads() async throws {
         let observation = #"""
-        {"id":"o1","timestamp":"2026-10-01T12:00:00Z","event_name":"introspection.observation",
-         "payload":{"observation_id":"0199a1b2-0000-7000-8000-000000000001","lens":"friction","label":"slow",
-         "confidence":0.9,"evidence_refs":["m:1"],"pattern_id":"p1","assignment_score":0.8,"metadata":{"a":"b"}}}
-        """#
+            {"id":"o1","timestamp":"2026-10-01T12:00:00Z","event_name":"introspection.observation",
+             "payload":{"observation_id":"0199a1b2-0000-7000-8000-000000000001","lens":"friction","label":"slow",
+             "confidence":0.9,"evidence_refs":["m:1"],"pattern_id":"p1","assignment_score":0.8,"metadata":{"a":"b"}}}
+            """#
         let transport = MockTransport(json: observation)
         let client = makeClient(transport)
         let event = try await client.events.get("o/1")
@@ -63,56 +66,62 @@ final class EventsMetricsTests: XCTestCase {
         let custom = try event.decodePayload(JSONObject.self)
         XCTAssertEqual(custom["label"], "slow")
 
-        let pattern = try JSONCoding.decoder.decode(IntrospectionEvent.self, from: Data(#"""
-        {"id":"p1","timestamp":"2026-10-01T12:00:00Z","event_name":"introspection.pattern",
-         "payload":{"pattern_id":"p1","status":"active","created_at":"2026-09-01T00:00:00Z","last_detected_at":"2026-10-01T00:00:00.123456Z"}}
-        """#.utf8))
+        let pattern = try JSONCoding.decoder.decode(
+            IntrospectionEvent.self,
+            from: Data(
+                #"""
+                {"id":"p1","timestamp":"2026-10-01T12:00:00Z","event_name":"introspection.pattern",
+                 "payload":{"pattern_id":"p1","status":"active","created_at":"2026-09-01T00:00:00Z","last_detected_at":"2026-10-01T00:00:00.123456Z"}}
+                """#.utf8))
         XCTAssertEqual(pattern.pattern?.status, "active")
         XCTAssertNotNil(pattern.pattern?.lastDetectedAt)
     }
 
     func testMetricsQueryEncodingAndDecoding() async throws {
         let response = #"""
-        {"data":[{"timestamp":1790000000000,"dimensions":[{"field":"service_name","value":"svc"}],
-          "metrics":[{"metric_index":0,"measure":null,"aggregation":"count","value":12},
-                     {"metric_index":1,"measure":"duration_ms","aggregation":"p95","value":340.5}]}],
-         "meta":{"view":"spans","window":{"start":"2026-10-01T00:00:00Z","end":"2026-10-02T00:00:00Z"},
-          "row_count":1,"row_limit":100,"interval":"1h","step_seconds":3600,"approximate":true,"truncated":false,
-          "owner_scoped":false,"order_by":[{"type":"metric","direction":"desc","metric_index":0}]}}
-        """#
+            {"data":[{"timestamp":1790000000000,"dimensions":[{"field":"service_name","value":"svc"}],
+              "metrics":[{"metric_index":0,"measure":null,"aggregation":"count","value":12},
+                         {"metric_index":1,"measure":"duration_ms","aggregation":"p95","value":340.5}]}],
+             "meta":{"view":"spans","window":{"start":"2026-10-01T00:00:00Z","end":"2026-10-02T00:00:00Z"},
+              "row_count":1,"row_limit":100,"interval":"1h","step_seconds":3600,"approximate":true,"truncated":false,
+              "owner_scoped":false,"order_by":[{"type":"metric","direction":"desc","metric_index":0}]}}
+            """#
         let transport = MockTransport(json: response)
         let client = makeClient(transport)
         let from = Date(timeIntervalSince1970: 1_790_000_000)
         let to = from.addingTimeInterval(86_400)
-        let result = try await client.metrics.query(MetricQueryRequest(
-            view: .spans,
-            metrics: [.count, MetricSpec(.p95, measure: "duration_ms")],
-            from: from, to: to,
-            dimensions: [MetricDimension("service_name")],
-            filters: [MetricFilter("status", .in, ["Ok", "Error"]), MetricFilter("model", .exists)],
-            timeDimension: MetricTimeDimension(granularity: .oneHour),
-            orderBy: [.metric(0, .desc)],
-            having: [MetricHaving(metricIndex: 0, .gt, 5)],
-            config: MetricQueryConfig(rowLimit: 100, seriesLimit: 10)
-        ))
+        let result = try await client.metrics.query(
+            MetricQueryRequest(
+                view: .spans,
+                metrics: [.count, MetricSpec(.p95, measure: "duration_ms")],
+                from: from, to: to,
+                dimensions: [MetricDimension("service_name")],
+                filters: [MetricFilter("status", .in, ["Ok", "Error"]), MetricFilter("model", .exists)],
+                timeDimension: MetricTimeDimension(granularity: .oneHour),
+                orderBy: [.metric(0, .desc)],
+                having: [MetricHaving(metricIndex: 0, .gt, 5)],
+                config: MetricQueryConfig(rowLimit: 100, seriesLimit: 10)
+            ))
 
         XCTAssertEqual(transport.last?.request.method, "POST")
         XCTAssertEqual(transport.last?.path, "/v1/metrics")
-        XCTAssertEqual(transport.last?.json, [
-            "view": "spans",
-            "metrics": [["aggregation": "count"], ["aggregation": "p95", "measure": "duration_ms"]],
-            "dimensions": [["field": "service_name"]],
-            "filters": [
-                ["field": "status", "operator": "in", "value": ["Ok", "Error"]],
-                ["field": "model", "operator": "exists"],
-            ],
-            "time_dimension": ["granularity": "1h"],
-            "order_by": [["type": "metric", "direction": "desc", "metric_index": 0]],
-            "having": [["metric_index": 0, "operator": "gt", "value": 5]],
-            "from_timestamp": .string(ISO8601.format(from)),
-            "to_timestamp": .string(ISO8601.format(to)),
-            "config": ["row_limit": 100, "series_limit": 10],
-        ])
+        XCTAssertEqual(
+            transport.last?.json,
+            [
+                "view": "spans",
+                "metrics": [["aggregation": "count"], ["aggregation": "p95", "measure": "duration_ms"]],
+                "dimensions": [["field": "service_name"]],
+                "filters": [
+                    ["field": "status", "operator": "in", "value": ["Ok", "Error"]],
+                    ["field": "model", "operator": "exists"],
+                ],
+                "time_dimension": ["granularity": "1h"],
+                "order_by": [["type": "metric", "direction": "desc", "metric_index": 0]],
+                "having": [["metric_index": 0, "operator": "gt", "value": 5]],
+                "from_timestamp": .string(ISO8601.format(from)),
+                "to_timestamp": .string(ISO8601.format(to)),
+                "config": ["row_limit": 100, "series_limit": 10],
+            ])
 
         let row = try XCTUnwrap(result.data.first)
         XCTAssertEqual(row.value(at: 0), 12)
@@ -128,10 +137,10 @@ final class EventsMetricsTests: XCTestCase {
 
     func testSharesRoutes() async throws {
         let share = #"""
-        {"id":"sh1","org_id":"o","project_id":"p","created_at":"2026-10-01T12:00:00Z","updated_at":"2026-10-01T12:00:00Z",
-         "resource_type":"file","resource_id":"f1","granted_member_id":null,"created_by_member_id":"m1",
-         "url":"https://dp.test/v1/files/f1?share_id=sh1"}
-        """#
+            {"id":"sh1","org_id":"o","project_id":"p","created_at":"2026-10-01T12:00:00Z","updated_at":"2026-10-01T12:00:00Z",
+             "resource_type":"file","resource_id":"f1","granted_member_id":null,"created_by_member_id":"m1",
+             "url":"https://dp.test/v1/files/f1?share_id=sh1"}
+            """#
         let transport = MockTransport { request, _ in
             switch request.method {
             case "DELETE": return .response(HTTPResponse(status: 204, headers: [:], body: Data()))

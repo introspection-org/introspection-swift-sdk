@@ -182,7 +182,8 @@ private func parseObject(_ value: JSONValue?) -> JSONObject? {
     case let .object(object)?: return object
     case let .string(text)?:
         guard let data = text.data(using: .utf8),
-              case let .object(object)? = try? JSONCoding.decoder.decode(JSONValue.self, from: data) else { return nil }
+            case let .object(object)? = try? JSONCoding.decoder.decode(JSONValue.self, from: data)
+        else { return nil }
         return object
     default: return nil
     }
@@ -244,10 +245,12 @@ public func foldSpans(_ spans: [GenAISpan]) -> [TranscriptEntry] {
 
         if let operation = span.operationName, delegationOperations.contains(operation) {
             let status: TranscriptStatus = span.status?.code == .error ? .error : (spanEnded(span) ? .complete : .running)
-            entries.append(.delegation(TranscriptDelegationEntry(
-                id: "span:\(spanKey):delegation", status: status, invocationId: span.invocationId,
-                agentId: span.agentId, agentName: span.agentName, durationNs: span.durationNs, spanId: spanId
-            )))
+            entries.append(
+                .delegation(
+                    TranscriptDelegationEntry(
+                        id: "span:\(spanKey):delegation", status: status, invocationId: span.invocationId,
+                        agentId: span.agentId, agentName: span.agentName, durationNs: span.durationNs, spanId: spanId
+                    )))
             continue
         }
 
@@ -265,16 +268,20 @@ public func foldSpans(_ spans: [GenAISpan]) -> [TranscriptEntry] {
                 if text.isEmpty { continue }
                 // client_message_id names the optimistic user message only when the delta has one candidate.
                 let stableId = (clientMessageId != nil && userCount == 1) ? clientMessageId ?? "" : "span:\(spanKey):user:\(index)"
-                entries.append(.message(TranscriptMessageEntry(
-                    id: stableId, role: .user, text: text, clientMessageId: clientMessageId, spanId: spanId
-                )))
+                entries.append(
+                    .message(
+                        TranscriptMessageEntry(
+                            id: stableId, role: .user, text: text, clientMessageId: clientMessageId, spanId: spanId
+                        )))
             } else if message.role == .tool {
                 for part in message.parts {
                     guard case let .toolCallResponse(response) = part, let id = response.id, !id.isEmpty else { continue }
-                    upsertTool(id, ToolPatch(
-                        name: response.name, result: response.response,
-                        status: responseIsError(response.response) ? .error : .complete, spanId: spanId
-                    ))
+                    upsertTool(
+                        id,
+                        ToolPatch(
+                            name: response.name, result: response.response,
+                            status: responseIsError(response.response) ? .error : .complete, spanId: spanId
+                        ))
                 }
             }
         }
@@ -284,10 +291,12 @@ public func foldSpans(_ spans: [GenAISpan]) -> [TranscriptEntry] {
             let thinking = thinkingOf(message.parts)
             if !text.isEmpty || !thinking.isEmpty {
                 let responseId = span.responseId
-                entries.append(.message(TranscriptMessageEntry(
-                    id: responseId ?? "span:\(spanKey):assistant:\(index)", role: .assistant, text: text,
-                    thinking: thinking.isEmpty ? nil : thinking, responseId: responseId, spanId: spanId
-                )))
+                entries.append(
+                    .message(
+                        TranscriptMessageEntry(
+                            id: responseId ?? "span:\(spanKey):assistant:\(index)", role: .assistant, text: text,
+                            thinking: thinking.isEmpty ? nil : thinking, responseId: responseId, spanId: spanId
+                        )))
             }
             for part in message.parts {
                 guard case let .toolCall(call) = part, let id = call.id, !id.isEmpty else { continue }
@@ -379,9 +388,10 @@ public final class TranscriptAccumulator {
             onActivity?(event)
         case "CUSTOM":
             if event.name == messageIdentityEvent,
-               let messageId = event.value?["messageId"]?.stringValue,
-               let responseId = event.value?["responseId"]?.stringValue,
-               let index = messageIndex[messageId] {
+                let messageId = event.value?["messageId"]?.stringValue,
+                let responseId = event.value?["responseId"]?.stringValue,
+                let index = messageIndex[messageId]
+            {
                 updateMessage(at: index) { $0.responseId = responseId }
             }
             onControl?(event)
@@ -486,12 +496,14 @@ public final class TranscriptAccumulator {
     /// An `agent` tool call whose sealed args are a `start` action converts in place to a delegation.
     private func maybeConvertToDelegation(_ callId: String) {
         guard let index = toolIndex[callId], case let .tool(tool) = entries[index], tool.name == agentToolName,
-              let arguments = tool.arguments, let args = parseObject(.string(arguments)) else { return }
+            let arguments = tool.arguments, let args = parseObject(.string(arguments))
+        else { return }
         if let action = args["action"], action != .string("start") { return }
-        entries[index] = .delegation(TranscriptDelegationEntry(
-            id: "delegation-tool:\(callId)", status: .running, sourceToolCallId: callId,
-            agentName: args["name"]?.stringValue, label: args["label"]?.stringValue
-        ))
+        entries[index] = .delegation(
+            TranscriptDelegationEntry(
+                id: "delegation-tool:\(callId)", status: .running, sourceToolCallId: callId,
+                agentName: args["name"]?.stringValue, label: args["label"]?.stringValue
+            ))
         toolIndex[callId] = nil
         delegationIndex[callId] = index
     }

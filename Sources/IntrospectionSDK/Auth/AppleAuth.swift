@@ -100,16 +100,17 @@ public final class HostedLoginPresenter: NSObject, ASWebAuthenticationPresentati
                 } else if let error = error as? ASWebAuthenticationSessionError, error.code == .canceledLogin {
                     continuation.resume(throwing: CancellationError())
                 } else {
-                    continuation.resume(throwing: IntrospectionError(
-                        kind: .authentication,
-                        message: error?.localizedDescription ?? "Sign-in did not complete",
-                        underlying: error
-                    ))
+                    continuation.resume(
+                        throwing: IntrospectionError(
+                            kind: .authentication,
+                            message: error?.localizedDescription ?? "Sign-in did not complete",
+                            underlying: error
+                        ))
                 }
             }
             let session: ASWebAuthenticationSession
             if redirect.scheme == "https", #available(iOS 17.4, macOS 14.4, tvOS 17.4, visionOS 1.1, *),
-               let host = redirect.host
+                let host = redirect.host
             {
                 session = ASWebAuthenticationSession(
                     url: request.url, callback: .https(host: host, path: redirect.path), completionHandler: completion

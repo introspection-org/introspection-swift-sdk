@@ -14,7 +14,9 @@ public final class HTTPClient: Sendable {
         /// Headers merged into every request.
         public var additionalHeaders: [String: String]
 
-        public init(maxRetries: Int = 2, retryBase: TimeInterval = 0.5, timeout: TimeInterval? = 60, additionalHeaders: [String: String] = [:]) {
+        public init(
+            maxRetries: Int = 2, retryBase: TimeInterval = 0.5, timeout: TimeInterval? = 60, additionalHeaders: [String: String] = [:]
+        ) {
             self.maxRetries = maxRetries
             self.retryBase = retryBase
             self.timeout = timeout
@@ -93,7 +95,8 @@ public final class HTTPClient: Sendable {
                     headers: headers, authenticated: authenticated
                 )
             } catch let error as IntrospectionError {
-                let retryable = error.kind == .rateLimited
+                let retryable =
+                    error.kind == .rateLimited
                     || (method == "GET" && [502, 503, 504].contains(error.status))
                 guard retryable, attempt < maxRetries else { throw error }
                 try await Backoff.sleep(Backoff.delay(attempt: attempt, retryAfter: error.retryAfter, base: options.retryBase))
@@ -106,9 +109,11 @@ public final class HTTPClient: Sendable {
         method: String, url: URL, data: Data?, contentType: String?,
         headers: [String: String], authenticated: Bool
     ) async throws -> HTTPResponse {
-        var response = try await perform(method: method, url: url, data: data, contentType: contentType, headers: headers, authenticated: authenticated)
+        var response = try await perform(
+            method: method, url: url, data: data, contentType: contentType, headers: headers, authenticated: authenticated)
         if response.status == 401, authenticated, let credentials, try await credentials.refreshAfterUnauthorized() {
-            response = try await perform(method: method, url: url, data: data, contentType: contentType, headers: headers, authenticated: authenticated)
+            response = try await perform(
+                method: method, url: url, data: data, contentType: contentType, headers: headers, authenticated: authenticated)
         }
         guard response.isSuccess else {
             throw IntrospectionError.fromResponse(status: response.status, headers: response.headers, body: response.body)
@@ -221,7 +226,9 @@ public final class HTTPClient: Sendable {
         return response
     }
 
-    private func openStream(method: String, url: URL, data: Data?, contentType: String?, headers: [String: String]) async throws -> HTTPStreamResponse {
+    private func openStream(
+        method: String, url: URL, data: Data?, contentType: String?, headers: [String: String]
+    ) async throws -> HTTPStreamResponse {
         var merged = try await buildHeaders(extra: [:], contentType: contentType, authenticated: true)
         merged["Accept"] = "text/event-stream"
         for (name, value) in headers { merged[name] = value }

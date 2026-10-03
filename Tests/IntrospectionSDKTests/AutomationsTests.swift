@@ -1,41 +1,42 @@
 import Foundation
 import XCTest
+
 @testable import IntrospectionSDK
 
 private let automationJSON = #"""
-{
-  "id": "0199a1b2-0000-7000-8000-000000000001",
-  "org_id": "0199a1b2-0000-7000-8000-0000000000aa",
-  "project_id": "0199a1b2-0000-7000-8000-0000000000bb",
-  "name": "Weekly digest",
-  "description": "Summarize the week",
-  "enabled": true,
-  "agent_member_id": null,
-  "created_by_member_id": "0199a1b2-0000-7000-8000-0000000000cc",
-  "execution_blocked_reason": null,
-  "can_manage": true,
-  "tags": ["digest"],
-  "trigger_type": "cron",
-  "cron_schedule": "0 9 * * 1",
-  "kind": null,
-  "prompt": "Summarize my week",
-  "metadata": {
-    "cron_schedules": ["0 9 * * 1", "0 17 * * 5"],
-    "timezone": "Europe/London",
-    "repositories": [{"repo": "acme/app", "ref": "main"}],
-    "conditions": [{"type": "has_new_tasks_since_last_run"}, {"type": "brand_new_condition"}]
-  },
-  "last_triggered_at": "2026-09-28T09:00:00Z",
-  "next_trigger_at": "2026-10-05T09:00:00.123456Z",
-  "created_at": "2026-09-01T10:00:00Z",
-  "updated_at": "2026-09-28T09:00:01Z",
-  "owner_role": "operator",
-  "runtime_group_id": "0199a1b2-0000-7000-8000-0000000000dd",
-  "environment": "staging",
-  "target_task_id": "0199a1b2-0000-7000-8000-0000000000ee",
-  "member_type": "business"
-}
-"""#
+    {
+      "id": "0199a1b2-0000-7000-8000-000000000001",
+      "org_id": "0199a1b2-0000-7000-8000-0000000000aa",
+      "project_id": "0199a1b2-0000-7000-8000-0000000000bb",
+      "name": "Weekly digest",
+      "description": "Summarize the week",
+      "enabled": true,
+      "agent_member_id": null,
+      "created_by_member_id": "0199a1b2-0000-7000-8000-0000000000cc",
+      "execution_blocked_reason": null,
+      "can_manage": true,
+      "tags": ["digest"],
+      "trigger_type": "cron",
+      "cron_schedule": "0 9 * * 1",
+      "kind": null,
+      "prompt": "Summarize my week",
+      "metadata": {
+        "cron_schedules": ["0 9 * * 1", "0 17 * * 5"],
+        "timezone": "Europe/London",
+        "repositories": [{"repo": "acme/app", "ref": "main"}],
+        "conditions": [{"type": "has_new_tasks_since_last_run"}, {"type": "brand_new_condition"}]
+      },
+      "last_triggered_at": "2026-09-28T09:00:00Z",
+      "next_trigger_at": "2026-10-05T09:00:00.123456Z",
+      "created_at": "2026-09-01T10:00:00Z",
+      "updated_at": "2026-09-28T09:00:01Z",
+      "owner_role": "operator",
+      "runtime_group_id": "0199a1b2-0000-7000-8000-0000000000dd",
+      "environment": "staging",
+      "target_task_id": "0199a1b2-0000-7000-8000-0000000000ee",
+      "member_type": "business"
+    }
+    """#
 
 final class AutomationsTests: XCTestCase {
     func testDecodesServerAutomation() throws {
@@ -57,7 +58,8 @@ final class AutomationsTests: XCTestCase {
         XCTAssertEqual(metadata.repositories, [AutomationRepositoryRef(repo: "acme/app", ref: "main")])
         XCTAssertEqual(metadata.conditions?.map(\.type), [.hasNewTasksSinceLastRun, "brand_new_condition"])
 
-        let minimal = try JSONCoding.decoder.decode(Automation.self, from: Data(#"{"id":"a","name":"n","trigger_type":"manual","kind":"observation_clustering"}"#.utf8))
+        let minimal = try JSONCoding.decoder.decode(
+            Automation.self, from: Data(#"{"id":"a","name":"n","trigger_type":"manual","kind":"observation_clustering"}"#.utf8))
         XCTAssertEqual(minimal.kind, .observationClustering)
         XCTAssertNil(minimal.metadata)
     }
@@ -82,26 +84,32 @@ final class AutomationsTests: XCTestCase {
     func testCreateEncodesOnlySetFields() async throws {
         let transport = MockTransport(status: 201, json: automationJSON)
         let metadata = try AutomationMetadata(cronSchedules: ["0 9 * * 1"], timezone: "UTC").jsonObject()
-        let created = try await makeClient(transport).automations.create(AutomationCreate(
-            name: "Weekly digest", triggerType: .cron, cronSchedule: "0 9 * * 1",
-            prompt: "Summarize my week", metadata: metadata
-        ))
+        let created = try await makeClient(transport).automations.create(
+            AutomationCreate(
+                name: "Weekly digest", triggerType: .cron, cronSchedule: "0 9 * * 1",
+                prompt: "Summarize my week", metadata: metadata
+            ))
         XCTAssertEqual(created.name, "Weekly digest")
         XCTAssertEqual(transport.last?.request.method, "POST")
         XCTAssertEqual(transport.last?.path, "/v1/automations")
-        XCTAssertEqual(transport.last?.json, [
-            "name": "Weekly digest", "trigger_type": "cron", "cron_schedule": "0 9 * * 1",
-            "prompt": "Summarize my week", "metadata": ["cron_schedules": ["0 9 * * 1"], "timezone": "UTC"],
-        ])
+        XCTAssertEqual(
+            transport.last?.json,
+            [
+                "name": "Weekly digest", "trigger_type": "cron", "cron_schedule": "0 9 * * 1",
+                "prompt": "Summarize my week", "metadata": ["cron_schedules": ["0 9 * * 1"], "timezone": "UTC"],
+            ])
 
-        _ = try await makeClient(transport).automations.create(AutomationCreate(
-            name: "Nudge", triggerType: .manual, prompt: "Check in", enabled: false,
-            runtimeGroupId: "rg", environment: "production", targetTaskId: "t1"
-        ))
-        XCTAssertEqual(transport.last?.json, [
-            "name": "Nudge", "trigger_type": "manual", "prompt": "Check in", "enabled": false,
-            "runtime_group_id": "rg", "environment": "production", "target_task_id": "t1",
-        ])
+        _ = try await makeClient(transport).automations.create(
+            AutomationCreate(
+                name: "Nudge", triggerType: .manual, prompt: "Check in", enabled: false,
+                runtimeGroupId: "rg", environment: "production", targetTaskId: "t1"
+            ))
+        XCTAssertEqual(
+            transport.last?.json,
+            [
+                "name": "Nudge", "trigger_type": "manual", "prompt": "Check in", "enabled": false,
+                "runtime_group_id": "rg", "environment": "production", "target_task_id": "t1",
+            ])
     }
 
     func testGetUpdateDeleteAndTrigger() async throws {

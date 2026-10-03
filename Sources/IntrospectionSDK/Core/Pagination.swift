@@ -27,7 +27,8 @@ public struct Page<Item: Decodable & Sendable>: Decodable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        let items = try container.decodeIfPresent([Item].self, forKey: .records)
+        let items =
+            try container.decodeIfPresent([Item].self, forKey: .records)
             ?? container.decodeIfPresent([Item].self, forKey: .data)
             ?? []
         records = items

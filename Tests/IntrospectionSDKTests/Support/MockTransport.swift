@@ -1,4 +1,5 @@
 import Foundation
+
 @testable import IntrospectionSDK
 
 /// A scripted transport. Each request is recorded and answered by the
@@ -37,7 +38,8 @@ final class MockTransport: HTTPTransport, @unchecked Sendable {
     /// Always answer with the same JSON body.
     convenience init(status: Int = 200, json: String, headers: [String: String] = [:]) {
         self.init { _, _ in
-            .response(HTTPResponse(status: status, headers: ["content-type": "application/json"].merging(headers) { $1 }, body: Data(json.utf8)))
+            .response(
+                HTTPResponse(status: status, headers: ["content-type": "application/json"].merging(headers) { $1 }, body: Data(json.utf8)))
         }
     }
 
@@ -70,15 +72,19 @@ final class MockTransport: HTTPTransport, @unchecked Sendable {
         let index = record(request)
         switch handler(request, index) {
         case let .response(response):
-            return HTTPStreamResponse(status: response.status, headers: response.headers, bytes: AsyncThrowingStream { continuation in
-                continuation.yield(response.body)
-                continuation.finish()
-            })
+            return HTTPStreamResponse(
+                status: response.status, headers: response.headers,
+                bytes: AsyncThrowingStream { continuation in
+                    continuation.yield(response.body)
+                    continuation.finish()
+                })
         case let .stream(status, headers, chunks, error):
-            return HTTPStreamResponse(status: status, headers: headers, bytes: AsyncThrowingStream { continuation in
-                for chunk in chunks { continuation.yield(chunk) }
-                if let error { continuation.finish(throwing: error) } else { continuation.finish() }
-            })
+            return HTTPStreamResponse(
+                status: status, headers: headers,
+                bytes: AsyncThrowingStream { continuation in
+                    for chunk in chunks { continuation.yield(chunk) }
+                    if let error { continuation.finish(throwing: error) } else { continuation.finish() }
+                })
         case let .failure(error): throw error
         }
     }
@@ -91,12 +97,13 @@ extension HTTPResponse {
 }
 
 func makeClient(_ transport: MockTransport) -> IntrospectionClient {
-    IntrospectionClient(configuration: .init(
-        controlPlaneURL: URL(string: "https://cp.test")!,
-        dataPlaneURL: URL(string: "https://dp.test")!,
-        controlPlaneCredentials: BearerToken("cp-token"),
-        dataPlaneCredentials: BearerToken("dp-token"),
-        transport: transport,
-        options: .init(maxRetries: 2, retryBase: 0.001)
-    ))
+    IntrospectionClient(
+        configuration: .init(
+            controlPlaneURL: URL(string: "https://cp.test")!,
+            dataPlaneURL: URL(string: "https://dp.test")!,
+            controlPlaneCredentials: BearerToken("cp-token"),
+            dataPlaneCredentials: BearerToken("dp-token"),
+            transport: transport,
+            options: .init(maxRetries: 2, retryBase: 0.001)
+        ))
 }

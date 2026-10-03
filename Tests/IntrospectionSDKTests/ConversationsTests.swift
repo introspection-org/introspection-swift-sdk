@@ -1,45 +1,47 @@
 import Foundation
 import XCTest
+
 @testable import IntrospectionSDK
 
 private let conversationJSON = #"""
-{"object":"conversation","id":"conv-1","created_at":"2026-10-01T12:00:00Z","updated_at":"2026-10-01T12:05:00Z",
- "agents":[{"id":"root"},{"id":"a1","name":"researcher","parent_id":"root","invocation_id":"run-9","depth":1}],
- "usage":{"input_tokens":10,"output_tokens":20,"total_tokens":30},"cost":{"usd":0.01},
- "metrics":{"duration_ms":1200.5,"trace_count":2,"span_count":9,"tool_use_count":3,"failed_tool_use_count":1,
- "llm_call_count":4,"failed_llm_call_count":0,"has_errors":true},
- "environment":"production","service_name":"svc","metadata":{"flow":"company"},"task_title":"Hello"}
-"""#
+    {"object":"conversation","id":"conv-1","created_at":"2026-10-01T12:00:00Z","updated_at":"2026-10-01T12:05:00Z",
+     "agents":[{"id":"root"},{"id":"a1","name":"researcher","parent_id":"root","invocation_id":"run-9","depth":1}],
+     "usage":{"input_tokens":10,"output_tokens":20,"total_tokens":30},"cost":{"usd":0.01},
+     "metrics":{"duration_ms":1200.5,"trace_count":2,"span_count":9,"tool_use_count":3,"failed_tool_use_count":1,
+     "llm_call_count":4,"failed_llm_call_count":0,"has_errors":true},
+     "environment":"production","service_name":"svc","metadata":{"flow":"company"},"task_title":"Hello"}
+    """#
 
 private let chatSpanJSON = #"""
-{"trace_id":"t1","span_id":"s2","name":"chat anthropic","kind":"CLIENT","start_time":"2026-10-01T12:00:02Z",
- "end_time":"2026-10-01T12:00:03Z","duration_ns":1000000000,"status":{"code":"Ok"},
- "resource":{"service":{"name":"svc"}},
- "attributes":{"gen_ai":{"operation":{"name":"chat"},"response":{"id":"resp-1"},"usage":{"input_tokens":5},
-  "input":{"messages":[{"role":"user","parts":[{"type":"text","content":"hi"}]},
-   {"role":"tool","parts":[{"type":"tool_call_response","id":"call-0","result":{"ok":true}}]}]},
-  "output":{"messages":[{"role":"assistant","finish_reason":"stop","parts":[
-   {"type":"reasoning","content":"think"},{"type":"text","content":"hello"},
-   {"type":"tool_call","id":"call-1","name":"search","arguments":{"q":"x"}},
-   {"type":"image-url","url":"https://x/y.png"},{"type":"hologram","depth":3}]}]}},
-  "introspection":{"conversation":{"client_message_id":"cm-1"}},"custom.attr":"kept"}}
-"""#
+    {"trace_id":"t1","span_id":"s2","name":"chat anthropic","kind":"CLIENT","start_time":"2026-10-01T12:00:02Z",
+     "end_time":"2026-10-01T12:00:03Z","duration_ns":1000000000,"status":{"code":"Ok"},
+     "resource":{"service":{"name":"svc"}},
+     "attributes":{"gen_ai":{"operation":{"name":"chat"},"response":{"id":"resp-1"},"usage":{"input_tokens":5},
+      "input":{"messages":[{"role":"user","parts":[{"type":"text","content":"hi"}]},
+       {"role":"tool","parts":[{"type":"tool_call_response","id":"call-0","result":{"ok":true}}]}]},
+      "output":{"messages":[{"role":"assistant","finish_reason":"stop","parts":[
+       {"type":"reasoning","content":"think"},{"type":"text","content":"hello"},
+       {"type":"tool_call","id":"call-1","name":"search","arguments":{"q":"x"}},
+       {"type":"image-url","url":"https://x/y.png"},{"type":"hologram","depth":3}]}]}},
+      "introspection":{"conversation":{"client_message_id":"cm-1"}},"custom.attr":"kept"}}
+    """#
 
 private let toolSpanJSON = #"""
-{"trace_id":"t1","span_id":"s1","start_time":"2026-10-01T12:00:01Z",
- "attributes":{"gen_ai":{"operation":{"name":"execute_tool"},"tool":{"name":"search","call":{"id":"call-1"}}}}}
-"""#
+    {"trace_id":"t1","span_id":"s1","start_time":"2026-10-01T12:00:01Z",
+     "attributes":{"gen_ai":{"operation":{"name":"execute_tool"},"tool":{"name":"search","call":{"id":"call-1"}}}}}
+    """#
 
 final class ConversationsTests: XCTestCase {
     func testListSerializesReadWindowAndMetadata() async throws {
         let transport = MockTransport(json: #"{"records":[\#(conversationJSON)],"count":1,"total_count":null,"next":null}"#)
         let client = makeClient(transport)
         let now = Date(timeIntervalSince1970: 1_790_000_000)
-        let paginator = try client.conversations.list(ConversationListParams(
-            limit: 10, order: .asc, lookback: "24h", sort: .cost, shareIds: ["sh1"], conversationIds: ["a", "b"],
-            status: .error, serviceNames: ["x", "y"], resolution: "resolved",
-            metadata: ["tenant": "acme", "flow": "company:x"]
-        ), now: now)
+        let paginator = try client.conversations.list(
+            ConversationListParams(
+                limit: 10, order: .asc, lookback: "24h", sort: .cost, shareIds: ["sh1"], conversationIds: ["a", "b"],
+                status: .error, serviceNames: ["x", "y"], resolution: "resolved",
+                metadata: ["tenant": "acme", "flow": "company:x"]
+            ), now: now)
         let page = try await paginator.firstPage()
         let conversation = try XCTUnwrap(page.records.first)
         XCTAssertEqual(conversation.metrics?.llmCallCount, 4)
@@ -106,7 +108,8 @@ final class ConversationsTests: XCTestCase {
         let parts = try XCTUnwrap(span.outputMessages.first).parts
         XCTAssertEqual(parts.map(\.type), ["reasoning", "text", "tool_call", "image-url", "hologram"])
         guard case let .thinking(thinking) = parts[0], case let .toolCall(call) = parts[2],
-              case let .media(media) = parts[3], case let .unknown(raw) = parts[4] else {
+            case let .media(media) = parts[3], case let .unknown(raw) = parts[4]
+        else {
             return XCTFail("unexpected part shapes")
         }
         XCTAssertEqual(thinking.content, "think")
@@ -126,8 +129,10 @@ final class ConversationsTests: XCTestCase {
     func testItemsListNormalizesAndFollowsNext() async throws {
         let transport = MockTransport { _, index in
             index == 0
-                ? .response(.json(#"{"object":"list","data":[\#(chatSpanJSON)],"first_id":"s2","last_id":"s2","has_more":true,"next":"n2"}"#))
-                : .response(.json(#"{"object":"list","data":[\#(toolSpanJSON)],"first_id":"s1","last_id":"s1","has_more":false,"next":null}"#))
+                ? .response(
+                    .json(#"{"object":"list","data":[\#(chatSpanJSON)],"first_id":"s2","last_id":"s2","has_more":true,"next":"n2"}"#))
+                : .response(
+                    .json(#"{"object":"list","data":[\#(toolSpanJSON)],"first_id":"s1","last_id":"s1","has_more":false,"next":null}"#))
         }
         let client = makeClient(transport)
         let items = try await client.conversations.items.list(
@@ -177,18 +182,18 @@ final class ConversationsTests: XCTestCase {
 
     func testGetTurnsAndExports() async throws {
         let turnJSON = #"""
-        {"object":"list","data":[{"object":"conversation.turn","id":"turn-1","trace_id":"t1","ordinal":1,
-         "started_at":"2026-10-01T12:00:00Z","ended_at":"2026-10-01T12:00:05Z","status":"completed",
-         "messages":[{"id":"m1","role":"user","parts":[{"type":"text","content":"hi"}],"source_span_id":"s1",
-          "created_at":"2026-10-01T12:00:00Z","channel_reply":{"command":"reply","status":"sent"}}],
-         "response_ids":["r1"],"has_steps":true,"item_count":3,"cost_usd":0.5,"duration_ms":5000}],
-         "first_id":"turn-1","last_id":"turn-1","has_more":false,"next":null}
-        """#
+            {"object":"list","data":[{"object":"conversation.turn","id":"turn-1","trace_id":"t1","ordinal":1,
+             "started_at":"2026-10-01T12:00:00Z","ended_at":"2026-10-01T12:00:05Z","status":"completed",
+             "messages":[{"id":"m1","role":"user","parts":[{"type":"text","content":"hi"}],"source_span_id":"s1",
+              "created_at":"2026-10-01T12:00:00Z","channel_reply":{"command":"reply","status":"sent"}}],
+             "response_ids":["r1"],"has_steps":true,"item_count":3,"cost_usd":0.5,"duration_ms":5000}],
+             "first_id":"turn-1","last_id":"turn-1","has_more":false,"next":null}
+            """#
         let trajectoryJSON = #"""
-        [{"role":"meta","source":"claude-code","cwd":"/w"},{"role":"user","content":"hi","timestamp":"2026-10-01T12:00:00Z"},
-         {"role":"assistant","content":null,"timestamp":"2026-10-01T12:00:01Z","tool_calls":[{"id":"c1","name":"ls","args":"{}"}]},
-         {"role":"tool","tool_call_id":"c1","content":"ok","timestamp":"2026-10-01T12:00:02Z","ok":true}]
-        """#
+            [{"role":"meta","source":"claude-code","cwd":"/w"},{"role":"user","content":"hi","timestamp":"2026-10-01T12:00:00Z"},
+             {"role":"assistant","content":null,"timestamp":"2026-10-01T12:00:01Z","tool_calls":[{"id":"c1","name":"ls","args":"{}"}]},
+             {"role":"tool","tool_call_id":"c1","content":"ok","timestamp":"2026-10-01T12:00:02Z","ok":true}]
+            """#
         let transport = MockTransport { request, _ in
             let path = request.url.path
             if path.hasSuffix("/turns") { return .response(.json(turnJSON)) }
@@ -198,7 +203,8 @@ final class ConversationsTests: XCTestCase {
                 if accept.contains("arrow") {
                     return .stream(status: 200, headers: ["content-type": accept], chunks: [Data([1, 2]), Data([3])], error: nil)
                 }
-                return .response(.json(#"{"object":"list","first_id":"s2","data":[\#(chatSpanJSON)],"last_id":"s2","has_more":false,"next":null}"#))
+                return .response(
+                    .json(#"{"object":"list","first_id":"s2","data":[\#(chatSpanJSON)],"last_id":"s2","has_more":false,"next":null}"#))
             }
             return .response(.json(conversationJSON))
         }
@@ -208,7 +214,8 @@ final class ConversationsTests: XCTestCase {
         XCTAssertEqual(conversation.taskTitle, "Hello")
         XCTAssertEqual(transport.last?.query["share_id"], ["sh"])
 
-        let turns = try await client.conversations.turns("conv-1", ConversationTurnListParams(limit: 5, agent: "root", lookbackDays: 7)).collect()
+        let turns = try await client.conversations.turns("conv-1", ConversationTurnListParams(limit: 5, agent: "root", lookbackDays: 7))
+            .collect()
         XCTAssertEqual(turns.first?.status, .completed)
         XCTAssertEqual(turns.first?.messages?.first?.channelReply?.status, "sent")
         XCTAssertEqual(turns.first?.messages?.first?.parts.first?.type, "text")

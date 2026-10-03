@@ -1,35 +1,36 @@
 import Foundation
 import XCTest
+
 @testable import IntrospectionSDK
 
 private let runtimeJSON = #"""
-{
-  "id": "0195c0de-0000-7000-8000-000000000001",
-  "org_id": "0195c0de-0000-7000-8000-0000000000a1",
-  "project_id": "0195c0de-0000-7000-8000-0000000000b1",
-  "runtime_group_id": "0195c0de-0000-7000-8000-0000000000c1",
-  "name": "Customer agent",
-  "slug": "customer-agent",
-  "description": null,
-  "kind": "byor",
-  "llm_mode": "managed",
-  "config_json": {"connectors": [{"slug": "gmail"}]},
-  "recipe_id": "0195c0de-0000-7000-8000-0000000000d1",
-  "recipe_kind": "production",
-  "recipe_ref": "main",
-  "environments": ["production", "staging"],
-  "image_build_status": "ready",
-  "image_build_error_message": null,
-  "image_build_metadata": {"image_tag": "sha-abc", "size_bytes": 1024},
-  "created_by_member_id": "0195c0de-0000-7000-8000-0000000000e1",
-  "yanked_at": null,
-  "yanked_reason": null,
-  "environment_ref": {"production": "main"},
-  "created_at": "2026-09-01T10:00:00.123456Z",
-  "updated_at": "2026-09-02T10:00:00Z",
-  "some_new_field": 42
-}
-"""#
+    {
+      "id": "0195c0de-0000-7000-8000-000000000001",
+      "org_id": "0195c0de-0000-7000-8000-0000000000a1",
+      "project_id": "0195c0de-0000-7000-8000-0000000000b1",
+      "runtime_group_id": "0195c0de-0000-7000-8000-0000000000c1",
+      "name": "Customer agent",
+      "slug": "customer-agent",
+      "description": null,
+      "kind": "byor",
+      "llm_mode": "managed",
+      "config_json": {"connectors": [{"slug": "gmail"}]},
+      "recipe_id": "0195c0de-0000-7000-8000-0000000000d1",
+      "recipe_kind": "production",
+      "recipe_ref": "main",
+      "environments": ["production", "staging"],
+      "image_build_status": "ready",
+      "image_build_error_message": null,
+      "image_build_metadata": {"image_tag": "sha-abc", "size_bytes": 1024},
+      "created_by_member_id": "0195c0de-0000-7000-8000-0000000000e1",
+      "yanked_at": null,
+      "yanked_reason": null,
+      "environment_ref": {"production": "main"},
+      "created_at": "2026-09-01T10:00:00.123456Z",
+      "updated_at": "2026-09-02T10:00:00Z",
+      "some_new_field": 42
+    }
+    """#
 
 private func specJSON(endpoint: String = "https://dp-gcp01.test", token: String = "locator-1", session: String = "sess-1") -> String {
     #"""
@@ -59,9 +60,11 @@ final class RunnerTests: XCTestCase {
     func testListRuntimesEncodesFiltersAndDecodes() async throws {
         let transport = MockTransport(json: #"{"records": [\#(runtimeJSON)], "count": 1, "next": null}"#)
         let client = makeClient(transport)
-        let page = try await client.runtimes.list(RuntimeListParams(
-            project: "acme", runtime: "customer-agent", environment: .staging, limit: 5, next: "c1"
-        )).firstPage()
+        let page = try await client.runtimes.list(
+            RuntimeListParams(
+                project: "acme", runtime: "customer-agent", environment: .staging, limit: 5, next: "c1"
+            )
+        ).firstPage()
         let request = try XCTUnwrap(transport.last)
         XCTAssertEqual(request.request.method, "GET")
         XCTAssertEqual(request.request.url.host, "cp.test")
@@ -87,7 +90,8 @@ final class RunnerTests: XCTestCase {
     func testGetRuntimeWithInclude() async throws {
         let body = runtimeJSON.replacingOccurrences(
             of: #""some_new_field": 42"#,
-            with: #""mcp_requirements": [{"environment": "production", "state": "authorization_required", "mcp_server_id": "gmail", "connection_status": "refresh_failed", "candidate_connector_ids": []}]"#
+            with:
+                #""mcp_requirements": [{"environment": "production", "state": "authorization_required", "mcp_server_id": "gmail", "connection_status": "refresh_failed", "candidate_connector_ids": []}]"#
         )
         let transport = MockTransport(json: body)
         let runtime = try await makeClient(transport).runtimes.get("rt/1", project: "acme", include: [.mcpRequirements])
@@ -171,14 +175,15 @@ final class RunnerTests: XCTestCase {
         let transport = MockTransport { request, _ in
             request.url.host == "cp.test" ? .response(.json(specJSON())) : .response(.json(#"{"ok": true}"#))
         }
-        let client = IntrospectionClient(configuration: .init(
-            controlPlaneURL: URL(string: "https://cp.test")!,
-            dataPlaneURL: URL(string: "https://dp.test")!,
-            controlPlaneCredentials: BearerToken("cp-token"),
-            transport: transport,
-            options: .init(maxRetries: 0, additionalHeaders: ["X-Custom": "1"]),
-            userAgent: "test-agent"
-        ))
+        let client = IntrospectionClient(
+            configuration: .init(
+                controlPlaneURL: URL(string: "https://cp.test")!,
+                dataPlaneURL: URL(string: "https://dp.test")!,
+                controlPlaneCredentials: BearerToken("cp-token"),
+                transport: transport,
+                options: .init(maxRetries: 0, additionalHeaders: ["X-Custom": "1"]),
+                userAgent: "test-agent"
+            ))
         let runner = try await client.runtimes.run("rt-1", project: "acme")
         XCTAssertEqual(transport.last?.query["project"], ["acme"])
         XCTAssertEqual(transport.last?.json, [:], "an empty run request encodes as {}")
@@ -263,21 +268,21 @@ final class RunnerTests: XCTestCase {
 
     func testExperimentRunAndLifecycle() async throws {
         let experimentJSON = #"""
-        {
-          "id": "exp-1", "org_id": "o", "project_id": "p", "name": "Shorter prompt",
-          "description": null, "runtime_group_id": "g", "environment": "production",
-          "goal_json": {"kind": "composite", "direction": "maximize", "components": [
-            {"source": "judge", "judge_id": "j1", "judge_definition_hash": "h", "weight": 1.0, "guard": {"min": 0.2}},
-            {"source": "telemetry", "column": "latency_ms", "aggregation": "p95", "weight": 0.5, "guard": null}
-          ]},
-          "scoring_interval_seconds": 300, "hash_key_fields": ["user_id"], "sample_rate": 0.5,
-          "status": "running", "routing_strategy": "beta_sample", "started_at": "2026-10-01T00:00:00Z",
-          "ended_at": null, "posterior_json": {"a": {"alpha": 2}}, "weights_json": {"arm-1": 60, "arm-2": 40},
-          "arms": [{"id": "arm-1", "runtime_id": "rt-1", "arm_label": "control", "agent_overrides": null, "initial_weight": 0}],
-          "created_by_member_id": "m", "archived_at": null, "halted_at": null, "halted_reason": null,
-          "created_at": "2026-09-30T00:00:00Z", "updated_at": "2026-10-01T00:00:00Z"
-        }
-        """#
+            {
+              "id": "exp-1", "org_id": "o", "project_id": "p", "name": "Shorter prompt",
+              "description": null, "runtime_group_id": "g", "environment": "production",
+              "goal_json": {"kind": "composite", "direction": "maximize", "components": [
+                {"source": "judge", "judge_id": "j1", "judge_definition_hash": "h", "weight": 1.0, "guard": {"min": 0.2}},
+                {"source": "telemetry", "column": "latency_ms", "aggregation": "p95", "weight": 0.5, "guard": null}
+              ]},
+              "scoring_interval_seconds": 300, "hash_key_fields": ["user_id"], "sample_rate": 0.5,
+              "status": "running", "routing_strategy": "beta_sample", "started_at": "2026-10-01T00:00:00Z",
+              "ended_at": null, "posterior_json": {"a": {"alpha": 2}}, "weights_json": {"arm-1": 60, "arm-2": 40},
+              "arms": [{"id": "arm-1", "runtime_id": "rt-1", "arm_label": "control", "agent_overrides": null, "initial_weight": 0}],
+              "created_by_member_id": "m", "archived_at": null, "halted_at": null, "halted_reason": null,
+              "created_at": "2026-09-30T00:00:00Z", "updated_at": "2026-10-01T00:00:00Z"
+            }
+            """#
         let transport = MockTransport { request, _ in
             if request.url.path.hasSuffix("/run") { return .response(.json(specJSON())) }
             if request.method == "DELETE" { return .response(HTTPResponse(status: 204, headers: [:], body: Data())) }
@@ -308,7 +313,8 @@ final class RunnerTests: XCTestCase {
         let runner = try await handle.run(RunRequest(identity: RunnerIdentity(anonymousId: "anon-1")))
         XCTAssertEqual(transport.last?.path, "/v1/experiments/exp-1/run")
         XCTAssertEqual(transport.last?.json?["identity"]?["anonymous_id"]?.stringValue, "anon-1")
-        XCTAssertEqual(runner.source, .experiment(id: "exp-1", request: RunRequest(identity: RunnerIdentity(anonymousId: "anon-1")), project: "acme"))
+        XCTAssertEqual(
+            runner.source, .experiment(id: "exp-1", request: RunRequest(identity: RunnerIdentity(anonymousId: "anon-1")), project: "acme"))
 
         try await client.experiments.delete("exp-1", project: "acme")
         XCTAssertEqual(transport.last?.request.method, "DELETE")
@@ -318,17 +324,18 @@ final class RunnerTests: XCTestCase {
     func testExperimentCreateAndUpdateBodies() async throws {
         let transport = MockTransport(json: #"{"id": "exp-1"}"#)
         let client = makeClient(transport)
-        _ = try await client.experiments.create(ExperimentCreate(
-            project: "acme",
-            runtime: "customer-agent",
-            name: "Shorter prompt",
-            goalJson: ExperimentGoal(direction: .maximize, components: [.judge("j1", weight: 2, guard: ExperimentGoalGuard(min: 0.1))]),
-            arms: [
-                ExperimentArmCreate(runtimeId: "rt-1", armLabel: "control"),
-                ExperimentArmCreate(runtimeId: "rt-2", armLabel: "variant", agentOverrides: ["agent": "short"]),
-            ],
-            sampleRate: 0.25
-        ))
+        _ = try await client.experiments.create(
+            ExperimentCreate(
+                project: "acme",
+                runtime: "customer-agent",
+                name: "Shorter prompt",
+                goalJson: ExperimentGoal(direction: .maximize, components: [.judge("j1", weight: 2, guard: ExperimentGoalGuard(min: 0.1))]),
+                arms: [
+                    ExperimentArmCreate(runtimeId: "rt-1", armLabel: "control"),
+                    ExperimentArmCreate(runtimeId: "rt-2", armLabel: "variant", agentOverrides: ["agent": "short"]),
+                ],
+                sampleRate: 0.25
+            ))
         let body = try XCTUnwrap(transport.last?.json)
         XCTAssertEqual(body["runtime"]?.stringValue, "customer-agent")
         XCTAssertEqual(body["goal_json"]?["kind"]?.stringValue, "composite")

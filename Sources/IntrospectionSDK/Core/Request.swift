@@ -113,9 +113,11 @@ public struct MultipartFormData: Sendable {
     }
 
     public mutating func append(name: String, filename: String, contentType: String, data: Data) {
-        parts.append(Data(
-            "--\(boundary)\r\nContent-Disposition: form-data; name=\"\(Self.escape(name))\"; filename=\"\(Self.escape(filename))\"\r\nContent-Type: \(contentType)\r\n\r\n".utf8
-        ))
+        parts.append(
+            Data(
+                "--\(boundary)\r\nContent-Disposition: form-data; name=\"\(Self.escape(name))\"; filename=\"\(Self.escape(filename))\"\r\nContent-Type: \(contentType)\r\n\r\n"
+                    .utf8
+            ))
         parts.append(data)
         parts.append(Data("\r\n".utf8))
     }

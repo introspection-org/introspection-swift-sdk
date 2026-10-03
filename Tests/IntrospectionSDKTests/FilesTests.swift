@@ -1,17 +1,18 @@
 import Foundation
 import XCTest
+
 @testable import IntrospectionSDK
 
 private let fileJSON = #"""
-{"id":"0199a1b2-0000-7000-8000-000000000001","org_id":"0199a1b2-0000-7000-8000-0000000000aa",
- "project_id":"0199a1b2-0000-7000-8000-0000000000bb","created_at":"2026-10-01T12:00:00.123456Z",
- "updated_at":"2026-10-01T12:00:01Z","name":"memory/user/notes.md","file_type":"filesystem",
- "storage_path":"org/proj/files/x/notes.md","mime_type":"text/markdown",
- "metadata":{"original_filename":"notes.md","blob_checksum":"abc"},"tags":["customer:acme"],
- "member_id":"0199a1b2-0000-7000-8000-0000000000cc","task_id":null,"generated_output_task_id":null,
- "size_bytes":42,"version":3,"parent_id":"0199a1b2-0000-7000-8000-000000000000",
- "storage_version_id":"v3","expires_at":null,"some_new_field":true}
-"""#
+    {"id":"0199a1b2-0000-7000-8000-000000000001","org_id":"0199a1b2-0000-7000-8000-0000000000aa",
+     "project_id":"0199a1b2-0000-7000-8000-0000000000bb","created_at":"2026-10-01T12:00:00.123456Z",
+     "updated_at":"2026-10-01T12:00:01Z","name":"memory/user/notes.md","file_type":"filesystem",
+     "storage_path":"org/proj/files/x/notes.md","mime_type":"text/markdown",
+     "metadata":{"original_filename":"notes.md","blob_checksum":"abc"},"tags":["customer:acme"],
+     "member_id":"0199a1b2-0000-7000-8000-0000000000cc","task_id":null,"generated_output_task_id":null,
+     "size_bytes":42,"version":3,"parent_id":"0199a1b2-0000-7000-8000-000000000000",
+     "storage_version_id":"v3","expires_at":null,"some_new_field":true}
+    """#
 
 final class FilesTests: XCTestCase {
     func testListEncodesEveryFilterAndPaginates() async throws {
@@ -22,12 +23,14 @@ final class FilesTests: XCTestCase {
         }
         let client = makeClient(transport)
         let created = Date(timeIntervalSince1970: 1_790_000_000)
-        let files = try await client.files.list(FileListParams(
-            limit: 1, includeTotal: true, includeVersions: true, shareIds: ["s1", "s2"], name: "a.md",
-            nameContains: "not", fileType: .upload, category: .memory, contentFormat: .markdown, versioned: false,
-            storagePath: "p", taskId: "t1", conversationId: "c1", memberId: "m1", tag: "customer:acme",
-            createdAfter: created, createdBefore: created, updatedAfter: created, updatedBefore: created
-        )).collect()
+        let files = try await client.files.list(
+            FileListParams(
+                limit: 1, includeTotal: true, includeVersions: true, shareIds: ["s1", "s2"], name: "a.md",
+                nameContains: "not", fileType: .upload, category: .memory, contentFormat: .markdown, versioned: false,
+                storagePath: "p", taskId: "t1", conversationId: "c1", memberId: "m1", tag: "customer:acme",
+                createdAfter: created, createdBefore: created, updatedAfter: created, updatedBefore: created
+            )
+        ).collect()
 
         XCTAssertEqual(files.count, 2)
         XCTAssertEqual(transport.requests.count, 2)
@@ -66,10 +69,11 @@ final class FilesTests: XCTestCase {
     func testUploadSendsMultipart() async throws {
         let transport = MockTransport(status: 201, json: fileJSON)
         let client = makeClient(transport)
-        _ = try await client.files.upload(FileUpload(
-            data: Data("hello".utf8), filename: "notes.md", name: "memory/user/notes.md", fileType: .upload,
-            metadata: ["source": "ios"], ttlSeconds: 3600
-        ))
+        _ = try await client.files.upload(
+            FileUpload(
+                data: Data("hello".utf8), filename: "notes.md", name: "memory/user/notes.md", fileType: .upload,
+                metadata: ["source": "ios"], ttlSeconds: 3600
+            ))
         let request = try XCTUnwrap(transport.last)
         XCTAssertEqual(request.request.method, "POST")
         XCTAssertEqual(request.path, "/v1/files")
@@ -87,15 +91,18 @@ final class FilesTests: XCTestCase {
     func testCreateTextSendsJSONAndRequiresATarget() async throws {
         let transport = MockTransport(status: 201, json: fileJSON)
         let client = makeClient(transport)
-        _ = try await client.files.createText(FileCreateText(
-            content: "# Notes", name: "notes.md", mimeType: "text/markdown", metadata: ["k": 1],
-            expectedSha256: String(repeating: "a", count: 64), ttlSeconds: 60
-        ))
+        _ = try await client.files.createText(
+            FileCreateText(
+                content: "# Notes", name: "notes.md", mimeType: "text/markdown", metadata: ["k": 1],
+                expectedSha256: String(repeating: "a", count: 64), ttlSeconds: 60
+            ))
         XCTAssertEqual(transport.last?.request.headers["Content-Type"], "application/json")
-        XCTAssertEqual(transport.last?.json, [
-            "content": "# Notes", "name": "notes.md", "mime_type": "text/markdown", "metadata": ["k": 1],
-            "expected_sha256": .string(String(repeating: "a", count: 64)), "ttl_seconds": 60,
-        ])
+        XCTAssertEqual(
+            transport.last?.json,
+            [
+                "content": "# Notes", "name": "notes.md", "mime_type": "text/markdown", "metadata": ["k": 1],
+                "expected_sha256": .string(String(repeating: "a", count: 64)), "ttl_seconds": 60,
+            ])
 
         do {
             _ = try await client.files.createText(FileCreateText(content: "x"))
@@ -111,7 +118,8 @@ final class FilesTests: XCTestCase {
             switch (request.method, request.url.path) {
             case ("DELETE", _): return .response(HTTPResponse(status: 204, headers: [:], body: Data()))
             case (_, "/v1/files/f%2F1/content"), (_, "/v1/files/f/1/content"):
-                return .response(HTTPResponse(status: 200, headers: ["content-type": "text/plain", "x-version": "3"], body: Data("bytes".utf8)))
+                return .response(
+                    HTTPResponse(status: 200, headers: ["content-type": "text/plain", "x-version": "3"], body: Data("bytes".utf8)))
             default: return .response(.json(fileJSON))
             }
         }

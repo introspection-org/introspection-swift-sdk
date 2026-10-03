@@ -1,34 +1,36 @@
 import Foundation
 import XCTest
+
 @testable import IntrospectionSDK
 
 final class TasksTests: XCTestCase {
     static let taskJSON = #"""
-    {
-      "id": "0192f0a0-0000-7000-8000-000000000001",
-      "org_id": "0192f0a0-0000-7000-8000-0000000000aa",
-      "project_id": "0192f0a0-0000-7000-8000-0000000000bb",
-      "created_at": "2026-09-30T12:00:00.123456Z",
-      "updated_at": "2026-09-30T12:05:00+00:00",
-      "title": "Summarize my week",
-      "display_index": 42,
-      "status": "awaiting_user",
-      "kind": "eval",
-      "member_id": "0192f0a0-0000-7000-8000-0000000000cc",
-      "automation_id": null,
-      "runtime_id": "0192f0a0-0000-7000-8000-0000000000dd",
-      "is_archived": false,
-      "started_at": "2026-09-30T12:00:01Z",
-      "completed_at": null,
-      "last_user_message_at": "2026-09-30T12:04:00Z",
-      "metadata": {"conversation_id": "conv-1", "agent_name": "researcher", "pending_interrupts": [{"id": "i1"}]},
-      "conversation_metadata": {"flow": "checkout"},
-      "tags": ["customer:acme"],
-      "agent": {"sandbox_status": "Running", "session_id": "sess-1"}
-    }
-    """#
+        {
+          "id": "0192f0a0-0000-7000-8000-000000000001",
+          "org_id": "0192f0a0-0000-7000-8000-0000000000aa",
+          "project_id": "0192f0a0-0000-7000-8000-0000000000bb",
+          "created_at": "2026-09-30T12:00:00.123456Z",
+          "updated_at": "2026-09-30T12:05:00+00:00",
+          "title": "Summarize my week",
+          "display_index": 42,
+          "status": "awaiting_user",
+          "kind": "eval",
+          "member_id": "0192f0a0-0000-7000-8000-0000000000cc",
+          "automation_id": null,
+          "runtime_id": "0192f0a0-0000-7000-8000-0000000000dd",
+          "is_archived": false,
+          "started_at": "2026-09-30T12:00:01Z",
+          "completed_at": null,
+          "last_user_message_at": "2026-09-30T12:04:00Z",
+          "metadata": {"conversation_id": "conv-1", "agent_name": "researcher", "pending_interrupts": [{"id": "i1"}]},
+          "conversation_metadata": {"flow": "checkout"},
+          "tags": ["customer:acme"],
+          "agent": {"sandbox_status": "Running", "session_id": "sess-1"}
+        }
+        """#
 
-    static let runJSON = #"{"id":"run-1","task_id":"0192f0a0-0000-7000-8000-000000000001","status":"queued","created_at":"2026-09-30T12:00:00Z","updated_at":null}"#
+    static let runJSON =
+        #"{"id":"run-1","task_id":"0192f0a0-0000-7000-8000-000000000001","status":"queued","created_at":"2026-09-30T12:00:00Z","updated_at":null}"#
 
     func testDecodesRealisticTask() throws {
         let task = try JSONCoding.decoder.decode(IntrospectionTask.self, from: Data(Self.taskJSON.utf8))
@@ -189,21 +191,30 @@ final class TasksTests: XCTestCase {
         }
         let client = makeClient(transport)
 
-        let handle = try await client.tasks.runs.create("t1", TaskRunCreate(text: "And next week?", kind: .steer, deliveryId: "d-1", runtimeId: "rt-9"))
+        let handle = try await client.tasks.runs.create(
+            "t1", TaskRunCreate(text: "And next week?", kind: .steer, deliveryId: "d-1", runtimeId: "rt-9"))
         XCTAssertNil(handle.task)
         XCTAssertEqual(handle.run.id, "run-1")
         XCTAssertEqual(transport.last?.path, "/v1/tasks/t1/runs")
-        XCTAssertEqual(transport.last?.json, [
-            "prompt": ["text": "And next week?"], "kind": "steer", "delivery_id": "d-1", "runtime_id": "rt-9",
-        ])
+        XCTAssertEqual(
+            transport.last?.json,
+            [
+                "prompt": ["text": "And next week?"], "kind": "steer", "delivery_id": "d-1", "runtime_id": "rt-9",
+            ])
 
-        _ = try await client.tasks.runs.resume("t1", TaskRunResume(resume: [
-            .resolved("int-1", payload: ["approved": true]), .cancelled("int-2"),
-        ]))
-        XCTAssertEqual(transport.last?.json, ["resume": [
-            ["interruptId": "int-1", "status": "resolved", "payload": ["approved": true]],
-            ["interruptId": "int-2", "status": "cancelled"],
-        ]])
+        _ = try await client.tasks.runs.resume(
+            "t1",
+            TaskRunResume(resume: [
+                .resolved("int-1", payload: ["approved": true]), .cancelled("int-2"),
+            ]))
+        XCTAssertEqual(
+            transport.last?.json,
+            [
+                "resume": [
+                    ["interruptId": "int-1", "status": "resolved", "payload": ["approved": true]],
+                    ["interruptId": "int-2", "status": "cancelled"],
+                ]
+            ])
 
         let run = try await client.tasks.runs.get("t1", "current")
         XCTAssertEqual(run.taskId, "0192f0a0-0000-7000-8000-000000000001")
@@ -223,24 +234,24 @@ final class TasksTests: XCTestCase {
 
     func testStartReturnsHandleAndTextCollectsDeltas() async throws {
         let sse = """
-        event: ag_ui
-        id: 1
-        data: {"type":"TEXT_MESSAGE_START","messageId":"m1","role":"assistant"}
+            event: ag_ui
+            id: 1
+            data: {"type":"TEXT_MESSAGE_START","messageId":"m1","role":"assistant"}
 
-        event: ag_ui
-        id: 2
-        data: {"type":"TEXT_MESSAGE_CONTENT","messageId":"m1","delta":"Hello, "}
+            event: ag_ui
+            id: 2
+            data: {"type":"TEXT_MESSAGE_CONTENT","messageId":"m1","delta":"Hello, "}
 
-        event: ag_ui
-        id: 3
-        data: {"type":"TEXT_MESSAGE_CHUNK","messageId":"m1","delta":"world"}
+            event: ag_ui
+            id: 3
+            data: {"type":"TEXT_MESSAGE_CHUNK","messageId":"m1","delta":"world"}
 
-        event: ag_ui
-        id: c-1
-        data: {"type":"RUN_FINISHED","threadId":"t","runId":"run-1"}
+            event: ag_ui
+            id: c-1
+            data: {"type":"RUN_FINISHED","threadId":"t","runId":"run-1"}
 
 
-        """
+            """
         let transport = MockTransport { request, _ in
             if request.method == "POST" {
                 return .response(.json(#"{"task":\#(TasksTests.taskJSON),"run":\#(TasksTests.runJSON)}"#, status: 201))

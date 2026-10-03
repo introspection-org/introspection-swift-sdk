@@ -1,4 +1,5 @@
 import Foundation
+
 #if canImport(CryptoKit)
 import CryptoKit
 #endif
@@ -44,7 +45,8 @@ enum PureSHA256 {
         for chunk in stride(from: 0, to: message.count, by: 64) {
             for i in 0..<16 {
                 let base = chunk + i * 4
-                w[i] = UInt32(message[base]) << 24 | UInt32(message[base + 1]) << 16
+                w[i] =
+                    UInt32(message[base]) << 24 | UInt32(message[base + 1]) << 16
                     | UInt32(message[base + 2]) << 8 | UInt32(message[base + 3])
             }
             for i in 16..<64 {

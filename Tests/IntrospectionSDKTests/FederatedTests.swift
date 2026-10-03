@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+
 @testable import IntrospectionSDK
 
 final class FederatedTests: XCTestCase {
@@ -11,7 +12,8 @@ final class FederatedTests: XCTestCase {
     func testFederatedClientExchangesOnceAndUsesReturnedDataPlane() async throws {
         let transport = MockTransport { request, _ in
             if request.url.path == "/v1/oauth/token" {
-                return .response(.json(#"{"access_token":"dp-token","token_type":"Bearer","expires_in":3600,"dp_url":"https://dp.example"}"#))
+                return .response(
+                    .json(#"{"access_token":"dp-token","token_type":"Bearer","expires_in":3600,"dp_url":"https://dp.example"}"#))
             }
             return .response(.json(#"{"records":[],"count":0}"#))
         }

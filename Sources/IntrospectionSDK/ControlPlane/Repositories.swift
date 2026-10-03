@@ -125,7 +125,10 @@ public struct RepositoryFile: Codable, Sendable, Hashable {
     /// The file is larger than a read returns.
     public var truncated: Bool?
 
-    public init(name: String, path: String, size: Int? = nil, sha: String? = nil, commitSha: String? = nil, encoding: String, content: String, truncated: Bool? = nil) {
+    public init(
+        name: String, path: String, size: Int? = nil, sha: String? = nil, commitSha: String? = nil, encoding: String, content: String,
+        truncated: Bool? = nil
+    ) {
         self.name = name
         self.path = path
         self.size = size
@@ -213,7 +216,10 @@ public struct RepositoryCommit: Codable, Sendable, Hashable {
     public var author: RepositoryCommitPerson?
     public var committer: RepositoryCommitPerson?
 
-    public init(sha: String, parents: [String]? = nil, message: String? = nil, author: RepositoryCommitPerson? = nil, committer: RepositoryCommitPerson? = nil) {
+    public init(
+        sha: String, parents: [String]? = nil, message: String? = nil, author: RepositoryCommitPerson? = nil,
+        committer: RepositoryCommitPerson? = nil
+    ) {
         self.sha = sha
         self.parents = parents
         self.message = message
@@ -342,7 +348,9 @@ public struct RepositoryContentsAPI: Sendable {
     }
 
     /// Read one path: a directory page or a file.
-    public func get(_ repositoryId: String, path: String = "", ref: String? = nil, limit: Int? = nil, cursor: String? = nil) async throws -> RepositoryContent {
+    public func get(
+        _ repositoryId: String, path: String = "", ref: String? = nil, limit: Int? = nil, cursor: String? = nil
+    ) async throws -> RepositoryContent {
         var query = Query()
         query.add("ref", ref)
         query.add("cursor", cursor)
@@ -369,7 +377,9 @@ public struct RepositoryContentsAPI: Sendable {
     }
 
     /// Shorthand for `list`.
-    public func callAsFunction(_ repositoryId: String, path: String = "", ref: String? = nil, limit: Int? = nil) -> Paginator<RepositoryEntry> {
+    public func callAsFunction(
+        _ repositoryId: String, path: String = "", ref: String? = nil, limit: Int? = nil
+    ) -> Paginator<RepositoryEntry> {
         list(repositoryId, path: path, ref: ref, limit: limit)
     }
 }
@@ -401,7 +411,9 @@ public struct RepositoriesAPI: Sendable {
     }
 
     /// The commit history from `params.sha`, across pages.
-    public func commits(_ repositoryId: String, _ params: RepositoryCommitsParams = RepositoryCommitsParams()) -> Paginator<RepositoryCommit> {
+    public func commits(
+        _ repositoryId: String, _ params: RepositoryCommitsParams = RepositoryCommitsParams()
+    ) -> Paginator<RepositoryCommit> {
         var base = Query()
         base.add("sha", params.sha)
         base.add("path", params.path)

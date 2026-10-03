@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+
 @testable import IntrospectionSDK
 
 final class RunStreamTests: XCTestCase {
@@ -27,15 +28,17 @@ final class RunStreamTests: XCTestCase {
 
     func testParsesAGUIFramesAndSkipsHeartbeats() async throws {
         let transport = MockTransport { _, _ in
-            .stream(status: 200, headers: [:], chunks: [
-                Data(": keep-alive comment\n\n".utf8),
-                RunStreamTests.frame(nil, "heartbeat", #"{"runId":"r1"}"#),
-                // A frame split across chunks.
-                Data("event: ag_ui\nid: 1\ndata: {\"type\":\"RUN_STA".utf8),
-                Data("RTED\",\"threadId\":\"t1\",\"runId\":\"r1\"}\r\n\r\n".utf8),
-                RunStreamTests.frame("2", "ag_ui", #"{"type":"CUSTOM","name":"resume_gap","value":{}}"#),
-                RunStreamTests.finished,
-            ], error: nil)
+            .stream(
+                status: 200, headers: [:],
+                chunks: [
+                    Data(": keep-alive comment\n\n".utf8),
+                    RunStreamTests.frame(nil, "heartbeat", #"{"runId":"r1"}"#),
+                    // A frame split across chunks.
+                    Data("event: ag_ui\nid: 1\ndata: {\"type\":\"RUN_STA".utf8),
+                    Data("RTED\",\"threadId\":\"t1\",\"runId\":\"r1\"}\r\n\r\n".utf8),
+                    RunStreamTests.frame("2", "ag_ui", #"{"type":"CUSTOM","name":"resume_gap","value":{}}"#),
+                    RunStreamTests.finished,
+                ], error: nil)
         }
         let client = makeClient(transport)
         let events = try await collect(client.tasks.runs.stream("t1", "current", options: Self.fast))
@@ -52,17 +55,21 @@ final class RunStreamTests: XCTestCase {
         let transport = MockTransport { _, index in
             switch index {
             case 0:
-                return .stream(status: 200, headers: [:], chunks: [
-                    RunStreamTests.content("1", "a"),
-                    RunStreamTests.content("2", "b"),
-                    // Control-frame ids are not resume cursors.
-                    RunStreamTests.frame("c-1", "ag_ui", #"{"type":"STEP_STARTED","stepName":"x"}"#),
-                ], error: Severed())
+                return .stream(
+                    status: 200, headers: [:],
+                    chunks: [
+                        RunStreamTests.content("1", "a"),
+                        RunStreamTests.content("2", "b"),
+                        // Control-frame ids are not resume cursors.
+                        RunStreamTests.frame("c-1", "ag_ui", #"{"type":"STEP_STARTED","stepName":"x"}"#),
+                    ], error: Severed())
             default:
-                return .stream(status: 200, headers: [:], chunks: [
-                    RunStreamTests.content("3", "c"),
-                    RunStreamTests.finished,
-                ], error: nil)
+                return .stream(
+                    status: 200, headers: [:],
+                    chunks: [
+                        RunStreamTests.content("3", "c"),
+                        RunStreamTests.finished,
+                    ], error: nil)
             }
         }
         let client = makeClient(transport)
@@ -181,12 +188,13 @@ final class RunStreamTests: XCTestCase {
 
     func testCancellingTheConsumerCancelsTheRequest() async throws {
         let transport = HangingTransport()
-        let client = IntrospectionClient(configuration: .init(
-            controlPlaneURL: URL(string: "https://cp.test")!,
-            dataPlaneURL: URL(string: "https://dp.test")!,
-            controlPlaneCredentials: BearerToken("t"),
-            transport: transport
-        ))
+        let client = IntrospectionClient(
+            configuration: .init(
+                controlPlaneURL: URL(string: "https://cp.test")!,
+                dataPlaneURL: URL(string: "https://dp.test")!,
+                controlPlaneCredentials: BearerToken("t"),
+                transport: transport
+            ))
         let stream = client.tasks.runs.stream("t1", "r1", options: Self.fast)
         let consumer = Task {
             var count = 0

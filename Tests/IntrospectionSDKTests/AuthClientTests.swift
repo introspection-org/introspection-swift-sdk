@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+
 @testable import IntrospectionSDK
 
 final class AuthClientTests: XCTestCase {
@@ -12,8 +13,10 @@ final class AuthClientTests: XCTestCase {
     }
 
     private func tokenJSON(_ access: String, refresh: String? = "r1", expiresIn: Int = 3600) -> String {
-        var body: JSONObject = ["access_token": .string(access), "token_type": "Bearer", "expires_in": .number(Double(expiresIn)),
-                                "session_id": "s1", "org_id": "o1", "dp_url": "https://dp.test"]
+        var body: JSONObject = [
+            "access_token": .string(access), "token_type": "Bearer", "expires_in": .number(Double(expiresIn)),
+            "session_id": "s1", "org_id": "o1", "dp_url": "https://dp.test",
+        ]
         if let refresh { body["refresh_token"] = .string(refresh) }
         return String(decoding: try! JSONCoding.encoder.encode(body), as: UTF8.self)
     }
@@ -29,9 +32,12 @@ final class AuthClientTests: XCTestCase {
         return result
     }
 
-    private func config(_ transport: MockTransport, method: AuthMethod, storage: any SessionStorage = InMemorySessionStorage()) -> AuthClient.Configuration {
-        .init(controlPlaneURL: URL(string: "https://cp.test")!, clientID: "ark-ios", project: "ark",
-              method: method, storage: storage, transport: transport)
+    private func config(
+        _ transport: MockTransport, method: AuthMethod, storage: any SessionStorage = InMemorySessionStorage()
+    ) -> AuthClient.Configuration {
+        .init(
+            controlPlaneURL: URL(string: "https://cp.test")!, clientID: "ark-ios", project: "ark",
+            method: method, storage: storage, transport: transport)
     }
 
     func testEmailCodeSignInStoresSessionAndEmitsEvents() async throws {
@@ -69,8 +75,10 @@ final class AuthClientTests: XCTestCase {
     func testExpiredSessionRefreshesOnceForConcurrentCallers() async throws {
         let transport = MockTransport { _, _ in .response(.json(self.tokenJSON("fresh", refresh: "r2"))) }
         let storage = InMemorySessionStorage()
-        let stale = AuthSession(token: SessionToken(accessToken: "old", expiresAt: Date(timeIntervalSinceNow: -10),
-                                                    refreshToken: "r1", sessionId: "s1", orgId: "o1"))
+        let stale = AuthSession(
+            token: SessionToken(
+                accessToken: "old", expiresAt: Date(timeIntervalSinceNow: -10),
+                refreshToken: "r1", sessionId: "s1", orgId: "o1"))
         try await storage.save(JSONCoding.encoder.encode(stale), key: "introspection.auth.session")
         let auth = AuthClient(configuration: config(transport, method: .hostedLogin, storage: storage))
         let tokens = try await withThrowingTaskGroup(of: String?.self) { group in

@@ -577,7 +577,8 @@ public struct TaskRunCreate: Encodable, Sendable, Hashable {
         deliveryId: String? = nil,
         runtimeId: String? = nil
     ) {
-        self.init(prompt: TaskPrompt(text: text), kind: kind, metadata: metadata, files: files, deliveryId: deliveryId, runtimeId: runtimeId)
+        self.init(
+            prompt: TaskPrompt(text: text), kind: kind, metadata: metadata, files: files, deliveryId: deliveryId, runtimeId: runtimeId)
     }
 
     private enum CodingKeys: String, CodingKey {

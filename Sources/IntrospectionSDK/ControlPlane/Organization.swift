@@ -11,7 +11,9 @@ public struct Organization: Codable, Sendable, Hashable {
     public var imageUrl: String?
     public var hostedGit: Bool?
 
-    public init(id: String, name: String? = nil, slug: String? = nil, externalOrgId: String? = nil, imageUrl: String? = nil, hostedGit: Bool? = nil) {
+    public init(
+        id: String, name: String? = nil, slug: String? = nil, externalOrgId: String? = nil, imageUrl: String? = nil, hostedGit: Bool? = nil
+    ) {
         self.id = id
         self.name = name
         self.slug = slug

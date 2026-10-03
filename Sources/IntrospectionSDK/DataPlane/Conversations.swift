@@ -64,7 +64,8 @@ func applyReadWindow(
         guard let seconds = lookback.seconds else {
             throw IntrospectionError(
                 kind: .validation,
-                message: "Invalid `lookback` \"\(lookback.rawValue)\": expected a relative duration like \"24h\", \"7d\", or \"500ms\" (units: ms, s, m, h, d, w)",
+                message:
+                    "Invalid `lookback` \"\(lookback.rawValue)\": expected a relative duration like \"24h\", \"7d\", or \"500ms\" (units: ms, s, m, h, d, w)",
                 code: "invalid_request"
             )
         }
@@ -273,14 +274,16 @@ public struct GenAISpan: Codable, Sendable, Hashable {
 
     private static func normalizeMessage(_ message: JSONValue, changed: inout Bool) -> JSONValue {
         guard case var .object(object) = message, case let .array(parts)? = object["parts"] else { return message }
-        object["parts"] = .array(parts.map { part in
-            guard case var .object(fields) = part, fields["type"]?.stringValue == "tool_call_response",
-                  fields["response"] == nil, let result = fields["result"] else { return part }
-            fields["response"] = result
-            fields["result"] = nil
-            changed = true
-            return .object(fields)
-        })
+        object["parts"] = .array(
+            parts.map { part in
+                guard case var .object(fields) = part, fields["type"]?.stringValue == "tool_call_response",
+                    fields["response"] == nil, let result = fields["result"]
+                else { return part }
+                fields["response"] = result
+                fields["result"] = nil
+                changed = true
+                return .object(fields)
+            })
         return .object(object)
     }
 }
@@ -294,7 +297,10 @@ public struct GenAISpanList: Codable, Sendable, Hashable {
     public var hasMore: Bool?
     public var next: String?
 
-    public init(data: [GenAISpan], object: String? = "list", firstId: String? = nil, lastId: String? = nil, hasMore: Bool? = nil, next: String? = nil) {
+    public init(
+        data: [GenAISpan], object: String? = "list", firstId: String? = nil, lastId: String? = nil, hasMore: Bool? = nil,
+        next: String? = nil
+    ) {
         self.data = data
         self.object = object
         self.firstId = firstId
@@ -537,7 +543,8 @@ public struct GenAIToolCallResponsePart: Codable, Sendable, Hashable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decodeIfPresent(String.self, forKey: .id)
         name = try container.decodeIfPresent(String.self, forKey: .name)
-        response = try container.decodeIfPresent(JSONValue.self, forKey: .response)
+        response =
+            try container.decodeIfPresent(JSONValue.self, forKey: .response)
             ?? container.decodeIfPresent(JSONValue.self, forKey: .result)
     }
 
@@ -1213,7 +1220,9 @@ public struct ConversationsAPI: Sendable {
     }
 
     /// List lightweight user/assistant turns, newest first.
-    public func turns(_ conversationId: String, _ params: ConversationTurnListParams = ConversationTurnListParams()) -> Paginator<ConversationTurn> {
+    public func turns(
+        _ conversationId: String, _ params: ConversationTurnListParams = ConversationTurnListParams()
+    ) -> Paginator<ConversationTurn> {
         var query = Query()
         query.add("limit", params.limit)
         query.add("agent", params.agent)
@@ -1226,7 +1235,9 @@ public struct ConversationsAPI: Sendable {
     }
 
     /// Export the complete conversation as one GenAI-span list.
-    public func exportJSON(_ conversationId: String, _ params: ConversationExportParams = ConversationExportParams()) async throws -> GenAISpanList {
+    public func exportJSON(
+        _ conversationId: String, _ params: ConversationExportParams = ConversationExportParams()
+    ) async throws -> GenAISpanList {
         var list = try await http.json(
             "GET", "/v1/conversations/\(pathSegment(conversationId))/export",
             query: params.query, headers: ["Accept": ConversationExportFormat.json.accept], as: GenAISpanList.self
@@ -1237,7 +1248,9 @@ public struct ConversationsAPI: Sendable {
 
     /// Export the complete conversation as trajectory-v1 records. A conversation that cannot be
     /// represented fails with a validation error; one with no records is not found.
-    public func exportTrajectory(_ conversationId: String, _ params: ConversationExportParams = ConversationExportParams()) async throws -> [TrajectoryRecord] {
+    public func exportTrajectory(
+        _ conversationId: String, _ params: ConversationExportParams = ConversationExportParams()
+    ) async throws -> [TrajectoryRecord] {
         try await http.json(
             "GET", "/v1/conversations/\(pathSegment(conversationId))/export",
             query: params.query, headers: ["Accept": ConversationExportFormat.trajectory.accept]
@@ -1285,7 +1298,8 @@ public struct ConversationItemsAPI: Sendable {
     public init(http: HTTPClient) { self.http = http }
 
     /// List items, newest first. Each item carries only the input messages new to its turn.
-    public func list(_ conversationId: String, _ params: ConversationItemListParams = ConversationItemListParams()) -> Paginator<GenAISpan> {
+    public func list(_ conversationId: String, _ params: ConversationItemListParams = ConversationItemListParams()) -> Paginator<GenAISpan>
+    {
         let path = "/v1/conversations/\(pathSegment(conversationId))/items"
         let query = params.query
         return Paginator(start: params.next) { [http] cursor in

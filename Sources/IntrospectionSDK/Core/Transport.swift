@@ -1,4 +1,5 @@
 import Foundation
+
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
@@ -87,9 +88,10 @@ public final class URLSessionTransport: HTTPTransport, @unchecked Sendable {
                         continuation.resume(throwing: IntrospectionError(kind: .network, message: "No HTTP response"))
                         return
                     }
-                    continuation.resume(returning: HTTPResponse(
-                        status: http.statusCode, headers: Self.headers(http), body: data ?? Data()
-                    ))
+                    continuation.resume(
+                        returning: HTTPResponse(
+                            status: http.statusCode, headers: Self.headers(http), body: data ?? Data()
+                        ))
                 }
                 box.set(task)
                 task.resume()
@@ -192,9 +194,10 @@ private final class StreamDelegate: NSObject, URLSessionDataDelegate, @unchecked
         let head = headContinuation
         headContinuation = nil
         lock.unlock()
-        head?.resume(returning: HTTPStreamResponse(
-            status: http.statusCode, headers: URLSessionTransport.headers(http), bytes: stream
-        ))
+        head?.resume(
+            returning: HTTPStreamResponse(
+                status: http.statusCode, headers: URLSessionTransport.headers(http), bytes: stream
+            ))
         completionHandler(.allow)
     }
 
@@ -214,8 +217,9 @@ private final class StreamDelegate: NSObject, URLSessionDataDelegate, @unchecked
         self.session = nil
         lock.unlock()
         if let head {
-            head.resume(throwing: error.map(URLSessionTransport.networkError)
-                ?? IntrospectionError(kind: .network, message: "Connection closed before a response"))
+            head.resume(
+                throwing: error.map(URLSessionTransport.networkError)
+                    ?? IntrospectionError(kind: .network, message: "Connection closed before a response"))
         }
         if let error {
             body?.finish(throwing: URLSessionTransport.networkError(error))
