@@ -1,20 +1,12 @@
 # Runs LiveIdentityTests against a real deployment: every identity mode (API
 # key, service account, federated Supabase member) creates a task, streams an
-# answer and reads it back. Scheduled and manual rather than on every pull
-# request: it spends real agent turns and goes red when the platform changes.
+# answer and reads it back. Triggered by hand only: it spends real agent turns
+# and checks the platform rather than this code, so it never gates a merge.
 # Tests whose settings are missing in `build` are skipped, not failed.
 name: Live Tests
 
 on:
-  schedule:
-    - cron: "0 6 * * *"
   workflow_dispatch:
-  # Also when a pull request changes the live suite itself. Pull requests from
-  # forks receive no secrets, so every test skips there.
-  pull_request:
-    paths:
-      - "Tests/IntrospectionSDKTests/LiveIdentityTests.swift"
-      - ".github/workflows/live-tests.yml"
 
 permissions:
   contents: read
