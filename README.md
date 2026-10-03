@@ -28,12 +28,13 @@ let client = try await IntrospectionClient.federated(
     subjectToken: { try await supabase.auth.session.accessToken },
     clientID: "intro_app_...",
     project: "my-project",
+    runtime: "my-agent",
     controlPlaneURL: URL(string: "https://api.introspection.dev")!
 )
 let run = try await client.tasks.start(prompt: "Hello")
 ```
 
-The provider must sign with asymmetric keys (ES256 or RS256), and the Application's federation must name its issuer (for Supabase, `https://<ref>.supabase.co/auth/v1`). The member is the same on every sign-in: it is derived from the federation and the provider's `sub`.
+A federated token is not a runner token, so a task runs on the app's runtime only when it names one. With `runtime:`, every task create and new run names the version that runtime group serves now, resolved on the Data Plane and cached (`RuntimeSelector`). The provider must sign with asymmetric keys (ES256 or RS256), and the Application's federation must name its issuer (for Supabase, `https://<ref>.supabase.co/auth/v1`). The member is the same on every sign-in: it is derived from the federation and the provider's `sub`.
 
 The first exchange runs inside `federated(...)`, which also learns the Data Plane URL. Later exchanges run before the platform token expires or after a 401, each time asking for a current provider token. Sign out with the provider's SDK. For lower-level control, use `SessionCredentials.tokenExchange` with your own `IntrospectionClient`.
 
@@ -65,13 +66,24 @@ let client = try await auth.client()
 
 ### Machines and servers
 
+The same runner flow as the JavaScript and Rust SDKs:
+
 ```swift
-let client = try await IntrospectionClient.fromServiceAccount(
-    clientId: id, clientSecret: secret, project: "my-project"
-)
-let runner = try await client.runtimes("customer-agent").run(RunRequest(identity: .init(userId: "u_42")))
-let run = try await runner.tasks.start(prompt: "Summarize this repository")
-for try await event in run.stream() { print(event.type) }
+let client = IntrospectionClient(controlPlaneURL: baseURL, credentials: BearerToken(apiKey))
+// or: try await IntrospectionClient.fromServiceAccount(clientId: id, clientSecret: secret, project: "my-project")
+
+let runner = try await client.runtimes("customer-agent").run(identity: .init(userId: "user_123"))
+
+let handle = try await runner.tasks.start(prompt: "Say hello in one sentence.")
+for try await event in handle.stream() where event.eventType == .textMessageContent {
+    print(event.delta ?? "", terminator: "")
+}
+
+// Or wait for the finished answer, then continue the same task.
+let answer = try await runner.tasks.start(prompt: "Summarize my open tickets.").text()
+let followUp = try await runner.tasks.runs.create(handle.run.taskId, text: "And the oldest one?")
+
+runner.close()
 ```
 
 `AuthAPI` exposes every grant directly: client credentials, token exchange, JWT bearer, authorization code with PKCE, refresh, device code and revoke. `OIDC` helps with any external issuer.
@@ -89,6 +101,13 @@ Available on `IntrospectionClient` and on a `Runner`:
 ## Control Plane
 
 `runtimes` (and runners), `experiments`, `recipes`, `connectors` and connections, `repositories`, `annotations`, `projectLabels`, `organizations`, `projects`, `members`.
+
+## Examples
+
+Runnable programs in `Examples/`:
+
+- `swift run RuntimesExample`: open a runner from a runtime, stream a task, list conversations and upload files (the Rust SDK's `examples/api/runtimes.rs`).
+- `swift run FederatedExample`: exchange an identity provider's token and run a task as that end user.
 
 ## Errors
 

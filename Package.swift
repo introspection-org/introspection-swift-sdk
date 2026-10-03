@@ -10,5 +10,7 @@ let package = Package(
     targets: [
         .target(name: "IntrospectionSDK"),
         .testTarget(name: "IntrospectionSDKTests", dependencies: ["IntrospectionSDK"]),
+        .executableTarget(name: "RuntimesExample", dependencies: ["IntrospectionSDK"], path: "Examples/Runtimes"),
+        .executableTarget(name: "FederatedExample", dependencies: ["IntrospectionSDK"], path: "Examples/Federated"),
     ]
 )

@@ -37,4 +37,6 @@ The pre-commit hook runs the lint, a warnings-as-errors build and the coverage-g
 
 - Every resource is tested against `MockTransport`: request method, path, query and body encoding, and decoding of realistic server JSON taken from the server models.
 - The coverage floor in `scripts/coverage.sh` is a do-not-regress gate. Add tests for new code; lower the floor only with an explicit justification in the PR.
+- `IdentityModesTests` drives every way of authenticating (API key, service account runner with end-user identity, federated exchange, hosted login, device code) through a fake platform. `LiveIdentityTests` runs the same modes against a deployment when `INTROSPECTION_LIVE=1`; `live-tests.yml` runs it nightly and on demand in the `build` environment.
+- Examples in `Examples/` must keep compiling: CI builds them with the package.
 - `APIContractTests` compares the SDK's wire surface with the published OpenAPI references. It is skipped unless `INTROSPECTION_API_CONTRACT=1` and runs daily in CI; a red run means the API moved.

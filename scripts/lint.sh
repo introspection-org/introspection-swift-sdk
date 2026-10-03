@@ -3,6 +3,6 @@
 set -eu
 cd "$(dirname "$0")/.."
 if [ "${1:-}" = "--fix" ]; then
-    swift format format --in-place --recursive --configuration .swift-format Package.swift Sources Tests
+    swift format format --in-place --recursive --configuration .swift-format Package.swift Sources Tests Examples
 fi
-swift format lint --strict --recursive --configuration .swift-format Package.swift Sources Tests
+swift format lint --strict --recursive --configuration .swift-format Package.swift Sources Tests Examples

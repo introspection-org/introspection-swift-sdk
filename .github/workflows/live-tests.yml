@@ -1,0 +1,44 @@
+# Runs LiveIdentityTests against a real deployment: every identity mode (API
+# key, service account, federated Supabase member) creates a task, streams an
+# answer and reads it back. Scheduled and manual rather than on pull requests:
+# it spends real agent turns and goes red when the platform changes. Tests whose
+# settings are missing in the `build` environment are skipped, not failed.
+name: Live Tests
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-tests
+  cancel-in-progress: false
+
+jobs:
+  live:
+    name: Identity modes against a deployment
+    runs-on: ubuntu-latest
+    environment: build
+    container: swift:6.1-noble
+    env:
+      INTROSPECTION_LIVE: "1"
+      INTROSPECTION_BASE_API_URL: ${{ vars.INTROSPECTION_BASE_API_URL || vars.INTROSPECTION_BASE_URL || secrets.INTROSPECTION_BASE_URL }}
+      INTROSPECTION_PROJECT: ${{ vars.INTROSPECTION_PROJECT }}
+      INTROSPECTION_RUNTIME: ${{ vars.INTROSPECTION_RUNTIME }}
+      INTROSPECTION_TOKEN: ${{ secrets.INTROSPECTION_TOKEN }}
+      INTROSPECTION_CLIENT_ID: ${{ vars.INTROSPECTION_CLIENT_ID }}
+      INTROSPECTION_CLIENT_SECRET: ${{ secrets.INTROSPECTION_CLIENT_SECRET }}
+      INTROSPECTION_FEDERATED_CLIENT_ID: ${{ vars.INTROSPECTION_FEDERATED_CLIENT_ID }}
+      SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+      SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
+      FEDERATED_TEST_USER_EMAIL: ${{ secrets.FEDERATED_TEST_USER_EMAIL }}
+      FEDERATED_TEST_USER_PASSWORD: ${{ secrets.FEDERATED_TEST_USER_PASSWORD }}
+      FEDERATED_TEST_USER_2_EMAIL: ${{ secrets.FEDERATED_TEST_USER_2_EMAIL }}
+      FEDERATED_TEST_USER_2_PASSWORD: ${{ secrets.FEDERATED_TEST_USER_2_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Live identity tests
+        run: swift test --filter LiveIdentityTests
