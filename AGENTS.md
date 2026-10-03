@@ -24,7 +24,7 @@ The pre-commit hook runs the lint, a warnings-as-errors build and the coverage-g
 
 ## Code conventions
 
-- **No dependencies.** The package is Foundation only and must build on Linux (`FoundationNetworking` under `#if canImport`). Apple-only code (Keychain, AuthenticationServices) is guarded with `#if canImport(...)` and is compiled by the macOS CI job.
+- **Platform libraries before code of our own.** The one dependency is Apple's `swift-crypto` (CryptoKit on Apple platforms, the same API on Linux); never hand-roll a primitive it or Foundation provides. HTTP is `URLSession`. The package must build on Linux (`FoundationNetworking` under `#if canImport`). Apple-only code (Keychain, AuthenticationServices) is guarded with `#if canImport(...)` and is compiled by the macOS CI job.
 - **The wire format is the server's.** Model properties are camelCase Swift with an explicit `CodingKeys` enum for every snake_case wire name. Never set a key-coding strategy: it would also rewrite the keys of open-ended `JSONValue` metadata.
 - **Decoding never fails on an unknown value.** Response fields are optional unless the server guarantees them, and status-like fields are `RawRepresentable` structs with static constants, so a value added on the server still decodes.
 - **Ids are `String`, timestamps are `Date`**, open-ended objects are `JSONObject` / `JSONValue`.

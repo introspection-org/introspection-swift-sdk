@@ -7,8 +7,11 @@ let package = Package(
     products: [
         .library(name: "IntrospectionSDK", targets: ["IntrospectionSDK"])
     ],
+    dependencies: [
+        .package(url: "https://github.com/apple/swift-crypto.git", "3.0.0"..<"5.0.0")
+    ],
     targets: [
-        .target(name: "IntrospectionSDK"),
+        .target(name: "IntrospectionSDK", dependencies: [.product(name: "Crypto", package: "swift-crypto")]),
         .testTarget(name: "IntrospectionSDKTests", dependencies: ["IntrospectionSDK"]),
         .executableTarget(name: "RuntimesExample", dependencies: ["IntrospectionSDK"], path: "Examples/Runtimes"),
         .executableTarget(name: "FederatedExample", dependencies: ["IntrospectionSDK"], path: "Examples/Federated"),

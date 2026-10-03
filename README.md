@@ -1,6 +1,6 @@
 # Introspection Swift SDK
 
-A pure-Swift client for the Introspection REST API: Control Plane and Data Plane, with resumable run streams, cursor pagination, typed errors and session management. No dependencies. Supports iOS 16, macOS 13, tvOS 16, watchOS 9 and visionOS 1, and builds on Linux.
+A pure-Swift client for the Introspection REST API: Control Plane and Data Plane, with resumable run streams, cursor pagination, typed errors and session management. Built on `URLSession` and Apple's `swift-crypto`, nothing else. Supports iOS 16, macOS 13, tvOS 16, watchOS 9 and visionOS 1, and builds on Linux.
 
 It covers the REST surface of the JavaScript and Rust SDKs. OpenTelemetry export (tracking, feedback, span processors) and Apache Arrow decoding are not included.
 

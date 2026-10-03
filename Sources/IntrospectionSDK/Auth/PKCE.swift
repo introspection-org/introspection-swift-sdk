@@ -1,3 +1,4 @@
+import Crypto
 import Foundation
 
 /// A PKCE (RFC 7636) verifier and its S256 challenge.
@@ -46,7 +47,7 @@ public struct PKCE: Sendable, Hashable {
 
     /// The S256 challenge: `BASE64URL(SHA256(ASCII(verifier)))` without padding.
     public static func challenge(for verifier: String) -> String {
-        OAuthBase64URL.encode(Data(SHA256Digest.hash(Data(verifier.utf8))))
+        OAuthBase64URL.encode(Data(SHA256.hash(data: Data(verifier.utf8))))
     }
 
     /// A random URL-safe string (base64url of `byteCount` random bytes), for `state` and `nonce`.
