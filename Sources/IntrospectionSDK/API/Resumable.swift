@@ -3,11 +3,11 @@ import Foundation
 /// Recovery bounds for a run's resumable AG-UI stream.
 public struct RunStreamOptions: Sendable, Hashable {
     /// Consecutive reconnects with no forward progress before the stream throws.
-    /// Reset whenever a reconnect delivers a new event. Does not bound `429` readiness waits.
+    /// Reset only when a new content-frame cursor is delivered. Does not bound `429` readiness waits.
     public var maxReconnects: Int
     /// Base step (seconds) of the capped exponential reconnect and readiness backoff.
     public var backoff: TimeInterval
-    /// Wall-clock deadline (seconds) after which no further reconnect or readiness wait is attempted.
+    /// Recovery window (seconds), renewed by each new content cursor; checked before retrying.
     public var timeout: TimeInterval
     /// Yield a `CUSTOM` event named `introspection.reconnect` on each reconnect or readiness wait.
     public var emitReconnectEvents: Bool
@@ -33,13 +33,14 @@ public struct RunStreamOptions: Sendable, Hashable {
 extension AGUIEvent {
     /// The `CUSTOM` event name this SDK uses for reconnect markers.
     public static let reconnectEventName = CustomEventNames.reconnect
-    /// The `CUSTOM` event name the server sends when a disconnect outlived its replay buffer.
+    /// The `CUSTOM` event name an older runtime sends when a disconnect outlived its replay buffer.
     public static let resumeGapEventName = CustomEventNames.resumeGap
 
     /// Whether this is an SDK reconnect marker (see `RunStreamOptions.emitReconnectEvents`).
     public var isReconnectMarker: Bool { eventType == .custom && name == Self.reconnectEventName }
 
-    /// Whether this is the server's `resume_gap` marker: some events were lost across a reconnect.
+    /// Whether this is the `resume_gap` marker a runtime older than `MESSAGES_SNAPSHOT` recovery
+    /// sends when events were lost across a reconnect.
     public var isResumeGap: Bool { eventType == .custom && name == Self.resumeGapEventName }
 }
 
@@ -48,7 +49,10 @@ extension AGUIEvent {
 /// A severed stream re-attaches with `Last-Event-ID` set to the last numeric frame id,
 /// so the server replays what was missed. A `429` (run not attachable yet) is a readiness
 /// wait that honours `Retry-After` and is bounded by the timeout, not the reconnect budget.
-/// A clean end of the body ends the sequence; cancelling the consumer cancels the request.
+/// Only a settling event completes the sequence. A bare EOF checks run status before retrying.
+/// A reconnect behind the replay buffer yields one `MESSAGES_SNAPSHOT` of the run so far;
+/// a `410` (history gone) throws `.streamIncomplete`. A legacy `resume_gap` is yielded to
+/// consumers; `RunHandle.text` rejects incomplete output.
 enum RunStream {
     static func events(
         http: HTTPClient,
@@ -78,12 +82,13 @@ enum RunStream {
         options: RunStreamOptions,
         emit: (AGUIEvent) -> Void
     ) async throws {
-        let path = "/v1/tasks/\(pathSegment(taskId))/runs/\(pathSegment(runId))/stream"
+        let runPath = "/v1/tasks/\(pathSegment(taskId))/runs/\(pathSegment(runId))"
+        let path = runPath + "/stream"
         var query = Query()
         query.add("wait_for_start", options.waitForStart)
-        let deadline = Date().addingTimeInterval(options.timeout)
+        var deadline = Date().addingTimeInterval(options.timeout)
         // Control frames carry non-numeric `c-...` ids that are not resume cursors.
-        var lastEventId: String?
+        var lastEventId = "0"
         var reconnects = 0
         var readinessWaits = 0
 
@@ -93,12 +98,18 @@ enum RunStream {
             // Attach, honouring the 429 readiness contract.
             let response: HTTPStreamResponse
             do {
-                var headers: [String: String] = [:]
-                if let lastEventId { headers["Last-Event-ID"] = lastEventId }
+                let headers = ["Last-Event-ID": lastEventId]
                 response = try await http.stream("GET", path, query: query, headers: headers)
             } catch {
                 if error is CancellationError || Task.isCancelled { throw CancellationError() }
                 let introspectionError = error as? IntrospectionError
+                // 410: the runtime holds neither the frames after this cursor nor a
+                // snapshot covering them, so no reconnect can complete the stream.
+                if introspectionError?.status == 410 {
+                    throw IntrospectionError(
+                        kind: .streamIncomplete,
+                        message: "The stream history is no longer available; read the conversation transcript")
+                }
                 if let introspectionError, isFatalAttachError(introspectionError) { throw error }
                 let isRateLimit = introspectionError?.kind == .rateLimited
                 if isRateLimit { readinessWaits += 1 } else { reconnects += 1 }
@@ -112,7 +123,7 @@ enum RunStream {
                             value: [
                                 "reason": isRateLimit ? "readiness" : "connect_error",
                                 "attempt": .number(Double(attempt)),
-                                "lastEventId": lastEventId.map(JSONValue.string) ?? .null,
+                                "lastEventId": .string(lastEventId),
                                 "phase": isRateLimit
                                     ? (introspectionError?.body?["status"]?.stringValue).map(JSONValue.string) ?? .null : .null,
                                 "retryAfterMs": retryAfter.map { .number(($0 * 1000).rounded()) } ?? .null,
@@ -125,11 +136,11 @@ enum RunStream {
 
             // Consume to end of body, tracking the resume cursor.
             var progressed = false
+            var interruption: (any Error)?
             do {
                 var parser = SSEParser()
                 for try await chunk in response.bytes {
                     for frame in parser.push(chunk) {
-                        if let id = frame.id, isResumeCursor(id) { lastEventId = id }
                         guard frame.event == "ag_ui" else { continue }
                         let event: AGUIEvent
                         do {
@@ -140,32 +151,56 @@ enum RunStream {
                                 status: response.status, requestId: response.headers["x-request-id"], underlying: error
                             )
                         }
-                        progressed = true
+                        let control = [.runStarted, .runFinished, .runError].contains(event.eventType)
+                        if !control, let id = frame.id, isResumeCursor(id), let cursor = UInt64(id) {
+                            guard cursor > (UInt64(lastEventId) ?? 0) else { continue }
+                            lastEventId = id
+                            deadline = Date().addingTimeInterval(options.timeout)
+                            progressed = true
+                        }
+                        if event.eventType == .runFinished, event.raw["result"]?["reason"]?.stringValue == "stream_close" {
+                            continue
+                        }
                         emit(event)
+                        if event.eventType == .runFinished || event.eventType == .runError { return }
                     }
                 }
                 // A cancelled consumer ends the byte stream early; that is not the turn finishing.
                 try Task.checkCancellation()
-                return
             } catch {
                 if error is CancellationError || Task.isCancelled { throw CancellationError() }
-                if let introspectionError = error as? IntrospectionError, introspectionError.kind == .decoding { throw error }
-                // Forward progress resets the budget, so a long turn with intermittent drops recovers.
-                reconnects = progressed ? 0 : reconnects + 1
-                if reconnects > options.maxReconnects || Date() >= deadline { throw error }
-                if options.emitReconnectEvents {
-                    emit(
-                        .custom(
-                            AGUIEvent.reconnectEventName,
-                            value: [
-                                "reason": "severed",
-                                "attempt": .number(Double(reconnects)),
-                                "lastEventId": lastEventId.map(JSONValue.string) ?? .null,
-                            ]))
-                }
-                let delay = Backoff.delay(attempt: reconnects, retryAfter: nil, base: options.backoff)
-                try await Backoff.sleep(min(delay, deadline.timeIntervalSinceNow))
+                if let error = error as? IntrospectionError, error.kind == .decoding { throw error }
+                interruption = error
             }
+            if interruption == nil {
+                let state = try? await http.json("GET", runPath, as: TaskRun.self)
+                try Task.checkCancellation()
+                if let status = state?.status {
+                    if status == .failed || status == .cancelled {
+                        throw IntrospectionError(kind: .runFailed, message: "The run ended with status \(status.rawValue)")
+                    }
+                    if [.idle, .completed, .awaitingUser].contains(status) {
+                        throw IntrospectionError(
+                            kind: .streamIncomplete, message: "The run settled without a complete stream; read the conversation transcript")
+                    }
+                }
+            }
+            reconnects = progressed ? 0 : reconnects + 1
+            if reconnects > options.maxReconnects || Date() >= deadline {
+                throw interruption ?? IntrospectionError(kind: .streamIncomplete, message: "The stream ended before the run settled")
+            }
+            if options.emitReconnectEvents {
+                emit(
+                    .custom(
+                        AGUIEvent.reconnectEventName,
+                        value: [
+                            "reason": interruption == nil ? "stream_close" : "severed",
+                            "attempt": .number(Double(reconnects)),
+                            "lastEventId": .string(lastEventId),
+                        ]))
+            }
+            let delay = Backoff.delay(attempt: reconnects, retryAfter: nil, base: options.backoff)
+            try await Backoff.sleep(min(delay, deadline.timeIntervalSinceNow))
         }
     }
 

@@ -76,6 +76,6 @@ public enum CustomEventNames {
     public static let reconnect = "introspection.reconnect"
     /// Sent by the server to map a live message id to its provider alias.
     public static let messageIdentity = "introspection.message_identity"
-    /// Sent by the server when a disconnect outlived its replay buffer.
+    /// Sent by a runtime older than `MESSAGES_SNAPSHOT` recovery when a disconnect outlived its replay buffer.
     public static let resumeGap = "resume_gap"
 }

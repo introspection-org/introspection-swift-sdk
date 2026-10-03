@@ -141,6 +141,8 @@ public actor AuthClient {
     private let now: @Sendable () -> Date
 
     private var current: AuthSession?
+    private var generation: UInt64 = 0
+    private var storageWrite: Task<Void, any Error>?
     private var restored = false
     private var restoring: Task<Void, Never>?
     private var refreshing: Task<AuthSession, any Error>?
@@ -216,20 +218,26 @@ public actor AuthClient {
     /// server rejects signs the user out and throws `.authentication`.
     @discardableResult
     public func refreshSession() async throws -> AuthSession {
-        if let refreshing { return try await refreshing.value }
         await restoreIfNeeded()
+        if let refreshing { return try await refreshing.value }
         guard let session = current else {
             throw IntrospectionError(kind: .authentication, message: "Not signed in")
         }
+        let generation = self.generation
         let task = Task<AuthSession, any Error> {
-            defer { self.refreshing = nil }
+            defer { if self.generation == generation { self.refreshing = nil } }
             do {
                 let next = AuthSession(token: try await self.renew(session.token))
+                try Task.checkCancellation()
+                guard self.generation == generation else { throw CancellationError() }
                 try await self.store(next)
+                try Task.checkCancellation()
+                guard self.generation == generation else { throw CancellationError() }
                 self.current = next
                 self.emit(.tokenRefreshed, next)
                 return next
             } catch let error as IntrospectionError where Self.isRejection(error) {
+                guard self.generation == generation else { throw CancellationError() }
                 await self.clear()
                 throw IntrospectionError(
                     kind: .authentication, message: "The session is no longer valid: \(error.message)",
@@ -309,24 +317,49 @@ public actor AuthClient {
     }
 
     private func signedIn(_ token: SessionToken) async throws -> AuthSession {
+        generation &+= 1
+        let generation = self.generation
+        refreshing?.cancel()
+        refreshing = nil
         restored = true
+        current = nil
         let session = AuthSession(token: token)
         try await store(session)
+        guard self.generation == generation else { throw CancellationError() }
         current = session
         emit(.signedIn, session)
         return session
     }
 
     private func store(_ session: AuthSession) async throws {
-        try await configuration.storage.save(JSONCoding.encoder.encode(session), key: configuration.storageKey)
+        let data = try JSONCoding.encoder.encode(session)
+        let previous = storageWrite
+        let configuration = self.configuration
+        // Storage is async too: writes must finish in session-transition order.
+        let write = Task {
+            _ = try? await previous?.value
+            try await configuration.storage.save(data, key: configuration.storageKey)
+        }
+        storageWrite = write
+        try await write.value
     }
 
     private func clear() async {
+        generation &+= 1
+        refreshing?.cancel()
+        refreshing = nil
         let hadSession = current != nil
         current = nil
         restored = true
-        try? await configuration.storage.remove(key: configuration.storageKey)
         if hadSession { emit(.signedOut, nil) }
+        let previous = storageWrite
+        let configuration = self.configuration
+        let write = Task {
+            _ = try? await previous?.value
+            try await configuration.storage.remove(key: configuration.storageKey)
+        }
+        storageWrite = write
+        _ = try? await write.value
     }
 
     /// Concurrent first callers share one load, so none of them sees the session as absent while it is read.
