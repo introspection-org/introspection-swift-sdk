@@ -33,13 +33,14 @@ public struct RunStreamOptions: Sendable, Hashable {
 extension AGUIEvent {
     /// The `CUSTOM` event name this SDK uses for reconnect markers.
     public static let reconnectEventName = CustomEventNames.reconnect
-    /// The `CUSTOM` event name the server sends when a disconnect outlived its replay buffer.
+    /// The `CUSTOM` event name an older runtime sends when a disconnect outlived its replay buffer.
     public static let resumeGapEventName = CustomEventNames.resumeGap
 
     /// Whether this is an SDK reconnect marker (see `RunStreamOptions.emitReconnectEvents`).
     public var isReconnectMarker: Bool { eventType == .custom && name == Self.reconnectEventName }
 
-    /// Whether this is the server's `resume_gap` marker: some events were lost across a reconnect.
+    /// Whether this is the `resume_gap` marker a runtime older than `MESSAGES_SNAPSHOT` recovery
+    /// sends when events were lost across a reconnect.
     public var isResumeGap: Bool { eventType == .custom && name == Self.resumeGapEventName }
 }
 
