@@ -134,6 +134,45 @@ import Testing
         #expect(result.meta?.window?.start != nil)
     }
 
+    @Test func filesMetricsGroupByMetadataWithoutATimeDimension() async throws {
+        let response = #"""
+            {"data":[{"timestamp":null,"dimensions":[{"field":"metadata.status","value":"open"}],
+              "metrics":[{"metric_index":0,"measure":null,"aggregation":"count","value":2}]},
+              {"dimensions":[{"field":"metadata.status","value":""}],
+              "metrics":[{"metric_index":0,"measure":null,"aggregation":"count","value":1}]}],
+             "meta":{"view":"files","window":{"start":"2026-10-01T00:00:00Z","end":"2026-10-02T00:00:00Z"},
+              "row_count":2,"row_limit":100,"interval":null,"step_seconds":null,"approximate":false,
+              "truncated":false,"owner_scoped":true,"order_by":[{"type":"metric","direction":"desc","metric_index":0}]}}
+            """#
+        let transport = MockTransport(json: response)
+        let from = Date(timeIntervalSince1970: 1_790_000_000)
+        let to = from.addingTimeInterval(86_400)
+        let result = try await makeClient(transport).metrics.query(
+            MetricQueryRequest(
+                view: .files, metrics: [.count], from: from, to: to,
+                dimensions: [.fileMetadata("status")],
+                filters: [MetricFilter("tag", .eq, "ark:goal"), .fileMetadata("priority", equals: 3)]
+            ))
+
+        #expect(
+            transport.last?.json == [
+                "view": "files",
+                "metrics": [["aggregation": "count"]],
+                "dimensions": [["field": "metadata.status"]],
+                "filters": [
+                    ["field": "tag", "operator": "eq", "value": "ark:goal"],
+                    ["field": "metadata.priority", "operator": "eq", "value": 3],
+                ],
+                "from_timestamp": .string(ISO8601.format(from)),
+                "to_timestamp": .string(ISO8601.format(to)),
+            ])
+        #expect(result.data.map { $0.dimension("metadata.status") } == ["open", ""])
+        #expect(result.data.map { $0.value(at: 0) } == [2, 1])
+        #expect(result.data.allSatisfy { $0.date == nil })
+        #expect(result.meta?.interval == nil)
+        #expect(result.meta?.ownerScoped == true)
+    }
+
     @Test func sharesRoutes() async throws {
         let share = #"""
             {"id":"sh1","org_id":"o","project_id":"p","created_at":"2026-10-01T12:00:00Z","updated_at":"2026-10-01T12:00:00Z",

@@ -12,7 +12,7 @@ public struct MetricView: RawRepresentable, Codable, Sendable, Hashable, Express
     public static let judgements: MetricView = "judgements"
     public static let observations: MetricView = "observations"
     public static let patterns: MetricView = "patterns"
-    /// Requires the `files:read` scope as well.
+    /// File counts by creation, read from each file's current version. Requires the `files:read` scope as well.
     public static let files: MetricView = "files"
 }
 
@@ -94,6 +94,9 @@ public struct MetricDimension: Codable, Sendable, Hashable {
     public var field: String
 
     public init(_ field: String) { self.field = field }
+
+    /// Group the `files` view by `metadata.<key>` (key `^[a-z][a-z0-9_]{0,63}$`); a file without the key groups under `""`.
+    public static func fileMetadata(_ key: String) -> MetricDimension { MetricDimension("metadata.\(key)") }
 }
 
 /// A row filter. `value` is a scalar for comparisons, an array for `in`/`nin`, and nil for `exists`.
@@ -106,6 +109,11 @@ public struct MetricFilter: Codable, Sendable, Hashable {
         self.field = field
         self.operator = `operator`
         self.value = value
+    }
+
+    /// `files` view rows whose `metadata.<key>` equals `value`, compared with its JSON type (`3` is not `"3"`).
+    public static func fileMetadata(_ key: String, equals value: JSONValue) -> MetricFilter {
+        MetricFilter("metadata.\(key)", .eq, value)
     }
 }
 
