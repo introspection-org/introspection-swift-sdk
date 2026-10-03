@@ -14,8 +14,8 @@ import XCTest
 /// an API key; `INTROSPECTION_CLIENT_ID` / `INTROSPECTION_CLIENT_SECRET`, a service
 /// account; `INTROSPECTION_PROJECT`; and for federation
 /// `INTROSPECTION_FEDERATED_CLIENT_ID`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`,
-/// `FEDERATED_TEST_USER_EMAIL` / `_PASSWORD` and `FEDERATED_TEST_USER_2_EMAIL` /
-/// `_PASSWORD`.
+/// `FEDERATED_TEST_USER_EMAIL` / `_PASSWORD`, plus `FEDERATED_TEST_USER_2_EMAIL` /
+/// `_PASSWORD` for the isolation check.
 final class LiveIdentityTests: XCTestCase {
     private let env = ProcessInfo.processInfo.environment
     private let prompt = "Reply with the single word: ok"
@@ -82,11 +82,17 @@ final class LiveIdentityTests: XCTestCase {
 
     // MARK: Federated (Supabase through a Direct JWKS Application)
 
-    func testFederatedMemberRunsOnTheRuntimeAndIsIsolated() async throws {
-        let first = try await federatedClient(user: "FEDERATED_TEST_USER")
-        let task = try await exerciseDataPlane(first)
+    func testFederatedMemberRunsOnTheRuntime() async throws {
+        try await exerciseDataPlane(try await federatedClient(user: "FEDERATED_TEST_USER"))
+    }
 
+    /// Skipped unless a second test user is configured.
+    func testFederatedMembersAreIsolated() async throws {
         let second = try await federatedClient(user: "FEDERATED_TEST_USER_2")
+        let first = try await federatedClient(user: "FEDERATED_TEST_USER")
+        let run = try await first.tasks.start(prompt: prompt, TaskCreate(title: "swift-sdk-live:isolation", tags: ["swift-sdk-live"]))
+        let task = try await first.tasks.get(run.run.taskId)
+
         do {
             _ = try await second.tasks.get(task.id)
             XCTFail("another federated member could read the task")
@@ -95,6 +101,7 @@ final class LiveIdentityTests: XCTestCase {
         }
         let visible = try await second.tasks.list(TaskListParams(limit: 100)).collect(limit: 500)
         XCTAssertFalse(visible.contains { $0.id == task.id })
+        try await first.tasks.archive(task.id)
     }
 
     func testFederatedMemberIsRefusedOnTheControlPlane() async throws {
