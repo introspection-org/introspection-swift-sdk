@@ -269,4 +269,33 @@ final class TasksTests: XCTestCase {
         XCTAssertEqual(transport.last?.path, "/v1/tasks/0192f0a0-0000-7000-8000-000000000001/runs/run-1/stream")
         XCTAssertEqual(transport.last?.request.headers["Accept"], "text/event-stream")
     }
+
+    func testTextThrowsWhenTheRunFails() async throws {
+        let sse = """
+            event: ag_ui
+            id: 1
+            data: {"type":"TEXT_MESSAGE_CONTENT","messageId":"m1","delta":"Hel"}
+
+            event: ag_ui
+            id: 2
+            data: {"type":"RUN_ERROR","message":"Sandbox failed to start","code":"sandbox_failed"}
+
+
+            """
+        let transport = MockTransport { request, _ in
+            if request.method == "POST" {
+                return .response(.json(#"{"task":\#(TasksTests.taskJSON),"run":\#(TasksTests.runJSON)}"#, status: 201))
+            }
+            return .stream(status: 200, headers: ["content-type": "text/event-stream"], chunks: [Data(sse.utf8)], error: nil)
+        }
+        let handle = try await makeClient(transport).tasks.start(prompt: "Hi")
+        do {
+            _ = try await handle.text()
+            XCTFail("expected the run failure to surface")
+        } catch let error as IntrospectionError {
+            XCTAssertEqual(error.kind, .runFailed)
+            XCTAssertEqual(error.message, "Sandbox failed to start")
+            XCTAssertEqual(error.code, "sandbox_failed")
+        }
+    }
 }

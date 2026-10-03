@@ -158,9 +158,15 @@ public struct RunHandle: Sendable {
     /// Stream the run to its end and return the assistant text deltas joined.
     public func text(options: RunStreamOptions = RunStreamOptions()) async throws -> String {
         var text = ""
-        for try await event in stream(options: options)
-        where event.eventType == .textMessageContent || event.eventType == .textMessageChunk {
-            text += event.delta ?? ""
+        for try await event in stream(options: options) {
+            switch event.eventType {
+            case .textMessageContent, .textMessageChunk:
+                text += event.delta ?? ""
+            case .runError:
+                throw IntrospectionError(kind: .runFailed, message: event.message ?? "The run failed", code: event.code)
+            default:
+                break
+            }
         }
         return text
     }

@@ -32,6 +32,8 @@ public struct IntrospectionError: Error, Sendable, CustomStringConvertible {
         case invalidRequest
         /// The operation was cancelled.
         case cancelled
+        /// The run ended with an AG-UI `RUN_ERROR`; `message` and `code` are the agent's.
+        case runFailed
     }
 
     public let kind: Kind
