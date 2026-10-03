@@ -10,7 +10,6 @@
       "extra-files": [
         "Sources/IntrospectionSDK/Client.swift"
       ],
-      "release-as": "0.1.0",
       "prerelease": true
     }
   }
