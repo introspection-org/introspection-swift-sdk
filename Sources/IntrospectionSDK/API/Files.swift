@@ -22,6 +22,16 @@ public struct FileCategory: RawRepresentable, Codable, Sendable, Hashable, Expre
     public static let file: FileCategory = "file"
 }
 
+/// Allow-listed orderings for the file list, always newest first.
+public struct FileSortField: RawRepresentable, Codable, Sendable, Hashable, ExpressibleByStringLiteral {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+    public init(stringLiteral value: String) { rawValue = value }
+
+    public static let createdAt: FileSortField = "created_at"
+    public static let updatedAt: FileSortField = "updated_at"
+}
+
 /// Friendly content format, used as a list filter.
 public struct FileContentFormat: RawRepresentable, Codable, Sendable, Hashable, ExpressibleByStringLiteral {
     public let rawValue: String
@@ -141,6 +151,11 @@ public struct FileListParams: Sendable, Hashable {
     public var memberId: String?
     /// One `key:value` tag.
     public var tag: String?
+    /// Files whose metadata contains every pair, matched against string values only (at most 16 keys).
+    /// Sent as repeated `metadata=key:value`.
+    public var metadata: [String: String]?
+    /// Ordering (server default `createdAt`); a `next` cursor only continues the ordering it came from.
+    public var sort: FileSortField?
     public var createdAfter: Date?
     public var createdBefore: Date?
     public var updatedAfter: Date?
@@ -152,7 +167,7 @@ public struct FileListParams: Sendable, Hashable {
         category: FileCategory? = nil, contentFormat: FileContentFormat? = nil, versioned: Bool? = nil,
         storagePath: String? = nil, taskId: String? = nil, conversationId: String? = nil, memberId: String? = nil,
         tag: String? = nil, createdAfter: Date? = nil, createdBefore: Date? = nil, updatedAfter: Date? = nil,
-        updatedBefore: Date? = nil
+        updatedBefore: Date? = nil, metadata: [String: String]? = nil, sort: FileSortField? = nil
     ) {
         self.limit = limit
         self.next = next
@@ -174,6 +189,8 @@ public struct FileListParams: Sendable, Hashable {
         self.createdBefore = createdBefore
         self.updatedAfter = updatedAfter
         self.updatedBefore = updatedBefore
+        self.metadata = metadata
+        self.sort = sort
     }
 
     var query: Query {
@@ -193,6 +210,8 @@ public struct FileListParams: Sendable, Hashable {
         q.add("conversation_id", conversationId)
         q.add("member_id", memberId)
         q.add("tag", tag)
+        q.add("metadata", metadata.map { pairs in pairs.keys.sorted().compactMap { key in pairs[key].map { "\(key):\($0)" } } })
+        q.add("sort", sort)
         q.add("created_after", createdAfter)
         q.add("created_before", createdBefore)
         q.add("updated_after", updatedAfter)

@@ -162,7 +162,7 @@ import Testing
 
     private func filters(
         _ surface: String, _ reference: OpenAPIReference, _ method: String, _ path: String, exempt: Set<String> = [],
-        missingIsFatal: Bool = false, _ call: (IntrospectionClient) async throws -> Void
+        sdkOnly: Set<String> = [], missingIsFatal: Bool = false, _ call: (IntrospectionClient) async throws -> Void
     ) async {
         let transport = MockTransport { _, _ in .response(.json(#"{"records":[],"count":0,"data":[]}"#)) }
         _ = try? await call(makeClient(transport))
@@ -173,7 +173,7 @@ import Testing
         let sent = Set(transport.requests.flatMap { $0.query.keys })
         compare(
             surface, .filters, sdk: sent, reference: reference.queryParameters(method, path), exempt: exempt,
-            missingIsFatal: missingIsFatal)
+            sdkOnly: sdkOnly, missingIsFatal: missingIsFatal)
     }
 
     /// The JSON body of the request `call` sends, for bodies the SDK assembles inside the call.
@@ -317,8 +317,11 @@ import Testing
             limit: 1, next: "cursor", includeTotal: true, includeVersions: true, shareIds: ["s1"], name: "n",
             nameContains: "n", fileType: .upload, category: .memory, contentFormat: .markdown, versioned: true,
             storagePath: "p", taskId: "t1", conversationId: "c1", memberId: "m1", tag: "a:b", createdAfter: date,
-            createdBefore: date, updatedAfter: date, updatedBefore: date)
-        await filters("file list filters: GET /v1/files", dp, "GET", "/v1/files") { _ = try await $0.files.list(list).firstPage() }
+            createdBefore: date, updatedAfter: date, updatedBefore: date, metadata: ["status": "open"], sort: .updatedAt)
+        // Sent before the server publishes them (introspection-cloud#3123); the stale check flags them once it does.
+        await filters("file list filters: GET /v1/files", dp, "GET", "/v1/files", sdkOnly: ["metadata", "sort"]) {
+            _ = try await $0.files.list(list).firstPage()
+        }
         await filters(
             "file version filters: GET /v1/files/{id}/versions", dp, "GET", "/v1/files/{file_id}/versions", missingIsFatal: true
         ) {

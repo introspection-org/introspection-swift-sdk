@@ -66,6 +66,36 @@ private let fileJSON = #"""
         #expect(file.createdAt != nil)
     }
 
+    @Test func listEncodesMetadataAndSortAndKeepsThemAcrossPages() async throws {
+        let transport = MockTransport { _, index in
+            index == 0
+                ? .response(.json(#"{"records":[\#(fileJSON)],"count":1,"next":"c2"}"#))
+                : .response(.json(#"{"records":[],"count":0,"next":null}"#))
+        }
+        let files = try await makeClient(transport).files.list(
+            FileListParams(tag: "ark:goal", metadata: ["status": "open", "feed_id": "f:1"], sort: .updatedAt)
+        ).collect()
+
+        #expect(files.count == 1)
+        #expect(transport.requests.count == 2)
+        for request in transport.requests {
+            #expect(request.query["metadata"] == ["feed_id:f:1", "status:open"])
+            #expect(request.query["sort"] == ["updated_at"])
+            #expect(request.query["tag"] == ["ark:goal"])
+        }
+        #expect(transport.requests[1].query["next"] == ["c2"])
+    }
+
+    @Test func listOmitsMetadataAndSortByDefault() async throws {
+        let transport = MockTransport { _, _ in .response(.json(#"{"records":[],"count":0}"#)) }
+        _ = try await makeClient(transport).files.list(FileListParams(metadata: [:])).firstPage()
+
+        let q = try #require(transport.requests.first).query
+        #expect(q["metadata"] == nil)
+        #expect(q["sort"] == nil)
+        #expect(FileSortField.createdAt.rawValue == "created_at")
+    }
+
     @Test func uploadSendsMultipart() async throws {
         let transport = MockTransport(status: 201, json: fileJSON)
         let client = makeClient(transport)
