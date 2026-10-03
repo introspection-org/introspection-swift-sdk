@@ -317,10 +317,9 @@ import Testing
             limit: 1, next: "cursor", includeTotal: true, includeVersions: true, shareIds: ["s1"], name: "n",
             nameContains: "n", fileType: .upload, category: .memory, contentFormat: .markdown, versioned: true,
             storagePath: "p", taskId: "t1", conversationId: "c1", memberId: "m1", tag: "a:b", createdAfter: date,
-            createdBefore: date, updatedAfter: date, updatedBefore: date, metadata: ["status": "open"], sort: .updatedAt,
-            direction: .asc)
-        // Sent before the server publishes them (introspection-cloud#3123); the stale check flags them once it does.
-        await filters("file list filters: GET /v1/files", dp, "GET", "/v1/files", sdkOnly: ["metadata", "sort", "direction"]) {
+            createdBefore: date, updatedAfter: date, updatedBefore: date, metadata: ["status": "open"])
+        // Sent before the server publishes it (introspection-cloud#3123); the stale check flags it once it does.
+        await filters("file list filters: GET /v1/files", dp, "GET", "/v1/files", sdkOnly: ["metadata"]) {
             _ = try await $0.files.list(list).firstPage()
         }
         await filters(
