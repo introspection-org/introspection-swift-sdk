@@ -24,20 +24,18 @@ The app keeps its own identity provider and its SDK (for example supabase-swift)
 import IntrospectionSDK
 import Supabase
 
-let credentials = SessionCredentials.tokenExchange(
+let client = try await IntrospectionClient.federated(
     subjectToken: { try await supabase.auth.session.accessToken },
     clientID: "intro_app_...",
     project: "my-project",
     controlPlaneURL: URL(string: "https://api.introspection.dev")!
 )
-let client = IntrospectionClient(
-    controlPlaneURL: URL(string: "https://api.introspection.dev")!,
-    dataPlaneURL: dataPlaneURL,
-    credentials: credentials
-)
+let run = try await client.tasks.start(prompt: "Hello")
 ```
 
-The exchange runs on the first request and again before the platform token expires or after a 401, each time asking for a current provider token. Sign out with the provider's SDK. The Data Plane URL is returned by the exchange (`try await credentials.refresh().dataPlaneURL`).
+The provider must sign with asymmetric keys (ES256 or RS256), and the Application's federation must name its issuer (for Supabase, `https://<ref>.supabase.co/auth/v1`). The member is the same on every sign-in: it is derived from the federation and the provider's `sub`.
+
+The first exchange runs inside `federated(...)`, which also learns the Data Plane URL. Later exchanges run before the platform token expires or after a 401, each time asking for a current provider token. Sign out with the provider's SDK. For lower-level control, use `SessionCredentials.tokenExchange` with your own `IntrospectionClient`.
 
 ### Platform sign-in (`AuthClient`)
 
