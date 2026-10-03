@@ -125,6 +125,13 @@ public struct File: Codable, Sendable, Hashable {
 }
 
 /// Filters for `GET /v1/files`. All are optional and combine with AND.
+///
+/// ```swift
+/// // Active goals, most recently changed first; the paginator keeps the same query on every page.
+/// let goals = try await client.files.list(
+///     FileListParams(tag: "ark:goal", metadata: ["status": "active"], sort: .updatedAt)
+/// ).collect()
+/// ```
 public struct FileListParams: Sendable, Hashable {
     /// Page size (1-1000, server default 100).
     public var limit: Int?
@@ -151,13 +158,13 @@ public struct FileListParams: Sendable, Hashable {
     public var memberId: String?
     /// One `key:value` tag.
     public var tag: String?
-    /// Files whose metadata contains every pair, matched against string values only (at most 16 keys).
-    /// Sent as repeated `metadata=key:value`.
+    /// Files whose metadata holds every pair as an exact string value (at most 16 keys; a number or boolean
+    /// is not matched by its spelling). Sent as repeated `metadata=key:value`.
     public var metadata: [String: String]?
-    /// Ordering (server default `createdAt`); a `next` cursor only continues the sort and order it came from.
+    /// `createdAt` (server default) or `updatedAt`. A `next` cursor only continues the sort and direction it came from.
     public var sort: FileSortField?
-    /// Sent as `direction` (server default `desc`).
-    public var order: ReadOrder?
+    /// `desc` (server default, newest first) or `asc`; ties break on `id` in the same direction.
+    public var direction: ReadOrder?
     public var createdAfter: Date?
     public var createdBefore: Date?
     public var updatedAfter: Date?
@@ -170,7 +177,7 @@ public struct FileListParams: Sendable, Hashable {
         storagePath: String? = nil, taskId: String? = nil, conversationId: String? = nil, memberId: String? = nil,
         tag: String? = nil, createdAfter: Date? = nil, createdBefore: Date? = nil, updatedAfter: Date? = nil,
         updatedBefore: Date? = nil, metadata: [String: String]? = nil, sort: FileSortField? = nil,
-        order: ReadOrder? = nil
+        direction: ReadOrder? = nil
     ) {
         self.limit = limit
         self.next = next
@@ -194,7 +201,7 @@ public struct FileListParams: Sendable, Hashable {
         self.updatedBefore = updatedBefore
         self.metadata = metadata
         self.sort = sort
-        self.order = order
+        self.direction = direction
     }
 
     var query: Query {
@@ -216,7 +223,7 @@ public struct FileListParams: Sendable, Hashable {
         q.add("tag", tag)
         q.add("metadata", metadata.map { pairs in pairs.keys.sorted().compactMap { key in pairs[key].map { "\(key):\($0)" } } })
         q.add("sort", sort)
-        q.add("direction", order)
+        q.add("direction", direction)
         q.add("created_after", createdAfter)
         q.add("created_before", createdBefore)
         q.add("updated_after", updatedAfter)
