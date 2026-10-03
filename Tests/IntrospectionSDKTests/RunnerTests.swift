@@ -1,5 +1,5 @@
 import Foundation
-import XCTest
+import Testing
 
 @testable import IntrospectionSDK
 
@@ -56,8 +56,8 @@ private func specJSON(endpoint: String = "https://dp-gcp01.test", token: String 
     """#
 }
 
-final class RunnerTests: XCTestCase {
-    func testListRuntimesEncodesFiltersAndDecodes() async throws {
+@Suite struct RunnerTests {
+    @Test func runtimeListEncodesFiltersAndDecodes() async throws {
         let transport = MockTransport(json: #"{"records": [\#(runtimeJSON)], "count": 1, "next": null}"#)
         let client = makeClient(transport)
         let page = try await client.runtimes.list(
@@ -65,29 +65,29 @@ final class RunnerTests: XCTestCase {
                 project: "acme", runtime: "customer-agent", environment: .staging, limit: 5, next: "c1"
             )
         ).firstPage()
-        let request = try XCTUnwrap(transport.last)
-        XCTAssertEqual(request.request.method, "GET")
-        XCTAssertEqual(request.request.url.host, "cp.test")
-        XCTAssertEqual(request.path, "/v1/runtimes")
-        XCTAssertEqual(request.query["project"], ["acme"])
-        XCTAssertEqual(request.query["runtime"], ["customer-agent"])
-        XCTAssertEqual(request.query["environment"], ["staging"])
-        XCTAssertEqual(request.query["limit"], ["5"])
-        XCTAssertEqual(request.query["next"], ["c1"])
-        XCTAssertEqual(request.request.headers["Authorization"], "Bearer cp-token")
+        let request = try #require(transport.last)
+        #expect(request.request.method == "GET")
+        #expect(request.request.url.host == "cp.test")
+        #expect(request.path == "/v1/runtimes")
+        #expect(request.query["project"] == ["acme"])
+        #expect(request.query["runtime"] == ["customer-agent"])
+        #expect(request.query["environment"] == ["staging"])
+        #expect(request.query["limit"] == ["5"])
+        #expect(request.query["next"] == ["c1"])
+        #expect(request.request.headers["Authorization"] == "Bearer cp-token")
 
-        let runtime = try XCTUnwrap(page.records.first)
-        XCTAssertEqual(runtime.slug, "customer-agent")
-        XCTAssertEqual(runtime.kind, .byor)
-        XCTAssertEqual(runtime.environments, [.production, .staging])
-        XCTAssertEqual(runtime.imageBuildStatus, .ready)
-        XCTAssertEqual(runtime.imageBuildMetadata?.sizeBytes, 1024)
-        XCTAssertEqual(runtime.environmentRef?["production"], "main")
-        XCTAssertEqual(runtime.configJson?["connectors"]?[0]?["slug"]?.stringValue, "gmail")
-        XCTAssertNotNil(runtime.createdAt)
+        let runtime = try #require(page.records.first)
+        #expect(runtime.slug == "customer-agent")
+        #expect(runtime.kind == .byor)
+        #expect(runtime.environments == [.production, .staging])
+        #expect(runtime.imageBuildStatus == .ready)
+        #expect(runtime.imageBuildMetadata?.sizeBytes == 1024)
+        #expect(runtime.environmentRef?["production"] == "main")
+        #expect(runtime.configJson?["connectors"]?[0]?["slug"]?.stringValue == "gmail")
+        #expect(runtime.createdAt != nil)
     }
 
-    func testGetRuntimeWithInclude() async throws {
+    @Test func getRuntimeWithInclude() async throws {
         let body = runtimeJSON.replacingOccurrences(
             of: #""some_new_field": 42"#,
             with:
@@ -95,27 +95,25 @@ final class RunnerTests: XCTestCase {
         )
         let transport = MockTransport(json: body)
         let runtime = try await makeClient(transport).runtimes.get("rt/1", project: "acme", include: [.mcpRequirements])
-        XCTAssertTrue(try XCTUnwrap(transport.last).request.url.absoluteString.hasPrefix("https://cp.test/v1/runtimes/rt%2F1?"))
-        XCTAssertEqual(transport.last?.query["include"], ["mcp_requirements"])
-        XCTAssertEqual(runtime.mcpRequirements?.first?.connectionStatus, .refreshFailed)
-        XCTAssertEqual(runtime.mcpRequirements?.first?.mcpServerId, "gmail")
+        #expect(try #require(transport.last).request.url.absoluteString.hasPrefix("https://cp.test/v1/runtimes/rt%2F1?"))
+        #expect(transport.last?.query["include"] == ["mcp_requirements"])
+        #expect(runtime.mcpRequirements?.first?.connectionStatus == .refreshFailed)
+        #expect(runtime.mcpRequirements?.first?.mcpServerId == "gmail")
     }
 
-    func testResolveAsksForNewestOneAndThrowsNotFound() async throws {
+    @Test func resolveAsksForNewestOneAndThrowsNotFound() async throws {
         let transport = MockTransport(json: #"{"records": [], "count": 0}"#)
-        do {
-            _ = try await makeClient(transport).runtimes.resolve("missing", project: "acme")
-            XCTFail("expected notFound")
-        } catch let error as IntrospectionError {
-            XCTAssertEqual(error.kind, .notFound)
-            XCTAssertEqual(error.message, "Runtime 'missing' not found in project acme")
+        let error = try await #require(throws: IntrospectionError.self) {
+            try await makeClient(transport).runtimes.resolve("missing", project: "acme")
         }
-        XCTAssertEqual(transport.requests.count, 1)
-        XCTAssertEqual(transport.last?.query["runtime"], ["missing"])
-        XCTAssertEqual(transport.last?.query["limit"], ["1"])
+        #expect(error.kind == .notFound)
+        #expect(error.message == "Runtime 'missing' not found in project acme")
+        #expect(transport.requests.count == 1)
+        #expect(transport.last?.query["runtime"] == ["missing"])
+        #expect(transport.last?.query["limit"] == ["1"])
     }
 
-    func testRuntimeHandleResolvesOnEveryRunAndBuildsRunner() async throws {
+    @Test func runtimeHandleResolvesOnEveryRunAndBuildsRunner() async throws {
         let transport = MockTransport { request, _ in
             switch (request.method, request.url.path) {
             case ("GET", "/v1/runtimes"):
@@ -141,37 +139,37 @@ final class RunnerTests: XCTestCase {
         _ = try await client.runtime("customer-agent").run(request)
 
         let lists = transport.requests.filter { $0.path == "/v1/runtimes" }
-        XCTAssertEqual(lists.count, 2, "the selector is resolved on every run")
+        #expect(lists.count == 2, "the selector is resolved on every run")
 
-        let post = try XCTUnwrap(transport.requests.first { $0.request.method == "POST" })
-        let body = try XCTUnwrap(post.json)
-        XCTAssertEqual(body["identity"]?["user_id"]?.stringValue, "u_42")
-        XCTAssertEqual(body["identity"]?["tags"]?[0]?.stringValue, "tier:gold")
-        XCTAssertNil(body["identity"]?["anonymous_id"], "nil fields are omitted")
-        XCTAssertEqual(body["caller"]?["ip"]?.stringValue, "1.2.3.4")
-        XCTAssertEqual(body["caller"]?["app"]?["name"]?.stringValue, "ios")
-        XCTAssertEqual(body["caller"]?["library"]?["name"]?.stringValue, "introspection-swift")
-        XCTAssertEqual(body["agent_name"]?.stringValue, "support")
-        XCTAssertEqual(body["ttl_seconds"]?.intValue, 600)
-        XCTAssertEqual(body["scope"]?.stringValue, "tasks:read tasks:write")
-        XCTAssertEqual(body["environment"]?.stringValue, "staging")
-        XCTAssertEqual(body["bindings_required"]?.boolValue, false)
-        XCTAssertNil(body["recipe_id"])
+        let post = try #require(transport.requests.first { $0.request.method == "POST" })
+        let body = try #require(post.json)
+        #expect(body["identity"]?["user_id"]?.stringValue == "u_42")
+        #expect(body["identity"]?["tags"]?[0]?.stringValue == "tier:gold")
+        #expect(body["identity"]?["anonymous_id"] == nil, "nil fields are omitted")
+        #expect(body["caller"]?["ip"]?.stringValue == "1.2.3.4")
+        #expect(body["caller"]?["app"]?["name"]?.stringValue == "ios")
+        #expect(body["caller"]?["library"]?["name"]?.stringValue == "introspection-swift")
+        #expect(body["agent_name"]?.stringValue == "support")
+        #expect(body["ttl_seconds"]?.intValue == 600)
+        #expect(body["scope"]?.stringValue == "tasks:read tasks:write")
+        #expect(body["environment"]?.stringValue == "staging")
+        #expect(body["bindings_required"]?.boolValue == false)
+        #expect(body["recipe_id"] == nil)
 
-        XCTAssertEqual(runner.sessionId, "sess-1")
-        XCTAssertEqual(runner.sessionToken, "locator-1")
-        XCTAssertEqual(runner.deployment.slug, "gcp01")
-        XCTAssertEqual(runner.deployment.region, "us-east1")
-        XCTAssertEqual(runner.runtimeId, "0195c0de-0000-7000-8000-000000000001")
-        XCTAssertEqual(runner.runtimeGroupId, "0195c0de-0000-7000-8000-0000000000c1")
-        XCTAssertNil(runner.experimentId)
-        XCTAssertEqual(runner.context.identity?.userId, "u_42")
-        XCTAssertEqual(runner.context.caller?.extra["app"]?["name"]?.stringValue, "ios")
-        XCTAssertEqual(runner.expiresAt, ISO8601.parse("2026-10-03T13:00:00Z"))
-        XCTAssertEqual(runner.source, .runtime(id: "0195c0de-0000-7000-8000-000000000001", request: request, project: nil))
+        #expect(runner.sessionId == "sess-1")
+        #expect(runner.sessionToken == "locator-1")
+        #expect(runner.deployment.slug == "gcp01")
+        #expect(runner.deployment.region == "us-east1")
+        #expect(runner.runtimeId == "0195c0de-0000-7000-8000-000000000001")
+        #expect(runner.runtimeGroupId == "0195c0de-0000-7000-8000-0000000000c1")
+        #expect(runner.experimentId == nil)
+        #expect(runner.context.identity?.userId == "u_42")
+        #expect(runner.context.caller?.extra["app"]?["name"]?.stringValue == "ios")
+        #expect(runner.expiresAt == ISO8601.parse("2026-10-03T13:00:00Z"))
+        #expect(runner.source == .runtime(id: "0195c0de-0000-7000-8000-000000000001", request: request, project: nil))
     }
 
-    func testRunnerTalksToDeploymentWithSessionToken() async throws {
+    @Test func runnerTalksToDeploymentWithSessionToken() async throws {
         let transport = MockTransport { request, _ in
             request.url.host == "cp.test" ? .response(.json(specJSON())) : .response(.json(#"{"ok": true}"#))
         }
@@ -184,20 +182,20 @@ final class RunnerTests: XCTestCase {
                 options: .init(maxRetries: 0, additionalHeaders: ["X-Custom": "1"], userAgent: "test-agent")
             ))
         let runner = try await client.runtimes.run("rt-1", project: "acme")
-        XCTAssertEqual(transport.last?.query["project"], ["acme"])
-        XCTAssertEqual(transport.last?.json, [:], "an empty run request encodes as {}")
+        #expect(transport.last?.query["project"] == ["acme"])
+        #expect(transport.last?.json == [:], "an empty run request encodes as {}")
 
         let connection: any DataPlaneConnection = runner
         _ = try await connection.dataPlane.json("GET", "/v1/tasks", as: JSONValue.self)
-        let dp = try XCTUnwrap(transport.last)
-        XCTAssertEqual(dp.request.url.absoluteString, "https://dp-gcp01.test/v1/tasks")
-        XCTAssertEqual(dp.request.headers["Authorization"], "Bearer locator-1")
-        XCTAssertEqual(dp.request.headers["User-Agent"], "test-agent")
-        XCTAssertEqual(dp.request.headers["X-Custom"], "1")
-        XCTAssertEqual(runner.dataPlaneEndpoint.absoluteString, "https://dp-gcp01.test")
+        let dp = try #require(transport.last)
+        #expect(dp.request.url.absoluteString == "https://dp-gcp01.test/v1/tasks")
+        #expect(dp.request.headers["Authorization"] == "Bearer locator-1")
+        #expect(dp.request.headers["User-Agent"] == "test-agent")
+        #expect(dp.request.headers["X-Custom"] == "1")
+        #expect(runner.dataPlaneEndpoint.absoluteString == "https://dp-gcp01.test")
     }
 
-    func testRefreshRepointsRunnerAtFreshSession() async throws {
+    @Test func refreshRepointsRunnerAtFreshSession() async throws {
         let transport = MockTransport { request, index in
             if request.url.host == "cp.test" {
                 return index == 0
@@ -210,62 +208,52 @@ final class RunnerTests: XCTestCase {
         let request = RunRequest(identity: RunnerIdentity(userId: "u_1"))
         let runner = try await client.runtimes.run("rt-1", request, project: "acme")
         try await runner.refresh()
-        let refresh = try XCTUnwrap(transport.requests.last)
-        XCTAssertEqual(refresh.path, "/v1/runtimes/rt-1/run")
-        XCTAssertEqual(refresh.query["project"], ["acme"])
-        XCTAssertEqual(refresh.json?["identity"]?["user_id"]?.stringValue, "u_1")
-        XCTAssertEqual(runner.sessionId, "sess-2")
+        let refresh = try #require(transport.requests.last)
+        #expect(refresh.path == "/v1/runtimes/rt-1/run")
+        #expect(refresh.query["project"] == ["acme"])
+        #expect(refresh.json?["identity"]?["user_id"]?.stringValue == "u_1")
+        #expect(runner.sessionId == "sess-2")
 
         _ = try await runner.dataPlane.json("GET", "/v1/files", as: JSONValue.self)
-        XCTAssertEqual(transport.last?.request.url.absoluteString, "https://dp-gcp02.test/v1/files")
-        XCTAssertEqual(transport.last?.request.headers["Authorization"], "Bearer locator-2")
+        #expect(transport.last?.request.url.absoluteString == "https://dp-gcp02.test/v1/files")
+        #expect(transport.last?.request.headers["Authorization"] == "Bearer locator-2")
     }
 
-    func testCloseFailsRequestsBeforeTheNetwork() async throws {
+    @Test func closeFailsRequestsBeforeTheNetwork() async throws {
         let transport = MockTransport(json: specJSON())
         let runner = try await makeClient(transport).runtimes.run("rt-1")
         runner.close()
-        XCTAssertTrue(runner.isClosed)
+        #expect(runner.isClosed)
         let before = transport.requests.count
-        do {
-            _ = try await runner.dataPlane.json("GET", "/v1/tasks", as: JSONValue.self)
-            XCTFail("expected runnerExpired")
-        } catch let error as IntrospectionError {
-            XCTAssertEqual(error.kind, .runnerExpired)
-            XCTAssertEqual(error.code, "runner_expired")
+        let request = try await #require(throws: IntrospectionError.self) {
+            try await runner.dataPlane.json("GET", "/v1/tasks", as: JSONValue.self)
         }
-        do {
-            try await runner.refresh()
-            XCTFail("expected runnerExpired")
-        } catch let error as IntrospectionError {
-            XCTAssertEqual(error.kind, .runnerExpired)
-        }
-        XCTAssertEqual(transport.requests.count, before)
+        #expect(request.kind == .runnerExpired)
+        #expect(request.code == "runner_expired")
+        let refresh = try await #require(throws: IntrospectionError.self) { try await runner.refresh() }
+        #expect(refresh.kind == .runnerExpired)
+        #expect(transport.requests.count == before)
     }
 
-    func testRunnerFromBareSpec() async throws {
+    @Test func runnerFromBareSpec() async throws {
         let spec = try JSONCoding.decoder.decode(RunnerSpec.self, from: Data(specJSON().utf8))
         let roundTrip = try JSONCoding.decoder.decode(RunnerSpec.self, from: JSONCoding.encoder.encode(spec))
-        XCTAssertEqual(roundTrip, spec)
+        #expect(roundTrip == spec)
 
         let transport = MockTransport(json: "{}")
         let runner = try Runner(spec: spec, transport: transport)
         _ = try await runner.dataPlane.json("GET", "/v1/conversations", as: JSONValue.self)
-        XCTAssertEqual(transport.last?.request.url.absoluteString, "https://dp-gcp01.test/v1/conversations")
-        XCTAssertNil(runner.source)
-        do {
-            try await runner.refresh()
-            XCTFail("expected invalidRequest")
-        } catch let error as IntrospectionError {
-            XCTAssertEqual(error.kind, .invalidRequest)
-        }
+        #expect(transport.last?.request.url.absoluteString == "https://dp-gcp01.test/v1/conversations")
+        #expect(runner.source == nil)
+        let error = try await #require(throws: IntrospectionError.self) { try await runner.refresh() }
+        #expect(error.kind == .invalidRequest)
 
         var bad = spec
         bad.deployment.endpoint = "not a url"
-        XCTAssertThrowsError(try Runner(spec: bad, transport: transport))
+        #expect(throws: (any Error).self) { try Runner(spec: bad, transport: transport) }
     }
 
-    func testExperimentRunAndLifecycle() async throws {
+    @Test func experimentRunAndLifecycle() async throws {
         let experimentJSON = #"""
             {
               "id": "exp-1", "org_id": "o", "project_id": "p", "name": "Shorter prompt",
@@ -293,34 +281,35 @@ final class RunnerTests: XCTestCase {
         let client = makeClient(transport)
 
         let listed = try await client.experiments.list(ExperimentListParams(project: "acme", runtime: "agent", status: .running)).collect()
-        XCTAssertEqual(listed.first?.goalJson?.components.first?.guard?.min, 0.2)
-        XCTAssertEqual(listed.first?.weightsJson?["arm-1"], 60)
-        XCTAssertEqual(listed.first?.arms?.first?.armLabel, "control")
-        XCTAssertEqual(transport.last?.query["status"], ["running"])
+        #expect(listed.first?.goalJson?.components.first?.guard?.min == 0.2)
+        #expect(listed.first?.weightsJson?["arm-1"] == 60)
+        #expect(listed.first?.arms?.first?.armLabel == "control")
+        #expect(transport.last?.query["status"] == ["running"])
 
         let handle = client.experiments("exp-1", project: "acme")
         let started = try await handle.start()
-        XCTAssertEqual(started.status, .running)
-        XCTAssertEqual(transport.last?.path, "/v1/experiments/exp-1/start")
-        XCTAssertEqual(transport.last?.request.method, "POST")
-        XCTAssertEqual(transport.last?.query["project"], ["acme"])
+        #expect(started.status == .running)
+        #expect(transport.last?.path == "/v1/experiments/exp-1/start")
+        #expect(transport.last?.request.method == "POST")
+        #expect(transport.last?.query["project"] == ["acme"])
         _ = try await handle.end()
-        XCTAssertEqual(transport.last?.path, "/v1/experiments/exp-1/end")
+        #expect(transport.last?.path == "/v1/experiments/exp-1/end")
         _ = try await handle.cancel()
-        XCTAssertEqual(transport.last?.path, "/v1/experiments/exp-1/cancel")
+        #expect(transport.last?.path == "/v1/experiments/exp-1/cancel")
 
         let runner = try await handle.run(RunRequest(identity: RunnerIdentity(anonymousId: "anon-1")))
-        XCTAssertEqual(transport.last?.path, "/v1/experiments/exp-1/run")
-        XCTAssertEqual(transport.last?.json?["identity"]?["anonymous_id"]?.stringValue, "anon-1")
-        XCTAssertEqual(
-            runner.source, .experiment(id: "exp-1", request: RunRequest(identity: RunnerIdentity(anonymousId: "anon-1")), project: "acme"))
+        #expect(transport.last?.path == "/v1/experiments/exp-1/run")
+        #expect(transport.last?.json?["identity"]?["anonymous_id"]?.stringValue == "anon-1")
+        #expect(
+            runner.source == .experiment(id: "exp-1", request: RunRequest(identity: RunnerIdentity(anonymousId: "anon-1")), project: "acme")
+        )
 
         try await client.experiments.delete("exp-1", project: "acme")
-        XCTAssertEqual(transport.last?.request.method, "DELETE")
-        XCTAssertEqual(transport.last?.query["project"], ["acme"])
+        #expect(transport.last?.request.method == "DELETE")
+        #expect(transport.last?.query["project"] == ["acme"])
     }
 
-    func testExperimentCreateAndUpdateBodies() async throws {
+    @Test func experimentCreateAndUpdateBodies() async throws {
         let transport = MockTransport(json: #"{"id": "exp-1"}"#)
         let client = makeClient(transport)
         _ = try await client.experiments.create(
@@ -335,33 +324,33 @@ final class RunnerTests: XCTestCase {
                 ],
                 sampleRate: 0.25
             ))
-        let body = try XCTUnwrap(transport.last?.json)
-        XCTAssertEqual(body["runtime"]?.stringValue, "customer-agent")
-        XCTAssertEqual(body["goal_json"]?["kind"]?.stringValue, "composite")
-        XCTAssertEqual(body["goal_json"]?["components"]?[0]?["source"]?.stringValue, "judge")
-        XCTAssertEqual(body["goal_json"]?["components"]?[0]?["judge_id"]?.stringValue, "j1")
-        XCTAssertEqual(body["goal_json"]?["components"]?[0]?["guard"]?["min"]?.doubleValue, 0.1)
-        XCTAssertEqual(body["arms"]?[1]?["agent_overrides"]?["agent"]?.stringValue, "short")
-        XCTAssertEqual(body["sample_rate"]?.doubleValue, 0.25)
-        XCTAssertNil(body["description"])
+        let body = try #require(transport.last?.json)
+        #expect(body["runtime"]?.stringValue == "customer-agent")
+        #expect(body["goal_json"]?["kind"]?.stringValue == "composite")
+        #expect(body["goal_json"]?["components"]?[0]?["source"]?.stringValue == "judge")
+        #expect(body["goal_json"]?["components"]?[0]?["judge_id"]?.stringValue == "j1")
+        #expect(body["goal_json"]?["components"]?[0]?["guard"]?["min"]?.doubleValue == 0.1)
+        #expect(body["arms"]?[1]?["agent_overrides"]?["agent"]?.stringValue == "short")
+        #expect(body["sample_rate"]?.doubleValue == 0.25)
+        #expect(body["description"] == nil)
 
         _ = try await client.experiments.update("exp-1", ExperimentUpdate(description: "why"))
-        XCTAssertEqual(transport.last?.request.method, "PATCH")
-        XCTAssertEqual(transport.last?.json, ["description": "why"])
+        #expect(transport.last?.request.method == "PATCH")
+        #expect(transport.last?.json == ["description": "why"])
 
         _ = try await client.experiments.create(document: ["name": "raw", "project": "acme"])
-        XCTAssertEqual(transport.last?.json?["name"]?.stringValue, "raw")
+        #expect(transport.last?.json?["name"]?.stringValue == "raw")
     }
 
-    func testRunCallerRoundTripKeepsExtraKeys() throws {
+    @Test func runCallerRoundTripKeepsExtraKeys() throws {
         let json = #"{"ip": "1.1.1.1", "user_agent": "UA", "page": {"path": "/x"}, "device": {"model": "iPhone"}, "timezone": "UTC"}"#
         let caller = try JSONCoding.decoder.decode(RunCaller.self, from: Data(json.utf8))
-        XCTAssertEqual(caller.userAgent, "UA")
-        XCTAssertEqual(caller.page?.path, "/x")
-        XCTAssertEqual(caller.extra["device"]?["model"]?.stringValue, "iPhone")
-        XCTAssertNil(caller.extra["ip"])
+        #expect(caller.userAgent == "UA")
+        #expect(caller.page?.path == "/x")
+        #expect(caller.extra["device"]?["model"]?.stringValue == "iPhone")
+        #expect(caller.extra["ip"] == nil)
         let encoded = try JSONCoding.decoder.decode(JSONValue.self, from: JSONCoding.encoder.encode(caller))
-        XCTAssertEqual(encoded["timezone"]?.stringValue, "UTC")
-        XCTAssertEqual(encoded["user_agent"]?.stringValue, "UA")
+        #expect(encoded["timezone"]?.stringValue == "UTC")
+        #expect(encoded["user_agent"]?.stringValue == "UA")
     }
 }

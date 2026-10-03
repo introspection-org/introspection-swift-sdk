@@ -1,10 +1,10 @@
 import Foundation
-import XCTest
+import Testing
 
 @testable import IntrospectionSDK
 
-final class EventsMetricsTests: XCTestCase {
-    func testEventsListSerializesFamilyFiltersAndWindow() async throws {
+@Suite struct EventsMetricsTests {
+    @Test func eventsListSerializesFamilyFiltersAndWindow() async throws {
         let page = #"""
             {"records":[
               {"id":"e1","timestamp":"2026-10-01T12:00:00Z","event_name":"introspection.feedback","trace_id":"t1",
@@ -23,33 +23,33 @@ final class EventsMetricsTests: XCTestCase {
             ), now: now
         ).collect()
 
-        let q = try XCTUnwrap(transport.last).query
-        XCTAssertEqual(transport.last?.path, "/v1/events")
-        XCTAssertEqual(q["event_name"], ["introspection.feedback"])
-        XCTAssertEqual(q["limit"], ["50"])
-        XCTAssertEqual(q["sort"], ["timestamp"])
-        XCTAssertEqual(q["direction"], ["desc"])
-        XCTAssertEqual(q["start_date"], [ISO8601.format(now.addingTimeInterval(-7 * 86_400))])
-        XCTAssertEqual(q["conversation_ids"], ["c1", "c2"])
-        XCTAssertEqual(q["owner_key"], ["user:u1"])
-        XCTAssertEqual(q["event_id"], ["e1"])
-        XCTAssertEqual(q["include_superseded"], ["true"])
-        XCTAssertEqual(q["request"], ["true"])
+        let q = try #require(transport.last).query
+        #expect(transport.last?.path == "/v1/events")
+        #expect(q["event_name"] == ["introspection.feedback"])
+        #expect(q["limit"] == ["50"])
+        #expect(q["sort"] == ["timestamp"])
+        #expect(q["direction"] == ["desc"])
+        #expect(q["start_date"] == [ISO8601.format(now.addingTimeInterval(-7 * 86_400))])
+        #expect(q["conversation_ids"] == ["c1", "c2"])
+        #expect(q["owner_key"] == ["user:u1"])
+        #expect(q["event_id"] == ["e1"])
+        #expect(q["include_superseded"] == ["true"])
+        #expect(q["request"] == ["true"])
 
-        XCTAssertEqual(events.count, 2)
-        let feedback = try XCTUnwrap(events[0].feedback)
-        XCTAssertEqual(feedback.name, "thumbs_up")
-        XCTAssertEqual(feedback.value, 1)
-        XCTAssertEqual(feedback.properties?["x"], 1)
-        XCTAssertNil(events[0].observation)
-        XCTAssertEqual(events[1].eventName.rawValue, "introspection.someday")
-        XCTAssertEqual(events[1].payload?["z"], true)
-        XCTAssertNil(events[1].feedback)
+        #expect(events.count == 2)
+        let feedback = try #require(events[0].feedback)
+        #expect(feedback.name == "thumbs_up")
+        #expect(feedback.value == 1)
+        #expect(feedback.properties?["x"] == 1)
+        #expect(events[0].observation == nil)
+        #expect(events[1].eventName.rawValue == "introspection.someday")
+        #expect(events[1].payload?["z"] == true)
+        #expect(events[1].feedback == nil)
 
-        XCTAssertThrowsError(try client.events.list(EventListParams(eventName: .pattern, end: Date(), lookback: "1d")))
+        #expect(throws: (any Error).self) { try client.events.list(EventListParams(eventName: .pattern, end: Date(), lookback: "1d")) }
     }
 
-    func testEventGetAndTypedPayloads() async throws {
+    @Test func eventGetAndTypedPayloads() async throws {
         let observation = #"""
             {"id":"o1","timestamp":"2026-10-01T12:00:00Z","event_name":"introspection.observation",
              "payload":{"observation_id":"0199a1b2-0000-7000-8000-000000000001","lens":"friction","label":"slow",
@@ -58,13 +58,13 @@ final class EventsMetricsTests: XCTestCase {
         let transport = MockTransport(json: observation)
         let client = makeClient(transport)
         let event = try await client.events.get("o/1")
-        XCTAssertTrue(transport.last?.request.url.absoluteString.hasSuffix("/v1/events/o%2F1") ?? false)
-        let payload = try XCTUnwrap(event.observation)
-        XCTAssertEqual(payload.lens, "friction")
-        XCTAssertEqual(payload.patternId, "p1")
-        XCTAssertEqual(payload.evidenceRefs, ["m:1"])
+        #expect(transport.last?.request.url.absoluteString.hasSuffix("/v1/events/o%2F1") ?? false)
+        let payload = try #require(event.observation)
+        #expect(payload.lens == "friction")
+        #expect(payload.patternId == "p1")
+        #expect(payload.evidenceRefs == ["m:1"])
         let custom = try event.decodePayload(JSONObject.self)
-        XCTAssertEqual(custom["label"], "slow")
+        #expect(custom["label"] == "slow")
 
         let pattern = try JSONCoding.decoder.decode(
             IntrospectionEvent.self,
@@ -73,11 +73,11 @@ final class EventsMetricsTests: XCTestCase {
                 {"id":"p1","timestamp":"2026-10-01T12:00:00Z","event_name":"introspection.pattern",
                  "payload":{"pattern_id":"p1","status":"active","created_at":"2026-09-01T00:00:00Z","last_detected_at":"2026-10-01T00:00:00.123456Z"}}
                 """#.utf8))
-        XCTAssertEqual(pattern.pattern?.status, "active")
-        XCTAssertNotNil(pattern.pattern?.lastDetectedAt)
+        #expect(pattern.pattern?.status == "active")
+        #expect(pattern.pattern?.lastDetectedAt != nil)
     }
 
-    func testMetricsQueryEncodingAndDecoding() async throws {
+    @Test func metricsQueryEncodingAndDecoding() async throws {
         let response = #"""
             {"data":[{"timestamp":1790000000000,"dimensions":[{"field":"service_name","value":"svc"}],
               "metrics":[{"metric_index":0,"measure":null,"aggregation":"count","value":12},
@@ -103,11 +103,10 @@ final class EventsMetricsTests: XCTestCase {
                 config: MetricQueryConfig(rowLimit: 100, seriesLimit: 10)
             ))
 
-        XCTAssertEqual(transport.last?.request.method, "POST")
-        XCTAssertEqual(transport.last?.path, "/v1/metrics")
-        XCTAssertEqual(
-            transport.last?.json,
-            [
+        #expect(transport.last?.request.method == "POST")
+        #expect(transport.last?.path == "/v1/metrics")
+        #expect(
+            transport.last?.json == [
                 "view": "spans",
                 "metrics": [["aggregation": "count"], ["aggregation": "p95", "measure": "duration_ms"]],
                 "dimensions": [["field": "service_name"]],
@@ -123,19 +122,19 @@ final class EventsMetricsTests: XCTestCase {
                 "config": ["row_limit": 100, "series_limit": 10],
             ])
 
-        let row = try XCTUnwrap(result.data.first)
-        XCTAssertEqual(row.value(at: 0), 12)
-        XCTAssertEqual(row.value(at: 1), 340.5)
-        XCTAssertEqual(row.dimension("service_name"), "svc")
-        XCTAssertEqual(row.date, from)
-        XCTAssertNil(row.metrics[0].measure)
-        XCTAssertEqual(result.meta?.interval, .oneHour)
-        XCTAssertEqual(result.meta?.approximate, true)
-        XCTAssertEqual(result.meta?.orderBy?.first?.metricIndex, 0)
-        XCTAssertNotNil(result.meta?.window?.start)
+        let row = try #require(result.data.first)
+        #expect(row.value(at: 0) == 12)
+        #expect(row.value(at: 1) == 340.5)
+        #expect(row.dimension("service_name") == "svc")
+        #expect(row.date == from)
+        #expect(row.metrics[0].measure == nil)
+        #expect(result.meta?.interval == .oneHour)
+        #expect(result.meta?.approximate == true)
+        #expect(result.meta?.orderBy?.first?.metricIndex == 0)
+        #expect(result.meta?.window?.start != nil)
     }
 
-    func testSharesRoutes() async throws {
+    @Test func sharesRoutes() async throws {
         let share = #"""
             {"id":"sh1","org_id":"o","project_id":"p","created_at":"2026-10-01T12:00:00Z","updated_at":"2026-10-01T12:00:00Z",
              "resource_type":"file","resource_id":"f1","granted_member_id":null,"created_by_member_id":"m1",
@@ -151,18 +150,18 @@ final class EventsMetricsTests: XCTestCase {
         }
         let client = makeClient(transport)
         let shares = try await client.shares.list(ShareListParams(resourceType: .file, createdByMe: true)).collect()
-        XCTAssertEqual(shares.first?.url, "https://dp.test/v1/files/f1?share_id=sh1")
-        XCTAssertNil(shares.first?.grantedMemberId)
-        XCTAssertEqual(transport.last?.query["resource_type"], ["file"])
-        XCTAssertEqual(transport.last?.query["created_by_me"], ["true"])
+        #expect(shares.first?.url == "https://dp.test/v1/files/f1?share_id=sh1")
+        #expect(shares.first?.grantedMemberId == nil)
+        #expect(transport.last?.query["resource_type"] == ["file"])
+        #expect(transport.last?.query["created_by_me"] == ["true"])
 
         let created = try await client.shares.create(ShareCreate(resourceType: .conversation, resourceId: "c1", grantedMemberId: "m2"))
-        XCTAssertEqual(created.id, "sh1")
-        XCTAssertEqual(transport.last?.json, ["resource_type": "conversation", "resource_id": "c1", "granted_member_id": "m2"])
+        #expect(created.id == "sh1")
+        #expect(transport.last?.json == ["resource_type": "conversation", "resource_id": "c1", "granted_member_id": "m2"])
 
         _ = try await client.shares.get("sh1")
-        XCTAssertEqual(transport.last?.path, "/v1/shares/sh1")
+        #expect(transport.last?.path == "/v1/shares/sh1")
         try await client.shares.delete("sh1")
-        XCTAssertEqual(transport.last?.request.method, "DELETE")
+        #expect(transport.last?.request.method == "DELETE")
     }
 }

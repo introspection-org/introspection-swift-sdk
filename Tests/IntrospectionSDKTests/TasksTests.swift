@@ -1,9 +1,9 @@
 import Foundation
-import XCTest
+import Testing
 
 @testable import IntrospectionSDK
 
-final class TasksTests: XCTestCase {
+@Suite struct TasksTests {
     static let taskJSON = #"""
         {
           "id": "0192f0a0-0000-7000-8000-000000000001",
@@ -32,35 +32,35 @@ final class TasksTests: XCTestCase {
     static let runJSON =
         #"{"id":"run-1","task_id":"0192f0a0-0000-7000-8000-000000000001","status":"queued","created_at":"2026-09-30T12:00:00Z","updated_at":null}"#
 
-    func testDecodesRealisticTask() throws {
+    @Test func decodesRealisticTask() throws {
         let task = try JSONCoding.decoder.decode(IntrospectionTask.self, from: Data(Self.taskJSON.utf8))
-        XCTAssertEqual(task.id, "0192f0a0-0000-7000-8000-000000000001")
-        XCTAssertEqual(task.status, .awaitingUser)
-        XCTAssertEqual(task.kind, .eval)
-        XCTAssertEqual(task.displayIndex, 42)
-        XCTAssertEqual(task.runtimeId, "0192f0a0-0000-7000-8000-0000000000dd")
-        XCTAssertNil(task.automationId)
-        XCTAssertNil(task.completedAt)
-        XCTAssertNotNil(task.createdAt)
-        XCTAssertEqual(task.conversationMetadata, ["flow": "checkout"])
-        XCTAssertEqual(task.tags, ["customer:acme"])
-        XCTAssertEqual(task.agent?.sandboxStatus, "Running")
-        XCTAssertEqual(task.agent?.sessionId, "sess-1")
-        XCTAssertEqual(task.conversationId, "conv-1")
-        XCTAssertEqual(task.metadata?["agent_name"]?.stringValue, "researcher")
-        XCTAssertFalse(task.status.isTerminal)
+        #expect(task.id == "0192f0a0-0000-7000-8000-000000000001")
+        #expect(task.status == .awaitingUser)
+        #expect(task.kind == .eval)
+        #expect(task.displayIndex == 42)
+        #expect(task.runtimeId == "0192f0a0-0000-7000-8000-0000000000dd")
+        #expect(task.automationId == nil)
+        #expect(task.completedAt == nil)
+        #expect(task.createdAt != nil)
+        #expect(task.conversationMetadata == ["flow": "checkout"])
+        #expect(task.tags == ["customer:acme"])
+        #expect(task.agent?.sandboxStatus == "Running")
+        #expect(task.agent?.sessionId == "sess-1")
+        #expect(task.conversationId == "conv-1")
+        #expect(task.metadata?["agent_name"]?.stringValue == "researcher")
+        #expect(!task.status.isTerminal)
     }
 
-    func testMinimalTaskAndUnknownStatusDecode() throws {
+    @Test func minimalTaskAndUnknownStatusDecode() throws {
         let task = try JSONCoding.decoder.decode(IntrospectionTask.self, from: Data(#"{"id":"t1","status":"hibernating","extra":1}"#.utf8))
-        XCTAssertEqual(task.status.rawValue, "hibernating")
-        XCTAssertEqual(task.kind, .agent)
-        XCTAssertFalse(task.isArchived)
-        XCTAssertEqual(task.tags, [])
-        XCTAssertEqual(task.conversationId, "t1")
+        #expect(task.status.rawValue == "hibernating")
+        #expect(task.kind == .agent)
+        #expect(!task.isArchived)
+        #expect(task.tags == [])
+        #expect(task.conversationId == "t1")
     }
 
-    func testListEncodesEveryFilterAndPages() async throws {
+    @Test func listEncodesEveryFilterAndPages() async throws {
         let transport = MockTransport { request, index in
             let records = "[\(TasksTests.taskJSON)]"
             return index == 0
@@ -76,31 +76,31 @@ final class TasksTests: XCTestCase {
             conversationId: "conv-1", conversationIds: ["c-a", "c-b"], tag: "customer:acme"
         )
         let tasks = try await client.tasks.list(params).collect()
-        XCTAssertEqual(tasks.map(\.id), ["0192f0a0-0000-7000-8000-000000000001", "t2"])
-        XCTAssertEqual(tasks.last?.status, .completed)
+        #expect(tasks.map(\.id) == ["0192f0a0-0000-7000-8000-000000000001", "t2"])
+        #expect(tasks.last?.status == .completed)
 
-        let first = try XCTUnwrap(transport.requests.first)
-        XCTAssertEqual(first.request.method, "GET")
-        XCTAssertEqual(first.path, "/v1/tasks")
+        let first = try #require(transport.requests.first)
+        #expect(first.request.method == "GET")
+        #expect(first.path == "/v1/tasks")
         let q = first.query
-        XCTAssertEqual(q["next"], ["cursor-1"])
-        XCTAssertEqual(q["limit"], ["1"])
-        XCTAssertEqual(q["include_total"], ["true"])
-        XCTAssertEqual(q["statuses"], ["running", "idle"])
-        XCTAssertEqual(q["runtime_id"], ["rt-1"])
-        XCTAssertEqual(q["runtime_ids"], ["rt-2", "rt-3"])
-        XCTAssertEqual(q["updated_after"]?.count, 1)
-        XCTAssertEqual(q["require_automation_id"], ["false"])
-        XCTAssertEqual(q["automation_id"], ["auto-1"])
-        XCTAssertEqual(q["member_id"], ["m-1"])
-        XCTAssertEqual(q["conversation_id"], ["conv-1"])
-        XCTAssertEqual(q["conversation_ids"], ["c-a", "c-b"])
-        XCTAssertEqual(q["tag"], ["customer:acme"])
-        XCTAssertEqual(transport.requests[1].query["next"], ["cursor-2"])
-        XCTAssertEqual(transport.requests[1].query["tag"], ["customer:acme"])
+        #expect(q["next"] == ["cursor-1"])
+        #expect(q["limit"] == ["1"])
+        #expect(q["include_total"] == ["true"])
+        #expect(q["statuses"] == ["running", "idle"])
+        #expect(q["runtime_id"] == ["rt-1"])
+        #expect(q["runtime_ids"] == ["rt-2", "rt-3"])
+        #expect(q["updated_after"]?.count == 1)
+        #expect(q["require_automation_id"] == ["false"])
+        #expect(q["automation_id"] == ["auto-1"])
+        #expect(q["member_id"] == ["m-1"])
+        #expect(q["conversation_id"] == ["conv-1"])
+        #expect(q["conversation_ids"] == ["c-a", "c-b"])
+        #expect(q["tag"] == ["customer:acme"])
+        #expect(transport.requests[1].query["next"] == ["cursor-2"])
+        #expect(transport.requests[1].query["tag"] == ["customer:acme"])
     }
 
-    func testCreateEncodesSnakeCaseBodyAndOmitsNils() async throws {
+    @Test func createEncodesSnakeCaseBodyAndOmitsNils() async throws {
         let transport = MockTransport { _, _ in
             .response(.json(#"{"task":\#(TasksTests.taskJSON),"run":\#(TasksTests.runJSON)}"#, status: 201))
         }
@@ -122,34 +122,34 @@ final class TasksTests: XCTestCase {
             forkShareId: "share-1"
         )
         let response = try await client.tasks.create(body)
-        XCTAssertEqual(response.run.id, "run-1")
-        XCTAssertEqual(response.run.status, .queued)
-        XCTAssertEqual(response.task.title, "Summarize my week")
+        #expect(response.run.id == "run-1")
+        #expect(response.run.status == .queued)
+        #expect(response.task.title == "Summarize my week")
 
-        let last = try XCTUnwrap(transport.last)
-        XCTAssertEqual(last.request.method, "POST")
-        XCTAssertEqual(last.path, "/v1/tasks")
-        let json = try XCTUnwrap(last.json)
-        XCTAssertEqual(json["prompt"], "Summarize my week")
-        XCTAssertEqual(json["kind"], "eval")
-        XCTAssertEqual(json["agent_name"], "researcher")
-        XCTAssertEqual(json["runtime_id"], "rt-1")
-        XCTAssertEqual(json["bindings_required"], false)
-        XCTAssertEqual(json["repositories"], [["repo": "acme/api", "ref": "main", "depth": 0]])
-        XCTAssertEqual(json["idle_timeout_seconds"], 0)
-        XCTAssertEqual(json["metadata"], ["source": "ios"])
-        XCTAssertEqual(json["conversation_metadata"], ["flow": "checkout"])
-        XCTAssertEqual(json["tags"], ["customer:acme"])
-        XCTAssertEqual(json["files"], [["id": "f-1", "name": "specs/a.md", "size_bytes": 12]])
-        XCTAssertEqual(json["commands"], true)
-        XCTAssertEqual(json["compose"]?["services"]?["db"]?["image"], "postgres:17")
-        XCTAssertEqual(json["fork_share_id"], "share-1")
-        XCTAssertNil(json["title"])
-        XCTAssertNil(json["recipe_patch"])
-        XCTAssertNil(json["collect_sandbox_logs"])
+        let last = try #require(transport.last)
+        #expect(last.request.method == "POST")
+        #expect(last.path == "/v1/tasks")
+        let json = try #require(last.json)
+        #expect(json["prompt"] == "Summarize my week")
+        #expect(json["kind"] == "eval")
+        #expect(json["agent_name"] == "researcher")
+        #expect(json["runtime_id"] == "rt-1")
+        #expect(json["bindings_required"] == false)
+        #expect(json["repositories"] == [["repo": "acme/api", "ref": "main", "depth": 0]])
+        #expect(json["idle_timeout_seconds"] == 0)
+        #expect(json["metadata"] == ["source": "ios"])
+        #expect(json["conversation_metadata"] == ["flow": "checkout"])
+        #expect(json["tags"] == ["customer:acme"])
+        #expect(json["files"] == [["id": "f-1", "name": "specs/a.md", "size_bytes": 12]])
+        #expect(json["commands"] == true)
+        #expect(json["compose"]?["services"]?["db"]?["image"] == "postgres:17")
+        #expect(json["fork_share_id"] == "share-1")
+        #expect(json["title"] == nil)
+        #expect(json["recipe_patch"] == nil)
+        #expect(json["collect_sandbox_logs"] == nil)
     }
 
-    func testGetWithIncludeUpdateDeleteArchive() async throws {
+    @Test func getWithIncludeUpdateDeleteArchive() async throws {
         let transport = MockTransport { request, _ in
             switch request.method {
             case "GET", "PATCH": return .response(.json(TasksTests.taskJSON))
@@ -160,30 +160,30 @@ final class TasksTests: XCTestCase {
         let id = "task/1"
 
         _ = try await client.tasks.get(id)
-        XCTAssertEqual(transport.last?.request.url.absoluteString, "https://dp.test/v1/tasks/task%2F1")
-        XCTAssertNil(transport.last?.query["include"])
+        #expect(transport.last?.request.url.absoluteString == "https://dp.test/v1/tasks/task%2F1")
+        #expect(transport.last?.query["include"] == nil)
 
         let task = try await client.tasks.get(id, include: [.agent])
-        XCTAssertEqual(task.agent?.sessionId, "sess-1")
-        XCTAssertEqual(transport.last?.query["include"], ["agent"])
+        #expect(task.agent?.sessionId == "sess-1")
+        #expect(transport.last?.query["include"] == ["agent"])
 
         _ = try await client.tasks.update(id, TaskUpdate(title: "Renamed", tags: []))
-        XCTAssertEqual(transport.last?.request.method, "PATCH")
-        XCTAssertEqual(transport.last?.json, ["title": "Renamed", "tags": []])
+        #expect(transport.last?.request.method == "PATCH")
+        #expect(transport.last?.json == ["title": "Renamed", "tags": []])
 
         try await client.tasks.delete(id)
-        XCTAssertEqual(transport.last?.request.method, "DELETE")
-        XCTAssertEqual(transport.last?.request.url.absoluteString, "https://dp.test/v1/tasks/task%2F1")
+        #expect(transport.last?.request.method == "DELETE")
+        #expect(transport.last?.request.url.absoluteString == "https://dp.test/v1/tasks/task%2F1")
 
         try await client.tasks.archive(id)
-        XCTAssertEqual(transport.last?.request.method, "POST")
-        XCTAssertEqual(transport.last?.request.url.absoluteString, "https://dp.test/v1/tasks/task%2F1/archive")
+        #expect(transport.last?.request.method == "POST")
+        #expect(transport.last?.request.url.absoluteString == "https://dp.test/v1/tasks/task%2F1/archive")
 
         try await client.tasks.unarchive(id)
-        XCTAssertEqual(transport.last?.request.url.absoluteString, "https://dp.test/v1/tasks/task%2F1/unarchive")
+        #expect(transport.last?.request.url.absoluteString == "https://dp.test/v1/tasks/task%2F1/unarchive")
     }
 
-    func testRunsCreateResumeGetCancel() async throws {
+    @Test func runsCreateResumeGetCancel() async throws {
         let transport = MockTransport { request, _ in
             if request.url.path.hasSuffix("/cancel") { return .response(.json(#"{"id":"run-1"}"#)) }
             if request.method == "GET" { return .response(.json(TasksTests.runJSON)) }
@@ -193,12 +193,11 @@ final class TasksTests: XCTestCase {
 
         let handle = try await client.tasks.runs.create(
             "t1", TaskRunCreate(text: "And next week?", kind: .steer, deliveryId: "d-1", runtimeId: "rt-9"))
-        XCTAssertNil(handle.task)
-        XCTAssertEqual(handle.run.id, "run-1")
-        XCTAssertEqual(transport.last?.path, "/v1/tasks/t1/runs")
-        XCTAssertEqual(
-            transport.last?.json,
-            [
+        #expect(handle.task == nil)
+        #expect(handle.run.id == "run-1")
+        #expect(transport.last?.path == "/v1/tasks/t1/runs")
+        #expect(
+            transport.last?.json == [
                 "prompt": ["text": "And next week?"], "kind": "steer", "delivery_id": "d-1", "runtime_id": "rt-9",
             ])
 
@@ -207,9 +206,8 @@ final class TasksTests: XCTestCase {
             TaskRunResume(resume: [
                 .resolved("int-1", payload: ["approved": true]), .cancelled("int-2"),
             ]))
-        XCTAssertEqual(
-            transport.last?.json,
-            [
+        #expect(
+            transport.last?.json == [
                 "resume": [
                     ["interruptId": "int-1", "status": "resolved", "payload": ["approved": true]],
                     ["interruptId": "int-2", "status": "cancelled"],
@@ -217,22 +215,22 @@ final class TasksTests: XCTestCase {
             ])
 
         let run = try await client.tasks.runs.get("t1", "current")
-        XCTAssertEqual(run.taskId, "0192f0a0-0000-7000-8000-000000000001")
-        XCTAssertEqual(transport.last?.path, "/v1/tasks/t1/runs/current")
+        #expect(run.taskId == "0192f0a0-0000-7000-8000-000000000001")
+        #expect(transport.last?.path == "/v1/tasks/t1/runs/current")
 
         let cancelled = try await handle.cancel()
-        XCTAssertEqual(cancelled.id, "run-1")
-        XCTAssertEqual(transport.last?.path, "/v1/tasks/0192f0a0-0000-7000-8000-000000000001/runs/run-1/cancel")
-        XCTAssertNil(transport.last?.request.body)
+        #expect(cancelled.id == "run-1")
+        #expect(transport.last?.path == "/v1/tasks/0192f0a0-0000-7000-8000-000000000001/runs/run-1/cancel")
+        #expect(transport.last?.request.body == nil)
 
         _ = try await client.tasks.runs.cancel("t1", "run-1", options: .drain(within: 30))
-        XCTAssertEqual(transport.last?.json, ["mode": "drain", "drain_within_seconds": 30])
+        #expect(transport.last?.json == ["mode": "drain", "drain_within_seconds": 30])
 
         _ = try await client.tasks.runs.cancel("t1", "run-1", options: TaskCancelOptions())
-        XCTAssertEqual(transport.last?.json, ["mode": "abort"])
+        #expect(transport.last?.json == ["mode": "abort"])
     }
 
-    func testStartReturnsHandleAndTextCollectsDeltas() async throws {
+    @Test func startReturnsHandleAndTextCollectsDeltas() async throws {
         let sse = """
             event: ag_ui
             id: 1
@@ -260,17 +258,17 @@ final class TasksTests: XCTestCase {
         }
         let client = makeClient(transport)
         let handle = try await client.tasks.start(prompt: "Hi", TaskCreate(title: "Greeting"))
-        XCTAssertEqual(handle.task?.status, .awaitingUser)
-        XCTAssertEqual(transport.requests[0].json?["prompt"], "Hi")
-        XCTAssertEqual(transport.requests[0].json?["title"], "Greeting")
+        #expect(handle.task?.status == .awaitingUser)
+        #expect(transport.requests[0].json?["prompt"] == "Hi")
+        #expect(transport.requests[0].json?["title"] == "Greeting")
 
         let text = try await handle.text()
-        XCTAssertEqual(text, "Hello, world")
-        XCTAssertEqual(transport.last?.path, "/v1/tasks/0192f0a0-0000-7000-8000-000000000001/runs/run-1/stream")
-        XCTAssertEqual(transport.last?.request.headers["Accept"], "text/event-stream")
+        #expect(text == "Hello, world")
+        #expect(transport.last?.path == "/v1/tasks/0192f0a0-0000-7000-8000-000000000001/runs/run-1/stream")
+        #expect(transport.last?.request.headers["Accept"] == "text/event-stream")
     }
 
-    func testTextThrowsWhenTheRunFails() async throws {
+    @Test func textThrowsWhenTheRunFails() async throws {
         let sse = """
             event: ag_ui
             id: 1
@@ -289,13 +287,9 @@ final class TasksTests: XCTestCase {
             return .stream(status: 200, headers: ["content-type": "text/event-stream"], chunks: [Data(sse.utf8)], error: nil)
         }
         let handle = try await makeClient(transport).tasks.start(prompt: "Hi")
-        do {
-            _ = try await handle.text()
-            XCTFail("expected the run failure to surface")
-        } catch let error as IntrospectionError {
-            XCTAssertEqual(error.kind, .runFailed)
-            XCTAssertEqual(error.message, "Sandbox failed to start")
-            XCTAssertEqual(error.code, "sandbox_failed")
-        }
+        let error = try await #require(throws: IntrospectionError.self) { try await handle.text() }
+        #expect(error.kind == .runFailed)
+        #expect(error.message == "Sandbox failed to start")
+        #expect(error.code == "sandbox_failed")
     }
 }

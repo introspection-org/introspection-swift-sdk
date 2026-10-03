@@ -7,12 +7,6 @@ import Logging
 /// same surface.
 public protocol DataPlaneConnection: Sendable {
     var dataPlane: HTTPClient { get }
-    /// Names the runtime version on task creates and runs when the token is not a runner.
-    var runtimeSelector: RuntimeSelector? { get }
-}
-
-extension DataPlaneConnection {
-    public var runtimeSelector: RuntimeSelector? { nil }
 }
 
 /// Entry point to the Introspection API.
@@ -40,10 +34,6 @@ public final class IntrospectionClient: DataPlaneConnection {
         public var dataPlaneCredentials: (any CredentialProvider)?
         public var transport: any HTTPTransport
         public var options: HTTPClient.Options
-        /// Runtime group slug or id that task creates and runs bind to when the
-        /// token is not a runner (a federated member's, for example). Resolved on
-        /// the Data Plane and cached; ignored for runner tokens by the server.
-        public var runtime: String?
 
         public init(
             controlPlaneURL: URL,
@@ -51,8 +41,7 @@ public final class IntrospectionClient: DataPlaneConnection {
             controlPlaneCredentials: (any CredentialProvider)? = nil,
             dataPlaneCredentials: (any CredentialProvider)? = nil,
             transport: any HTTPTransport = URLSessionTransport(),
-            options: HTTPClient.Options = HTTPClient.Options(),
-            runtime: String? = nil
+            options: HTTPClient.Options = HTTPClient.Options()
         ) {
             self.controlPlaneURL = controlPlaneURL
             self.dataPlaneURL = dataPlaneURL
@@ -60,7 +49,6 @@ public final class IntrospectionClient: DataPlaneConnection {
             self.dataPlaneCredentials = dataPlaneCredentials
             self.transport = transport
             self.options = options
-            self.runtime = runtime
         }
     }
 
@@ -69,7 +57,6 @@ public final class IntrospectionClient: DataPlaneConnection {
     public let controlPlane: HTTPClient
     /// The Data Plane HTTP client.
     public let dataPlane: HTTPClient
-    public let runtimeSelector: RuntimeSelector?
 
     public init(configuration: Configuration) {
         self.configuration = configuration
@@ -86,10 +73,6 @@ public final class IntrospectionClient: DataPlaneConnection {
             transport: configuration.transport,
             options: options
         )
-        let dataPlane = self.dataPlane
-        runtimeSelector = configuration.runtime.map { runtime in
-            RuntimeSelector(runtime: runtime) { try await dataPlane.resolveRuntimeId($0) }
-        }
     }
 
     public convenience init(

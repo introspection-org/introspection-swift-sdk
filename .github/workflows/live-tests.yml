@@ -47,4 +47,4 @@ jobs:
           swift test --filter LiveIdentityTests 2>&1 | tee live.log
       - name: Summary
         if: always()
-        run: grep -E "Test Case .*(passed|failed|skipped)|error:" live.log | tee -a "$GITHUB_STEP_SUMMARY" || true
+        run: grep -E "^(✔|✘|➜) Test |error:" live.log | tee -a "$GITHUB_STEP_SUMMARY" || true

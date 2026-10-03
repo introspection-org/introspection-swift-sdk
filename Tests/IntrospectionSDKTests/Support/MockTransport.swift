@@ -23,7 +23,7 @@ final class MockTransport: HTTPTransport, @unchecked Sendable {
 
     enum Reply {
         case response(HTTPResponse)
-        case stream(status: Int, headers: [String: String], chunks: [Data], error: any Error?)
+        case stream(status: Int, headers: [String: String], chunks: [Data], error: (any Error)?)
         case failure(any Error)
     }
 

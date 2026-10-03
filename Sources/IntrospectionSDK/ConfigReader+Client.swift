@@ -13,7 +13,6 @@ extension IntrospectionClient.Configuration {
     ///   the Control Plane.
     /// - `introspection.dataplane_url` (`INTROSPECTION_DATAPLANE_URL`, string, optional): the Data Plane, when it is
     ///   not the Control Plane host.
-    /// - `introspection.runtime` (`INTROSPECTION_RUNTIME`, string, optional): the runtime group tasks bind to.
     ///
     /// ```swift
     /// let config = ConfigReader(provider: EnvironmentVariablesProvider())
@@ -40,8 +39,7 @@ extension IntrospectionClient.Configuration {
             dataPlaneURL: dataPlaneURL,
             controlPlaneCredentials: BearerToken(token),
             transport: transport,
-            options: options,
-            runtime: config.string(forKey: ["introspection", "runtime"])
+            options: options
         )
     }
 }

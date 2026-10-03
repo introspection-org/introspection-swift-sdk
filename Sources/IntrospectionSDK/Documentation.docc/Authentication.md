@@ -8,7 +8,7 @@ Choose a credential for each kind of caller: servers, service accounts, the end 
 | --- | --- | --- |
 | Server or script | API key | `IntrospectionClient(controlPlaneURL:credentials:)` with ``BearerToken`` |
 | Backend acting for your users | Service account | `IntrospectionClient.fromServiceAccount(clientId:clientSecret:project:controlPlaneURL:)` |
-| End users signed in with your identity provider | Federated token exchange | `IntrospectionClient.federated(subjectToken:clientID:project:runtime:controlPlaneURL:)` |
+| End users signed in with your identity provider | Federated token exchange | `IntrospectionClient.federated(subjectToken:clientID:project:controlPlaneURL:)` |
 | End users signed in with Introspection | Hosted login | ``AuthClient`` |
 
 ## API keys and service accounts
@@ -39,15 +39,15 @@ let client = try await IntrospectionClient.federated(
     subjectToken: { try await supabase.auth.session.accessToken },
     clientID: "intro_app_...",
     project: "my-project",
-    runtime: "my-agent",
     controlPlaneURL: URL(string: "https://api.introspection.dev")!
 )
-let run = try await client.tasks.start(prompt: "Hello")
+let run = try await client.tasks.start(prompt: "Hello", TaskCreate(runtimeId: runtimeId))
+let next = try await client.tasks.runs.create(run.run.taskId, TaskRunCreate(text: "And then?", runtimeId: runtimeId))
 ```
 
 The member is the same on every sign-in, because it is derived from the federation and the provider's `sub`. The SDK exchanges again before the platform token expires and after a `401`, asking `subjectToken` for a current provider token each time. Sign out with the provider's SDK.
 
-A federated token is not a runner token, so a task runs on your agent only when it names a runtime. With `runtime:`, every task create and new run names the version that runtime group serves now, resolved on the Data Plane and cached by ``RuntimeSelector``. Customer tokens are refused on Control Plane routes.
+A federated token is not a runner token, so a task runs on your agent only when its create and runs name the runtime version (`runtimeId`). Customer tokens are refused on Control Plane routes, so resolve that id on your backend with a service account (`GET /v1/runtimes`, through ``RuntimesAPI``) and hand it to the app with the session, the same way the JavaScript browser client receives it. A runtime gets a new version id on every deploy, so fetch it per session rather than hard-coding it.
 
 The provider must sign with asymmetric keys (ES256 or RS256), and the Application's federation must name its issuer, for Supabase `https://<ref>.supabase.co/auth/v1`.
 

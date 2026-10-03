@@ -2,21 +2,18 @@ import Foundation
 
 extension DataPlaneConnection {
     /// Tasks and their runs (`/v1/tasks`).
-    public var tasks: TasksAPI { TasksAPI(http: dataPlane, runtimeSelector: runtimeSelector) }
+    public var tasks: TasksAPI { TasksAPI(http: dataPlane) }
 }
 
 /// Tasks: create, read, update, archive and delete conversations, and drive their runs.
 public struct TasksAPI: Sendable {
     let http: HTTPClient
-    let runtimeSelector: RuntimeSelector?
     /// Runs of a task: new turns, interrupt resumes, cancel and the AG-UI stream.
     public let runs: TaskRunsAPI
 
-    /// `runtimeSelector` fills `runtime_id` on creates that name none.
-    public init(http: HTTPClient, runtimeSelector: RuntimeSelector? = nil) {
+    public init(http: HTTPClient) {
         self.http = http
-        self.runtimeSelector = runtimeSelector
-        runs = TaskRunsAPI(http: http, runtimeSelector: runtimeSelector)
+        runs = TaskRunsAPI(http: http)
     }
 
     /// List tasks the caller can see, most recent user activity first.
@@ -26,9 +23,7 @@ public struct TasksAPI: Sendable {
 
     /// Create a task and its initial run.
     public func create(_ body: TaskCreate) async throws -> TaskCreateResponse {
-        var body = body
-        if body.runtimeId == nil, let runtimeSelector { body.runtimeId = try await runtimeSelector.runtimeId() }
-        return try await http.json("POST", "/v1/tasks", body: .encode(body), as: TaskCreateResponse.self)
+        try await http.json("POST", "/v1/tasks", body: .encode(body), as: TaskCreateResponse.self)
     }
 
     /// Get a task. The default read is a cheap row lookup; `include` opts into enrichments.
@@ -75,19 +70,13 @@ public struct TasksAPI: Sendable {
 /// Runs of a task (`/v1/tasks/{id}/runs`). `runId` may be `"current"` for the active run.
 public struct TaskRunsAPI: Sendable {
     let http: HTTPClient
-    let runtimeSelector: RuntimeSelector?
 
-    /// `runtimeSelector` fills `runtime_id` on turns that name none, so a restarted
-    /// sandbox adopts the runtime version the group serves now.
-    public init(http: HTTPClient, runtimeSelector: RuntimeSelector? = nil) {
+    public init(http: HTTPClient) {
         self.http = http
-        self.runtimeSelector = runtimeSelector
     }
 
     /// Send a turn. A running task is steered; an idle or settled one is resumed or restarted.
     public func create(_ taskId: String, _ body: TaskRunCreate) async throws -> RunHandle {
-        var body = body
-        if body.runtimeId == nil, let runtimeSelector { body.runtimeId = try await runtimeSelector.runtimeId() }
         let response = try await http.json(
             "POST", "/v1/tasks/\(pathSegment(taskId))/runs", body: .encode(body), as: TaskRunResponse.self
         )
@@ -101,8 +90,6 @@ public struct TaskRunsAPI: Sendable {
 
     /// Answer the task's pending interrupt with AG-UI resume entries.
     public func resume(_ taskId: String, _ body: TaskRunResume) async throws -> RunHandle {
-        var body = body
-        if body.runtimeId == nil, let runtimeSelector { body.runtimeId = try await runtimeSelector.runtimeId() }
         let response = try await http.json(
             "POST", "/v1/tasks/\(pathSegment(taskId))/runs", body: .encode(body), as: TaskRunResponse.self
         )

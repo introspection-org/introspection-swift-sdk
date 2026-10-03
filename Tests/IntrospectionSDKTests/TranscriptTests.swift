@@ -1,5 +1,5 @@
 import Foundation
-import XCTest
+import Testing
 
 @testable import IntrospectionSDK
 
@@ -9,8 +9,8 @@ private func span(_ json: String) throws -> GenAISpan {
 
 private func event(_ value: JSONValue) -> AGUIEvent { AGUIEvent(raw: value) }
 
-final class TranscriptTests: XCTestCase {
-    func testFoldSpansOrdersDedupesAndJoinsResults() throws {
+@Suite struct TranscriptTests {
+    @Test func foldSpansOrdersDedupesAndJoinsResults() throws {
         // Given out of order: the tool span (s3), the follow-up chat (s4), the first chat (s2), and a delegation.
         let toolSpan = try span(
             #"""
@@ -41,52 +41,52 @@ final class TranscriptTests: XCTestCase {
             """#)
 
         let entries = foldSpans([toolSpan, followUp, delegation, firstChat])
-        XCTAssertEqual(entries.map(\.id), ["cm-1", "resp-1", "tool:call-1", "span:s4:assistant:0", "span:s5:delegation"])
+        #expect(entries.map(\.id) == ["cm-1", "resp-1", "tool:call-1", "span:s4:assistant:0", "span:s5:delegation"])
 
-        let user = try XCTUnwrap(entries[0].message)
-        XCTAssertEqual(user.role, .user)
-        XCTAssertEqual(user.text, "find x")
-        XCTAssertEqual(user.clientMessageId, "cm-1")
+        let user = try #require(entries[0].message)
+        #expect(user.role == .user)
+        #expect(user.text == "find x")
+        #expect(user.clientMessageId == "cm-1")
 
-        let assistant = try XCTUnwrap(entries[1].message)
-        XCTAssertEqual(assistant.text, "Searching")
-        XCTAssertEqual(assistant.thinking, "hmm")
-        XCTAssertEqual(assistant.responseId, "resp-1")
+        let assistant = try #require(entries[1].message)
+        #expect(assistant.text == "Searching")
+        #expect(assistant.thinking == "hmm")
+        #expect(assistant.responseId == "resp-1")
 
-        let tool = try XCTUnwrap(entries[2].tool)
-        XCTAssertEqual(tool.name, "search")
-        XCTAssertEqual(tool.status, .complete)
-        XCTAssertEqual(tool.result, ["hits": 2])
-        XCTAssertEqual(tool.arguments, #"{"q":"x"}"#)
-        XCTAssertEqual(tool.spanId, "s4")
+        let tool = try #require(entries[2].tool)
+        #expect(tool.name == "search")
+        #expect(tool.status == .complete)
+        #expect(tool.result == ["hits": 2])
+        #expect(tool.arguments == #"{"q":"x"}"#)
+        #expect(tool.spanId == "s4")
 
-        let delegationEntry = try XCTUnwrap(entries[4].delegation)
-        XCTAssertEqual(delegationEntry.status, .error)
-        XCTAssertEqual(delegationEntry.invocationId, "run-9")
-        XCTAssertEqual(delegationEntry.agentName, "researcher")
-        XCTAssertEqual(delegationEntry.durationNs, 5)
+        let delegationEntry = try #require(entries[4].delegation)
+        #expect(delegationEntry.status == .error)
+        #expect(delegationEntry.invocationId == "run-9")
+        #expect(delegationEntry.agentName == "researcher")
+        #expect(delegationEntry.durationNs == 5)
 
         // Re-folding never duplicates.
-        XCTAssertEqual(foldSpans([firstChat, toolSpan, followUp, delegation]), entries)
+        #expect(foldSpans([firstChat, toolSpan, followUp, delegation]) == entries)
     }
 
-    func testRequestedToolCallStaysRunningAndErrorResults() throws {
+    @Test func requestedToolCallStaysRunningAndErrorResults() throws {
         let chat = try span(
             #"""
             {"trace_id":"t","span_id":"s1","start_time":"2026-10-01T12:00:01Z","end_time":"2026-10-01T12:00:02Z",
              "attributes":{"gen_ai":{"output":{"messages":[{"role":"assistant","parts":[{"type":"tool_call","id":"c1","name":"ls"}]}]}}}}
             """#)
-        XCTAssertEqual(foldSpans([chat]).first?.tool?.status, .running)
+        #expect(foldSpans([chat]).first?.tool?.status == .running)
 
         let failed = try span(
             #"""
             {"trace_id":"t","span_id":"s2","start_time":"2026-10-01T12:00:03Z",
              "attributes":{"gen_ai":{"input":{"messages":[{"role":"tool","parts":[{"type":"tool_call_response","id":"c1","response":{"error":"boom"}}]}]}}}}
             """#)
-        XCTAssertEqual(foldSpans([chat, failed]).first?.tool?.status, .error)
+        #expect(foldSpans([chat, failed]).first?.tool?.status == .error)
     }
 
-    func testAccumulatorFoldsLiveStream() {
+    @Test func accumulatorFoldsLiveStream() {
         var activity = 0
         var control: [String] = []
         let accumulator = TranscriptAccumulator(onActivity: { _ in activity += 1 }, onControl: { control.append($0.name ?? "") })
@@ -119,36 +119,36 @@ final class TranscriptTests: XCTestCase {
         ])
 
         let entries = accumulator.entries
-        XCTAssertEqual(entries.map(\.id), ["u1", "a1", "tool:c1", "delegation-tool:c2", "tool:c3"])
-        XCTAssertEqual(entries[0].message?.text, "hi")
-        XCTAssertEqual(entries[1].message?.text, "Hello")
-        XCTAssertEqual(entries[1].message?.thinking, "plan more")
-        XCTAssertEqual(entries[1].message?.responseId, "resp-1")
-        XCTAssertEqual(entries[2].tool?.arguments, #"{"q":"x"}"#)
-        XCTAssertEqual(entries[2].tool?.result, "2 hits")
-        XCTAssertEqual(entries[2].tool?.status, .complete)
+        #expect(entries.map(\.id) == ["u1", "a1", "tool:c1", "delegation-tool:c2", "tool:c3"])
+        #expect(entries[0].message?.text == "hi")
+        #expect(entries[1].message?.text == "Hello")
+        #expect(entries[1].message?.thinking == "plan more")
+        #expect(entries[1].message?.responseId == "resp-1")
+        #expect(entries[2].tool?.arguments == #"{"q":"x"}"#)
+        #expect(entries[2].tool?.result == "2 hits")
+        #expect(entries[2].tool?.status == .complete)
         let delegation = entries[3].delegation
-        XCTAssertEqual(delegation?.invocationId, "run-9")
-        XCTAssertEqual(delegation?.agentName, "researcher")
-        XCTAssertEqual(delegation?.label, "Dig")
-        XCTAssertEqual(delegation?.status, .running)
-        XCTAssertEqual(entries[4].tool?.status, .error)
-        XCTAssertEqual(activity, 1)
-        XCTAssertEqual(control, ["introspection.message_identity"])
+        #expect(delegation?.invocationId == "run-9")
+        #expect(delegation?.agentName == "researcher")
+        #expect(delegation?.label == "Dig")
+        #expect(delegation?.status == .running)
+        #expect(entries[4].tool?.status == .error)
+        #expect(activity == 1)
+        #expect(control == ["introspection.message_identity"])
     }
 
-    func testReasoningWithoutMessageIsKeptAtRunEnd() {
+    @Test func reasoningWithoutMessageIsKeptAtRunEnd() {
         let entries = foldAgui([
             event(["type": "REASONING_MESSAGE_CONTENT", "delta": "thinking only"]),
             event(["type": "RUN_ERROR", "runId": "r7", "message": "boom"]),
         ])
-        XCTAssertEqual(entries.count, 1)
-        XCTAssertEqual(entries[0].id, "r7:reasoning")
-        XCTAssertEqual(entries[0].message?.thinking, "thinking only")
-        XCTAssertEqual(entries[0].message?.text, "")
+        #expect(entries.count == 1)
+        #expect(entries[0].id == "r7:reasoning")
+        #expect(entries[0].message?.thinking == "thinking only")
+        #expect(entries[0].message?.text == "")
     }
 
-    func testMessagesSnapshotUpserts() {
+    @Test func messagesSnapshotUpserts() {
         let entries = foldAgui([
             event(["type": "TEXT_MESSAGE_START", "messageId": "a1"]),
             event(["type": "TEXT_MESSAGE_CONTENT", "messageId": "a1", "delta": "partial"]),
@@ -163,12 +163,12 @@ final class TranscriptTests: XCTestCase {
                 ],
             ]),
         ])
-        XCTAssertEqual(entries.map(\.id), ["a1", "u0", "tool:c9"])
-        XCTAssertEqual(entries[0].message?.text, "complete")
-        XCTAssertEqual(entries[2].tool?.arguments, "{}")
+        #expect(entries.map(\.id) == ["a1", "u0", "tool:c9"])
+        #expect(entries[0].message?.text == "complete")
+        #expect(entries[2].tool?.arguments == "{}")
     }
 
-    func testMergeTranscripts() {
+    @Test func mergesStoredAndLiveTranscripts() {
         let stored: [TranscriptEntry] = [
             .message(TranscriptMessageEntry(id: "cm-1", role: .user, text: "hi", clientMessageId: "cm-1")),
             .message(TranscriptMessageEntry(id: "resp-1", role: .assistant, text: "hello", responseId: "resp-1")),
@@ -190,6 +190,6 @@ final class TranscriptTests: XCTestCase {
             .tool(TranscriptToolEntry(callId: "c5", name: "new")),
         ]
         let merged = mergeTranscripts(stored: stored, live: live)
-        XCTAssertEqual(merged.map(\.id), stored.map(\.id) + ["delegation-tool:c3", "a2", "tool:c5"])
+        #expect(merged.map(\.id) == stored.map(\.id) + ["delegation-tool:c3", "a2", "tool:c5"])
     }
 }

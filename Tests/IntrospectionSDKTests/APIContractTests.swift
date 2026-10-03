@@ -1,5 +1,5 @@
 import Foundation
-import XCTest
+import Testing
 
 @testable import IntrospectionSDK
 
@@ -31,18 +31,17 @@ import XCTest
 // a reference that is not published yet.
 //
 // Run: INTROSPECTION_API_CONTRACT=1 swift test --filter APIContractTests
-final class APIContractTests: XCTestCase {
+@Suite struct APIContractTests {
     static let dataPlaneURL = "https://docs.introspection.dev/openapi/dataplane.json"
     static let controlPlaneURL = "https://docs.introspection.dev/openapi/controlplane.json"
 
-    private var problems: [String] = []
-    private var notes: [String] = []
-    private var surfaces = 0
+    private let drift = Drift()
 
-    func testSDKSurfaceMatchesTheReference() async throws {
-        guard ProcessInfo.processInfo.environment["INTROSPECTION_API_CONTRACT"] == "1" else {
-            throw XCTSkip("Set INTROSPECTION_API_CONTRACT=1 to compare the SDK against the published API reference")
-        }
+    @Test(
+        .enabled(
+            if: ProcessInfo.processInfo.environment["INTROSPECTION_API_CONTRACT"] == "1",
+            "Set INTROSPECTION_API_CONTRACT=1 to compare the SDK against the published API reference"))
+    func sdkSurfaceMatchesTheReference() async throws {
         let dp = try await OpenAPIReference.load(environmentKey: "INTROSPECTION_DP_OPENAPI", url: Self.dataPlaneURL)
         let cp = try await OpenAPIReference.load(environmentKey: "INTROSPECTION_CP_OPENAPI", url: Self.controlPlaneURL)
 
@@ -59,22 +58,22 @@ final class APIContractTests: XCTestCase {
         try await checkOrganization(cp)
         try await checkAuth(cp)
 
-        for note in notes { print("note: \(note)") }
-        if problems.isEmpty {
-            print("SDK surface matches the reference (\(surfaces) surfaces, \(dp.source) + \(cp.source))")
+        for note in drift.notes { print("note: \(note)") }
+        if drift.problems.isEmpty {
+            print("SDK surface matches the reference (\(drift.surfaces) surfaces, \(dp.source) + \(cp.source))")
         } else {
-            XCTFail(
-                "the SDK surface has drifted from the reference:\n\n\(problems.joined(separator: "\n\n"))\n\nreference: \(dp.source) + \(cp.source)"
+            Issue.record(
+                "the SDK surface has drifted from the reference:\n\n\(drift.problems.joined(separator: "\n\n"))\n\nreference: \(dp.source) + \(cp.source)"
             )
         }
     }
 
     /// The probe behind every read-model check, exercised without the network so it cannot pass by reading nothing.
-    func testDecodedKeysReadTheCodingKeys() throws {
+    @Test func decodedKeysReadTheCodingKeys() throws {
         let keys = try decodedKeys(IntrospectionTask.self)
-        XCTAssertTrue(keys.isSuperset(of: ["id", "is_archived", "conversation_metadata", "agent"]))
-        XCTAssertEqual(try decodedKeys(TaskRun.self), ["id", "task_id", "status", "created_at", "updated_at"])
-        XCTAssertEqual(try wireKeys(TaskRepoRequest(repo: "a/b", ref: "main", depth: 1)), ["repo", "ref", "depth"])
+        #expect(keys.isSuperset(of: ["id", "is_archived", "conversation_metadata", "agent"]))
+        #expect(try decodedKeys(TaskRun.self) == ["id", "task_id", "status", "created_at", "updated_at"])
+        #expect(try wireKeys(TaskRepoRequest(repo: "a/b", ref: "main", depth: 1)) == ["repo", "ref", "depth"])
     }
 
     // MARK: Comparison
@@ -115,9 +114,9 @@ final class APIContractTests: XCTestCase {
         sdkOnly: Set<String> = [],
         missingIsFatal: Bool? = nil
     ) {
-        surfaces += 1
+        drift.surfaces += 1
         guard let reference else {
-            problems.append("\(surface)\n  the reference does not declare this surface")
+            drift.problems.append("\(surface)\n  the reference does not declare this surface")
             return
         }
         let extra = sdk.subtracting(reference).subtracting(sdkOnly)
@@ -129,11 +128,11 @@ final class APIContractTests: XCTestCase {
             if missingIsFatal ?? (kind != .filters) {
                 lines.append("  \(kind.missingMeans):\(Self.list(missing))")
             } else {
-                notes.append("\(surface): \(kind.missingMeans):\(Self.list(missing))")
+                drift.notes.append("\(surface): \(kind.missingMeans):\(Self.list(missing))")
             }
         }
         if !stale.isEmpty { lines.append("  exemption no longer matches the API (drop it):\(Self.list(stale))") }
-        if !lines.isEmpty { problems.append("\(surface)\n\(lines.joined(separator: "\n"))") }
+        if !lines.isEmpty { drift.problems.append("\(surface)\n\(lines.joined(separator: "\n"))") }
     }
 
     private static func list(_ names: Set<String>) -> String {
@@ -157,7 +156,7 @@ final class APIContractTests: XCTestCase {
         do {
             _ = try sample.decode(T.self)
         } catch {
-            problems.append("\(surface)\n  does not decode a fully populated \(schema) from the reference: \(error)")
+            drift.problems.append("\(surface)\n  does not decode a fully populated \(schema) from the reference: \(error)")
         }
     }
 
@@ -168,7 +167,7 @@ final class APIContractTests: XCTestCase {
         let transport = MockTransport { _, _ in .response(.json(#"{"records":[],"count":0,"data":[]}"#)) }
         _ = try? await call(makeClient(transport))
         guard !transport.requests.isEmpty else {
-            problems.append("\(surface)\n  the call sent no request, so nothing was compared")
+            drift.problems.append("\(surface)\n  the call sent no request, so nothing was compared")
             return
         }
         let sent = Set(transport.requests.flatMap { $0.query.keys })
@@ -243,14 +242,14 @@ final class APIContractTests: XCTestCase {
                     return !reference.hasOperation(parts[0], parts[1])
                 })
         }
-        surfaces += 1
+        drift.surfaces += 1
         let absent = missing(dataPlane, dp).union(missing(controlPlane, cp))
         let unexpected = absent.subtracting(unpublished)
         let published = unpublished.subtracting(absent)
-        if !unexpected.isEmpty { problems.append("routes\n  \(Kind.routes.extraMeans):\(Self.list(unexpected))") }
-        if !published.isEmpty { problems.append("routes\n  listed as unpublished but now served (drop it):\(Self.list(published))") }
+        if !unexpected.isEmpty { drift.problems.append("routes\n  \(Kind.routes.extraMeans):\(Self.list(unexpected))") }
+        if !published.isEmpty { drift.problems.append("routes\n  listed as unpublished but now served (drop it):\(Self.list(published))") }
         if !absent.intersection(unpublished).isEmpty {
-            notes.append("routes: called here and not yet served:\(Self.list(absent.intersection(unpublished)))")
+            drift.notes.append("routes: called here and not yet served:\(Self.list(absent.intersection(unpublished)))")
         }
     }
 
@@ -746,4 +745,11 @@ final class APIContractTests: XCTestCase {
         let pairs = transport.requests.flatMap { $0.bodyString.split(separator: "&") }
         return Set(pairs.compactMap { $0.split(separator: "=", maxSplits: 1).first.map(String.init) })
     }
+}
+
+/// What one comparison run found, accumulated across the checks.
+private final class Drift {
+    var problems: [String] = []
+    var notes: [String] = []
+    var surfaces = 0
 }

@@ -28,13 +28,12 @@ let client = try await IntrospectionClient.federated(
     subjectToken: { try await supabase.auth.session.accessToken },
     clientID: "intro_app_...",
     project: "my-project",
-    runtime: "my-agent",
     controlPlaneURL: URL(string: "https://api.introspection.dev")!
 )
-let run = try await client.tasks.start(prompt: "Hello")
+let run = try await client.tasks.start(prompt: "Hello", TaskCreate(runtimeId: runtimeId))
 ```
 
-A federated token is not a runner token, so a task runs on the app's runtime only when it names one. With `runtime:`, every task create and new run names the version that runtime group serves now, resolved on the Data Plane and cached (`RuntimeSelector`). The provider must sign with asymmetric keys (ES256 or RS256), and the Application's federation must name its issuer (for Supabase, `https://<ref>.supabase.co/auth/v1`). The member is the same on every sign-in: it is derived from the federation and the provider's `sub`.
+A federated token is not a runner token, so a task runs on the app's runtime only when its create and runs name the runtime version (`runtimeId`). Customer tokens cannot call the Control Plane, so the app's backend resolves that id with a service account (`client.runtimes.list(...)`) and returns it with the session, as with the JavaScript browser client. The provider must sign with asymmetric keys (ES256 or RS256), and the Application's federation must name its issuer (for Supabase, `https://<ref>.supabase.co/auth/v1`). The member is the same on every sign-in: it is derived from the federation and the provider's `sub`.
 
 The first exchange runs inside `federated(...)`, which also learns the Data Plane URL. Later exchanges run before the platform token expires or after a 401, each time asking for a current provider token. Sign out with the provider's SDK. For lower-level control, use `SessionCredentials.tokenExchange` with your own `IntrospectionClient`.
 

@@ -1,5 +1,5 @@
 import Foundation
-import XCTest
+import Testing
 
 @testable import IntrospectionSDK
 
@@ -8,11 +8,11 @@ import XCTest
 /// and send a follow-up turn. Interactive flows (hosted login, device code) are
 /// covered in `AuthClientTests` and `AuthTests`; `LiveIdentityTests` runs these
 /// modes against a real deployment.
-final class IdentityModesTests: XCTestCase {
+@Suite struct IdentityModesTests {
     private static let runtimeId = "0195c0de-0000-7000-8000-000000000001"
 
-    /// A minimal platform: token endpoint, runtimes, runners, the Data Plane
-    /// `list_runtimes` tool and task routes, with every request recorded.
+    /// A minimal platform: token endpoint, runtimes, runners and task routes,
+    /// with every request recorded.
     private final class FakePlatform: @unchecked Sendable {
         let lock = NSLock()
         var exchanges = 0
@@ -38,11 +38,6 @@ final class IdentityModesTests: XCTestCase {
                     .json(
                         #"{"session_id":"sess-1","session_token":"runner-token","expires_at":"2099-01-01T00:00:00Z","deployment":{"endpoint":"https://dp.test"}}"#
                     ))
-            case ("POST", "/v1/mcp"):
-                return .response(
-                    .json(
-                        #"{"jsonrpc":"2.0","id":1,"result":{"structuredContent":{"runtimes":[{"runtime_id":"rt-current","image_build_status":"ready"}]}}}"#
-                    ))
             case ("POST", "/v1/tasks"):
                 if takeRejection() { return .response(.json(#"{"detail":"expired"}"#, status: 401)) }
                 return .response(.json(#"{"task":\#(TasksTests.taskJSON),"run":\#(TasksTests.runJSON)}"#, status: 201))
@@ -66,20 +61,16 @@ final class IdentityModesTests: XCTestCase {
 
     private let controlPlane = URL(string: "https://cp.test")!
 
-    func testAPIKeyIsSentAsIsAndNeverRefreshed() async throws {
+    @Test func apiKeyIsSentAsIsAndNeverRefreshed() async throws {
         let transport = MockTransport { _, _ in .response(.json(#"{"detail":"bad key"}"#, status: 401)) }
         let client = IntrospectionClient(controlPlaneURL: controlPlane, credentials: BearerToken("intro_key"), transport: transport)
-        do {
-            _ = try await client.tasks.list().firstPage()
-            XCTFail("expected failure")
-        } catch let error as IntrospectionError {
-            XCTAssertEqual(error.kind, .authentication)
-        }
-        XCTAssertEqual(transport.requests.count, 1)
-        XCTAssertEqual(transport.last?.request.headers["Authorization"], "Bearer intro_key")
+        let error = try await #require(throws: IntrospectionError.self) { try await client.tasks.list().firstPage() }
+        #expect(error.kind == .authentication)
+        #expect(transport.requests.count == 1)
+        #expect(transport.last?.request.headers["Authorization"] == "Bearer intro_key")
     }
 
-    func testServiceAccountRunnerCarriesTheEndUserIdentity() async throws {
+    @Test func serviceAccountRunnerCarriesTheEndUserIdentity() async throws {
         let platform = FakePlatform()
         let client = try await IntrospectionClient.fromServiceAccount(
             clientId: "intro_app_sa", clientSecret: "secret", project: "ark",
@@ -91,110 +82,92 @@ final class IdentityModesTests: XCTestCase {
         )
         let run = try await runner.tasks.start(prompt: "Hello")
         _ = try await runner.tasks.runs.create(run.run.taskId, text: "And then?")
+        let turnPath = "/v1/tasks/\(run.run.taskId)/runs"
 
         let requests = platform.transport.requests
-        let open = try XCTUnwrap(requests.first { $0.path.hasSuffix("/run") })
-        XCTAssertEqual(open.request.headers["Authorization"], "Bearer service-token")
-        XCTAssertEqual(
-            open.json?["identity"],
-            ["user_id": "u_42", "anonymous_id": "anon-1", "conversation_id": "conv-1", "tags": ["tier:gold"]])
-        XCTAssertEqual(open.json?["ttl_seconds"], 600)
+        let open = try #require(requests.first { $0.path.hasSuffix("/run") })
+        #expect(open.request.headers["Authorization"] == "Bearer service-token")
+        #expect(
+            open.json?["identity"] == ["user_id": "u_42", "anonymous_id": "anon-1", "conversation_id": "conv-1", "tags": ["tier:gold"]])
+        #expect(open.json?["ttl_seconds"] == 600)
 
         // The runner's own token drives the Data Plane, and no runtime id is sent:
         // the server takes it from the runner token.
-        let create = try XCTUnwrap(requests.first { $0.request.method == "POST" && $0.path == "/v1/tasks" })
-        XCTAssertEqual(create.request.headers["Authorization"], "Bearer runner-token")
-        XCTAssertNil(create.json?["runtime_id"])
-        XCTAssertFalse(requests.contains { $0.path == "/v1/mcp" })
+        let create = try #require(requests.first { $0.request.method == "POST" && $0.path == "/v1/tasks" })
+        #expect(create.request.headers["Authorization"] == "Bearer runner-token")
+        #expect(create.json?["runtime_id"] == nil)
+        #expect(
+            Set(requests.map(\.path)) == [
+                "/v1/oauth/token", "/v1/runtimes", "/v1/runtimes/\(Self.runtimeId)/run", "/v1/tasks", turnPath,
+            ])
     }
 
-    func testClosedRunnerFailsBeforeTheNetwork() async throws {
+    @Test func closedRunnerFailsBeforeTheNetwork() async throws {
         let platform = FakePlatform()
         let client = IntrospectionClient(controlPlaneURL: controlPlane, credentials: BearerToken("k"), transport: platform.transport)
         let runner = try await client.runtimes("ark").run()
         runner.close()
         let sent = platform.transport.requests.count
-        do {
-            _ = try await runner.tasks.start(prompt: "Hello")
-            XCTFail("expected failure")
-        } catch let error as IntrospectionError {
-            XCTAssertEqual(error.kind, .runnerExpired)
-        }
-        XCTAssertEqual(platform.transport.requests.count, sent)
+        let error = try await #require(throws: IntrospectionError.self) { try await runner.tasks.start(prompt: "Hello") }
+        #expect(error.kind == .runnerExpired)
+        #expect(platform.transport.requests.count == sent)
     }
 
-    func testFederatedMemberBindsTheRuntimeAndReexchangesAfterA401() async throws {
+    @Test func federatedMemberBindsTheRuntimeAndReexchangesAfterA401() async throws {
         let platform = FakePlatform()
         let subjects = Counter()
         let client = try await IntrospectionClient.federated(
             subjectToken: { "supabase-\(await subjects.next())" },
-            clientID: "intro_app_fed", project: "ark", runtime: "ark",
+            clientID: "intro_app_fed", project: "ark",
             controlPlaneURL: controlPlane, transport: platform.transport
         )
-        let run = try await client.tasks.start(prompt: "Hello")
-        _ = try await client.tasks.runs.create(run.run.taskId, text: "And then?")
+        let run = try await client.tasks.start(prompt: "Hello", TaskCreate(runtimeId: Self.runtimeId))
+        _ = try await client.tasks.runs.create(run.run.taskId, TaskRunCreate(text: "And then?", runtimeId: Self.runtimeId))
+        let turnPath = "/v1/tasks/\(run.run.taskId)/runs"
 
         var requests = platform.transport.requests
-        let exchange = try XCTUnwrap(requests.first { $0.path == "/v1/oauth/token" })
-        XCTAssertTrue(exchange.bodyString.contains("subject_token=supabase-1"))
-        XCTAssertTrue(exchange.bodyString.contains("client_id=intro_app_fed"))
-        XCTAssertTrue(exchange.bodyString.contains("project=ark"))
+        let exchange = try #require(requests.first { $0.path == "/v1/oauth/token" })
+        #expect(exchange.bodyString.contains("subject_token=supabase-1"))
+        #expect(exchange.bodyString.contains("client_id=intro_app_fed"))
+        #expect(exchange.bodyString.contains("project=ark"))
 
-        // Not a runner token, so the runtime version is resolved on the Data Plane
-        // once and named on the create and on the follow-up turn.
-        XCTAssertEqual(requests.filter { $0.path == "/v1/mcp" }.count, 1)
-        let create = try XCTUnwrap(requests.first { $0.request.method == "POST" && $0.path == "/v1/tasks" })
-        XCTAssertEqual(create.json?["runtime_id"], "rt-current")
-        XCTAssertEqual(create.request.headers["Authorization"], "Bearer customer-1")
-        let turn = try XCTUnwrap(requests.first { $0.path.hasSuffix("/runs") })
-        XCTAssertEqual(turn.json?["runtime_id"], "rt-current")
+        // Not a runner token, so the caller names the runtime version on the create
+        // and on the follow-up turn, and the SDK looks nothing up on its own.
+        #expect(Set(requests.map(\.path)) == ["/v1/oauth/token", "/v1/tasks", turnPath])
+        let create = try #require(requests.first { $0.request.method == "POST" && $0.path == "/v1/tasks" })
+        #expect(create.json?["runtime_id"] == .string(Self.runtimeId))
+        #expect(create.request.headers["Authorization"] == "Bearer customer-1")
+        let turn = try #require(requests.first { $0.path == turnPath })
+        #expect(turn.json?["runtime_id"] == .string(Self.runtimeId))
 
         // A rejected platform token is exchanged again with a fresh provider token.
         platform.rejectNextDataPlaneCall = true
         _ = try await client.tasks.start(prompt: "Again")
         requests = platform.transport.requests
-        XCTAssertEqual(requests.filter { $0.path == "/v1/oauth/token" }.count, 2)
-        XCTAssertTrue(requests.last { $0.path == "/v1/oauth/token" }?.bodyString.contains("subject_token=supabase-2") == true)
-        XCTAssertEqual(requests.last?.request.headers["Authorization"], "Bearer customer-2")
+        #expect(requests.filter { $0.path == "/v1/oauth/token" }.count == 2)
+        #expect(requests.last { $0.path == "/v1/oauth/token" }?.bodyString.contains("subject_token=supabase-2") == true)
+        #expect(requests.last?.request.headers["Authorization"] == "Bearer customer-2")
     }
 
-    func testFederatedMemberIsRefusedOnControlPlaneRoutes() async throws {
+    @Test func federatedMemberIsRefusedOnControlPlaneRoutes() async throws {
         let platform = FakePlatform()
         let client = try await IntrospectionClient.federated(
             subjectToken: { "supabase" }, clientID: "intro_app_fed", project: "ark",
             controlPlaneURL: controlPlane, transport: platform.transport
         )
-        do {
-            _ = try await client.organizations.current()
-            XCTFail("expected failure")
-        } catch let error as IntrospectionError {
-            XCTAssertEqual(error.kind, .forbidden)
-        }
+        let error = try await #require(throws: IntrospectionError.self) { try await client.organizations.current() }
+        #expect(error.kind == .forbidden)
     }
 
-    func testExplicitRuntimeIdIsNeverOverridden() async throws {
+    @Test func federatedCreateWithoutARuntimeIdSendsNone() async throws {
         let platform = FakePlatform()
         let client = try await IntrospectionClient.federated(
-            subjectToken: { "supabase" }, clientID: "c", project: "ark", runtime: "ark",
+            subjectToken: { "supabase" }, clientID: "c", project: "ark",
             controlPlaneURL: controlPlane, transport: platform.transport
         )
-        _ = try await client.tasks.start(prompt: "Hi", TaskCreate(runtimeId: "pinned"))
-        let create = try XCTUnwrap(platform.transport.requests.first { $0.path == "/v1/tasks" })
-        XCTAssertEqual(create.json?["runtime_id"], "pinned")
-        XCTAssertFalse(platform.transport.requests.contains { $0.path == "/v1/mcp" })
-    }
-
-    func testRuntimeSelectorCachesUntilItsTTL() async throws {
-        let calls = Counter()
-        let clock = Clock()
-        let selector = RuntimeSelector(runtime: "ark", ttl: 60, now: { clock.now }) { _ in
-            "rt-\(await calls.next())"
-        }
-        let first = try await selector.runtimeId()
-        let cached = try await selector.runtimeId()
-        clock.advance(61)
-        let refreshed = try await selector.runtimeId()
-        XCTAssertEqual([first, cached, refreshed], ["rt-1", "rt-1", "rt-2"])
+        _ = try await client.tasks.start(prompt: "Hi")
+        let create = try #require(platform.transport.requests.first { $0.path == "/v1/tasks" })
+        #expect(create.json?.objectValue?.keys.contains("runtime_id") == false)
     }
 
     private actor Counter {
@@ -202,21 +175,6 @@ final class IdentityModesTests: XCTestCase {
         func next() -> Int {
             value += 1
             return value
-        }
-    }
-
-    private final class Clock: @unchecked Sendable {
-        private let lock = NSLock()
-        private var current = Date(timeIntervalSince1970: 1_000_000)
-        var now: Date {
-            lock.lock()
-            defer { lock.unlock() }
-            return current
-        }
-        func advance(_ seconds: TimeInterval) {
-            lock.lock()
-            current = current.addingTimeInterval(seconds)
-            lock.unlock()
         }
     }
 }

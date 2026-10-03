@@ -14,19 +14,18 @@ extension IntrospectionClient {
     ///     subjectToken: { try await supabase.auth.session.accessToken },
     ///     clientID: "intro_app_...",
     ///     project: "ark",
-    ///     runtime: "ark",
     ///     controlPlaneURL: URL(string: "https://api.introspection.dev")!
     /// )
+    /// let run = try await client.tasks.start(prompt: "Hello", TaskCreate(runtimeId: runtimeId))
     /// ```
     ///
-    /// A federated token is not a runner token, so a task only runs on the app's
-    /// runtime when it names one: pass the runtime group as `runtime` and every task
-    /// create and run names its current version (see `RuntimeSelector`).
+    /// A federated token is not a runner token, so a task runs on the app's runtime
+    /// only when its create and runs name the runtime version (`runtimeId`). Resolve
+    /// that id on the app's backend, as the JavaScript browser client does.
     public static func federated(
         subjectToken: @escaping @Sendable () async throws -> String,
         clientID: String,
         project: String,
-        runtime: String? = nil,
         controlPlaneURL: URL = AuthAPI.defaultControlPlaneURL,
         dataPlaneURL: URL? = nil,
         transport: any HTTPTransport = URLSessionTransport(),
@@ -53,8 +52,7 @@ extension IntrospectionClient {
                 dataPlaneURL: resolved,
                 controlPlaneCredentials: credentials,
                 transport: transport,
-                options: options,
-                runtime: runtime
+                options: options
             ))
     }
 }

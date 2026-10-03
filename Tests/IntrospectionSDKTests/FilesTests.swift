@@ -1,5 +1,5 @@
 import Foundation
-import XCTest
+import Testing
 
 @testable import IntrospectionSDK
 
@@ -14,8 +14,8 @@ private let fileJSON = #"""
      "storage_version_id":"v3","expires_at":null,"some_new_field":true}
     """#
 
-final class FilesTests: XCTestCase {
-    func testListEncodesEveryFilterAndPaginates() async throws {
+@Suite struct FilesTests {
+    @Test func listEncodesEveryFilterAndPaginates() async throws {
         let transport = MockTransport { request, index in
             index == 0
                 ? .response(.json(#"{"records":[\#(fileJSON)],"count":1,"total_count":2,"next":"c2"}"#))
@@ -32,41 +32,41 @@ final class FilesTests: XCTestCase {
             )
         ).collect()
 
-        XCTAssertEqual(files.count, 2)
-        XCTAssertEqual(transport.requests.count, 2)
-        let first = try XCTUnwrap(transport.requests.first)
-        XCTAssertEqual(first.request.method, "GET")
-        XCTAssertEqual(first.path, "/v1/files")
+        #expect(files.count == 2)
+        #expect(transport.requests.count == 2)
+        let first = try #require(transport.requests.first)
+        #expect(first.request.method == "GET")
+        #expect(first.path == "/v1/files")
         let q = first.query
-        XCTAssertEqual(q["limit"], ["1"])
-        XCTAssertEqual(q["include_total"], ["true"])
-        XCTAssertEqual(q["include_versions"], ["true"])
-        XCTAssertEqual(q["share_id"], ["s1", "s2"])
-        XCTAssertEqual(q["name_contains"], ["not"])
-        XCTAssertEqual(q["file_type"], ["upload"])
-        XCTAssertEqual(q["category"], ["memory"])
-        XCTAssertEqual(q["content_format"], ["markdown"])
-        XCTAssertEqual(q["versioned"], ["false"])
-        XCTAssertEqual(q["conversation_id"], ["c1"])
-        XCTAssertEqual(q["member_id"], ["m1"])
-        XCTAssertEqual(q["tag"], ["customer:acme"])
-        XCTAssertEqual(q["created_after"], [ISO8601.format(created)])
-        XCTAssertEqual(q["updated_before"], [ISO8601.format(created)])
-        XCTAssertNil(q["next"])
-        XCTAssertEqual(transport.requests[1].query["next"], ["c2"])
+        #expect(q["limit"] == ["1"])
+        #expect(q["include_total"] == ["true"])
+        #expect(q["include_versions"] == ["true"])
+        #expect(q["share_id"] == ["s1", "s2"])
+        #expect(q["name_contains"] == ["not"])
+        #expect(q["file_type"] == ["upload"])
+        #expect(q["category"] == ["memory"])
+        #expect(q["content_format"] == ["markdown"])
+        #expect(q["versioned"] == ["false"])
+        #expect(q["conversation_id"] == ["c1"])
+        #expect(q["member_id"] == ["m1"])
+        #expect(q["tag"] == ["customer:acme"])
+        #expect(q["created_after"] == [ISO8601.format(created)])
+        #expect(q["updated_before"] == [ISO8601.format(created)])
+        #expect(q["next"] == nil)
+        #expect(transport.requests[1].query["next"] == ["c2"])
 
-        let file = try XCTUnwrap(files.first)
-        XCTAssertEqual(file.name, "memory/user/notes.md")
-        XCTAssertEqual(file.fileType, .filesystem)
-        XCTAssertEqual(file.tags, ["customer:acme"])
-        XCTAssertEqual(file.version, 3)
-        XCTAssertEqual(file.sizeBytes, 42)
-        XCTAssertEqual(file.metadata?["blob_checksum"], "abc")
-        XCTAssertNil(file.taskId)
-        XCTAssertNotNil(file.createdAt)
+        let file = try #require(files.first)
+        #expect(file.name == "memory/user/notes.md")
+        #expect(file.fileType == .filesystem)
+        #expect(file.tags == ["customer:acme"])
+        #expect(file.version == 3)
+        #expect(file.sizeBytes == 42)
+        #expect(file.metadata?["blob_checksum"] == "abc")
+        #expect(file.taskId == nil)
+        #expect(file.createdAt != nil)
     }
 
-    func testUploadSendsMultipart() async throws {
+    @Test func uploadSendsMultipart() async throws {
         let transport = MockTransport(status: 201, json: fileJSON)
         let client = makeClient(transport)
         _ = try await client.files.upload(
@@ -74,21 +74,21 @@ final class FilesTests: XCTestCase {
                 data: Data("hello".utf8), filename: "notes.md", name: "memory/user/notes.md", fileType: .upload,
                 metadata: ["source": "ios"], ttlSeconds: 3600
             ))
-        let request = try XCTUnwrap(transport.last)
-        XCTAssertEqual(request.request.method, "POST")
-        XCTAssertEqual(request.path, "/v1/files")
-        XCTAssertTrue(request.request.headers["Content-Type"]?.hasPrefix("multipart/form-data; boundary=") ?? false)
+        let request = try #require(transport.last)
+        #expect(request.request.method == "POST")
+        #expect(request.path == "/v1/files")
+        #expect(request.request.headers["Content-Type"]?.hasPrefix("multipart/form-data; boundary=") ?? false)
         let body = request.bodyString
-        XCTAssertTrue(body.contains(#"name="file"; filename="notes.md""#))
-        XCTAssertTrue(body.contains("Content-Type: text/markdown"))
-        XCTAssertTrue(body.contains("hello"))
-        XCTAssertTrue(body.contains("name=\"name\"\r\n\r\nmemory/user/notes.md"))
-        XCTAssertTrue(body.contains("name=\"file_type\"\r\n\r\nupload"))
-        XCTAssertTrue(body.contains("name=\"metadata\"\r\n\r\n{\"source\":\"ios\"}"))
-        XCTAssertTrue(body.contains("name=\"ttl_seconds\"\r\n\r\n3600"))
+        #expect(body.contains(#"name="file"; filename="notes.md""#))
+        #expect(body.contains("Content-Type: text/markdown"))
+        #expect(body.contains("hello"))
+        #expect(body.contains("name=\"name\"\r\n\r\nmemory/user/notes.md"))
+        #expect(body.contains("name=\"file_type\"\r\n\r\nupload"))
+        #expect(body.contains("name=\"metadata\"\r\n\r\n{\"source\":\"ios\"}"))
+        #expect(body.contains("name=\"ttl_seconds\"\r\n\r\n3600"))
     }
 
-    func testCreateTextSendsJSONAndRequiresATarget() async throws {
+    @Test func createTextSendsJSONAndRequiresATarget() async throws {
         let transport = MockTransport(status: 201, json: fileJSON)
         let client = makeClient(transport)
         _ = try await client.files.createText(
@@ -96,24 +96,19 @@ final class FilesTests: XCTestCase {
                 content: "# Notes", name: "notes.md", mimeType: "text/markdown", metadata: ["k": 1],
                 expectedSha256: String(repeating: "a", count: 64), ttlSeconds: 60
             ))
-        XCTAssertEqual(transport.last?.request.headers["Content-Type"], "application/json")
-        XCTAssertEqual(
-            transport.last?.json,
-            [
+        #expect(transport.last?.request.headers["Content-Type"] == "application/json")
+        #expect(
+            transport.last?.json == [
                 "content": "# Notes", "name": "notes.md", "mime_type": "text/markdown", "metadata": ["k": 1],
                 "expected_sha256": .string(String(repeating: "a", count: 64)), "ttl_seconds": 60,
             ])
 
-        do {
-            _ = try await client.files.createText(FileCreateText(content: "x"))
-            XCTFail("expected error")
-        } catch let error as IntrospectionError {
-            XCTAssertEqual(error.kind, .invalidRequest)
-        }
-        XCTAssertEqual(transport.requests.count, 1)
+        let error = try await #require(throws: IntrospectionError.self) { try await client.files.createText(FileCreateText(content: "x")) }
+        #expect(error.kind == .invalidRequest)
+        #expect(transport.requests.count == 1)
     }
 
-    func testGetUpdateDeleteDownload() async throws {
+    @Test func getUpdateDeleteDownload() async throws {
         let transport = MockTransport { request, _ in
             switch (request.method, request.url.path) {
             case ("DELETE", _): return .response(HTTPResponse(status: 204, headers: [:], body: Data()))
@@ -125,28 +120,28 @@ final class FilesTests: XCTestCase {
         }
         let client = makeClient(transport)
         _ = try await client.files.get("f1", shareId: "s1")
-        XCTAssertEqual(transport.last?.path, "/v1/files/f1")
-        XCTAssertEqual(transport.last?.query["share_id"], ["s1"])
+        #expect(transport.last?.path == "/v1/files/f1")
+        #expect(transport.last?.query["share_id"] == ["s1"])
 
         _ = try await client.files.update("f1", FileUpdate(name: "b.md", tags: []))
-        XCTAssertEqual(transport.last?.request.method, "PATCH")
-        XCTAssertEqual(transport.last?.json, ["name": "b.md", "tags": []])
+        #expect(transport.last?.request.method == "PATCH")
+        #expect(transport.last?.json == ["name": "b.md", "tags": []])
 
         try await client.files.delete("f1")
-        XCTAssertEqual(transport.last?.request.method, "DELETE")
+        #expect(transport.last?.request.method == "DELETE")
 
         let data = try await client.files.download("f/1")
-        XCTAssertEqual(String(decoding: data, as: UTF8.self), "bytes")
-        XCTAssertTrue(transport.last?.request.url.absoluteString.hasSuffix("/v1/files/f%2F1/content") ?? false)
+        #expect(String(decoding: data, as: UTF8.self) == "bytes")
+        #expect(transport.last?.request.url.absoluteString.hasSuffix("/v1/files/f%2F1/content") ?? false)
 
         let stream = try await client.files.downloadStream("f/1")
-        XCTAssertEqual(stream.headers["x-version"], "3")
+        #expect(stream.headers["x-version"] == "3")
         let streamed = try await stream.collect()
-        XCTAssertEqual(String(decoding: streamed, as: UTF8.self), "bytes")
-        XCTAssertEqual(transport.last?.request.headers["Accept"], "*/*")
+        #expect(String(decoding: streamed, as: UTF8.self) == "bytes")
+        #expect(transport.last?.request.headers["Accept"] == "*/*")
     }
 
-    func testVersions() async throws {
+    @Test func versions() async throws {
         let transport = MockTransport { request, _ in
             request.url.path.hasSuffix("/versions") && request.method == "GET"
                 ? .response(.json(#"{"records":[\#(fileJSON)],"count":1,"total_count":null,"next":null}"#))
@@ -154,21 +149,21 @@ final class FilesTests: XCTestCase {
         }
         let client = makeClient(transport)
         let page = try await client.files.versions.list("f1", FileVersionListParams(limit: 5)).firstPage()
-        XCTAssertEqual(page.records.count, 1)
-        XCTAssertEqual(transport.last?.path, "/v1/files/f1/versions")
-        XCTAssertEqual(transport.last?.query["limit"], ["5"])
+        #expect(page.records.count == 1)
+        #expect(transport.last?.path == "/v1/files/f1/versions")
+        #expect(transport.last?.query["limit"] == ["5"])
 
         _ = try await client.files.versions.get("f1", "v2")
-        XCTAssertEqual(transport.last?.path, "/v1/files/f1/versions/v2")
+        #expect(transport.last?.path == "/v1/files/f1/versions/v2")
 
         _ = try await client.files.versions.createText("f1", FileCreateText(content: "new", expectedSha256: "ab"))
-        XCTAssertEqual(transport.last?.request.method, "POST")
-        XCTAssertEqual(transport.last?.path, "/v1/files/f1/versions")
-        XCTAssertEqual(transport.last?.json, ["content": "new", "file_id": "f1", "expected_sha256": "ab"])
+        #expect(transport.last?.request.method == "POST")
+        #expect(transport.last?.path == "/v1/files/f1/versions")
+        #expect(transport.last?.json == ["content": "new", "file_id": "f1", "expected_sha256": "ab"])
 
         _ = try await client.files.versions.create("f1", FileUpload(data: Data([0, 1]), filename: "a.bin", fileType: .upload))
         let body = transport.last?.bodyString ?? ""
-        XCTAssertTrue(body.contains("Content-Type: application/octet-stream"))
-        XCTAssertFalse(body.contains("file_type"))
+        #expect(body.contains("Content-Type: application/octet-stream"))
+        #expect(!body.contains("file_type"))
     }
 }

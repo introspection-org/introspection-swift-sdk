@@ -36,8 +36,9 @@ The pre-commit hook runs the lint, a build with every trait enabled and the cove
 
 ## Tests
 
+- Tests use Swift Testing (`import Testing`), not XCTest: `@Suite struct`, `@Test`, `#expect` / `#require`, `#expect(throws:)` for errors, `@Test(arguments:)` for a table of inputs. Tests run in parallel, so a test owns its state: no shared mutable statics or environment mutation, or mark the suite `.serialized`. A gated test uses an `.enabled(if:)` trait so it reports as skipped.
 - Every resource is tested against `MockTransport`: request method, path, query and body encoding, and decoding of realistic server JSON taken from the server models.
 - The coverage floor in `scripts/coverage.sh` is a do-not-regress gate. Add tests for new code; lower the floor only with an explicit justification in the PR.
-- `IdentityModesTests` drives every way of authenticating (API key, service account runner with end-user identity, federated exchange, hosted login, device code) through a fake platform. `LiveIdentityTests` runs the same modes against a deployment when `INTROSPECTION_LIVE=1`; `live-tests.yml` runs it nightly and on demand in the `build` environment.
+- `IdentityModesTests` drives every way of authenticating (API key, service account runner with end-user identity, federated exchange, hosted login, device code) through a fake platform. `LiveIdentityTests` runs the same modes against a deployment when `INTROSPECTION_LIVE=1`; `live-tests.yml` runs it on demand (workflow_dispatch) in the `build` environment; it never gates a merge.
 - Examples in `Examples/` must keep compiling: CI builds them with the package.
 - `APIContractTests` compares the SDK's wire surface with the published OpenAPI references. It is skipped unless `INTROSPECTION_API_CONTRACT=1` and runs daily in CI; a red run means the API moved.

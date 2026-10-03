@@ -1,9 +1,9 @@
 import Foundation
-import XCTest
+import Testing
 
 @testable import IntrospectionSDK
 
-final class RunStreamTests: XCTestCase {
+@Suite struct RunStreamTests {
     struct Severed: Error {}
 
     static func frame(_ id: String?, _ event: String = "ag_ui", _ data: String) -> Data {
@@ -26,7 +26,7 @@ final class RunStreamTests: XCTestCase {
         return events
     }
 
-    func testParsesAGUIFramesAndSkipsHeartbeats() async throws {
+    @Test func parsesAGUIFramesAndSkipsHeartbeats() async throws {
         let transport = MockTransport { _, _ in
             .stream(
                 status: 200, headers: [:],
@@ -42,16 +42,16 @@ final class RunStreamTests: XCTestCase {
         }
         let client = makeClient(transport)
         let events = try await collect(client.tasks.runs.stream("t1", "current", options: Self.fast))
-        XCTAssertEqual(events.map(\.type), ["RUN_STARTED", "CUSTOM", "RUN_FINISHED"])
-        XCTAssertEqual(events[0].runId, "r1")
-        XCTAssertTrue(events[1].isResumeGap)
-        XCTAssertEqual(transport.requests.count, 1)
-        XCTAssertEqual(transport.last?.path, "/v1/tasks/t1/runs/current/stream")
-        XCTAssertNil(transport.last?.request.headers["Last-Event-ID"])
-        XCTAssertNil(transport.last?.query["wait_for_start"])
+        #expect(events.map(\.type) == ["RUN_STARTED", "CUSTOM", "RUN_FINISHED"])
+        #expect(events[0].runId == "r1")
+        #expect(events[1].isResumeGap)
+        #expect(transport.requests.count == 1)
+        #expect(transport.last?.path == "/v1/tasks/t1/runs/current/stream")
+        #expect(transport.last?.request.headers["Last-Event-ID"] == nil)
+        #expect(transport.last?.query["wait_for_start"] == nil)
     }
 
-    func testReconnectsWithLastNumericEventIdAfterSever() async throws {
+    @Test func reconnectsWithLastNumericEventIdAfterSever() async throws {
         let transport = MockTransport { _, index in
             switch index {
             case 0:
@@ -77,18 +77,18 @@ final class RunStreamTests: XCTestCase {
         options.emitReconnectEvents = true
         options.waitForStart = false
         let events = try await collect(client.tasks.runs.stream("t1", "r1", options: options))
-        XCTAssertEqual(events.compactMap(\.delta), ["a", "b", "c"])
-        let marker = try XCTUnwrap(events.first(where: \.isReconnectMarker))
-        XCTAssertEqual(marker.value?["reason"], "severed")
-        XCTAssertEqual(marker.value?["attempt"], 0)
-        XCTAssertEqual(marker.value?["lastEventId"], "2")
-        XCTAssertEqual(events.last?.eventType, .runFinished)
-        XCTAssertEqual(transport.requests.count, 2)
-        XCTAssertEqual(transport.requests[1].request.headers["Last-Event-ID"], "2")
-        XCTAssertEqual(transport.requests[1].query["wait_for_start"], ["false"])
+        #expect(events.compactMap(\.delta) == ["a", "b", "c"])
+        let marker = try #require(events.first { $0.isReconnectMarker })
+        #expect(marker.value?["reason"] == "severed")
+        #expect(marker.value?["attempt"] == 0)
+        #expect(marker.value?["lastEventId"] == "2")
+        #expect(events.last?.eventType == .runFinished)
+        #expect(transport.requests.count == 2)
+        #expect(transport.requests[1].request.headers["Last-Event-ID"] == "2")
+        #expect(transport.requests[1].query["wait_for_start"] == ["false"])
     }
 
-    func testReadinessWaitsHonourRetryAfterAndDoNotSpendReconnectBudget() async throws {
+    @Test func readinessWaitsHonourRetryAfterAndDoNotSpendReconnectBudget() async throws {
         let transport = MockTransport { _, index in
             if index < 4 {
                 return .response(.json(#"{"status":"provisioning","detail":"not ready"}"#, status: 429, headers: ["retry-after": "0"]))
@@ -99,46 +99,40 @@ final class RunStreamTests: XCTestCase {
         let options = RunStreamOptions(maxReconnects: 0, backoff: 0.001, emitReconnectEvents: true)
         let events = try await collect(client.tasks.runs.stream("t1", "r1", options: options))
         let markers = events.filter(\.isReconnectMarker)
-        XCTAssertEqual(markers.count, 4)
-        XCTAssertEqual(markers.map { $0.value?["attempt"]?.intValue }, [1, 2, 3, 4])
-        XCTAssertEqual(markers[0].value?["reason"], "readiness")
-        XCTAssertEqual(markers[0].value?["phase"], "provisioning")
-        XCTAssertEqual(markers[0].value?["retryAfterMs"], 0)
-        XCTAssertEqual(events.compactMap(\.delta), ["hi"])
-        XCTAssertEqual(transport.requests.count, 5)
+        #expect(markers.count == 4)
+        #expect(markers.map { $0.value?["attempt"]?.intValue } == [1, 2, 3, 4])
+        #expect(markers[0].value?["reason"] == "readiness")
+        #expect(markers[0].value?["phase"] == "provisioning")
+        #expect(markers[0].value?["retryAfterMs"] == 0)
+        #expect(events.compactMap(\.delta) == ["hi"])
+        #expect(transport.requests.count == 5)
     }
 
-    func testReadinessIsBoundedByTimeout() async {
+    @Test func readinessIsBoundedByTimeout() async throws {
         let transport = MockTransport { _, _ in
             .response(.json(#"{"status":"queued"}"#, status: 429, headers: ["retry-after": "0"]))
         }
         let client = makeClient(transport)
         let options = RunStreamOptions(backoff: 0.001, timeout: 0.05)
-        do {
-            _ = try await collect(client.tasks.runs.stream("t1", "r1", options: options))
-            XCTFail("expected the deadline to end the readiness wait")
-        } catch let error as IntrospectionError {
-            XCTAssertEqual(error.kind, .rateLimited)
-            XCTAssertGreaterThan(transport.requests.count, 1)
-        } catch { XCTFail("\(error)") }
+        let error = try await #require(throws: IntrospectionError.self) {
+            try await collect(client.tasks.runs.stream("t1", "r1", options: options))
+        }
+        #expect(error.kind == .rateLimited)
+        #expect(transport.requests.count > 1)
     }
 
-    func testReconnectBudgetExhaustionThrows() async {
+    @Test func reconnectBudgetExhaustionThrows() async {
         let transport = MockTransport { _, _ in
             .stream(status: 200, headers: [:], chunks: [RunStreamTests.frame(nil, "heartbeat", "{}")], error: Severed())
         }
         let client = makeClient(transport)
         let options = RunStreamOptions(maxReconnects: 2, backoff: 0.001)
-        do {
-            _ = try await collect(client.tasks.runs.stream("t1", "r1", options: options))
-            XCTFail("expected exhaustion")
-        } catch is Severed {
-            // Initial attach plus two reconnects, none of which made progress.
-            XCTAssertEqual(transport.requests.count, 3)
-        } catch { XCTFail("\(error)") }
+        await #expect(throws: Severed.self) { try await collect(client.tasks.runs.stream("t1", "r1", options: options)) }
+        // Initial attach plus two reconnects, none of which made progress.
+        #expect(transport.requests.count == 3)
     }
 
-    func testProgressResetsReconnectBudget() async throws {
+    @Test func progressResetsReconnectBudget() async throws {
         let transport = MockTransport { _, index in
             if index < 4 {
                 return .stream(status: 200, headers: [:], chunks: [RunStreamTests.content("\(index + 1)", "x")], error: Severed())
@@ -148,20 +142,18 @@ final class RunStreamTests: XCTestCase {
         let client = makeClient(transport)
         let options = RunStreamOptions(maxReconnects: 1, backoff: 0.001)
         let events = try await collect(client.tasks.runs.stream("t1", "r1", options: options))
-        XCTAssertEqual(events.count, 5)
-        XCTAssertEqual(transport.requests.map { $0.request.headers["Last-Event-ID"] }, [nil, "1", "2", "3", "4"])
+        #expect(events.count == 5)
+        #expect(transport.requests.map { $0.request.headers["Last-Event-ID"] } == [nil, "1", "2", "3", "4"])
     }
 
-    func testConnectErrorsCountAndNotFoundFailsFast() async {
+    @Test func connectErrorsCountAndNotFoundFailsFast() async throws {
         let transport = MockTransport { _, _ in .response(.json(#"{"detail":"Task not found"}"#, status: 404)) }
         let client = makeClient(transport)
-        do {
-            _ = try await collect(client.tasks.runs.stream("t1", "r1", options: Self.fast))
-            XCTFail("expected not found")
-        } catch let error as IntrospectionError {
-            XCTAssertEqual(error.kind, .notFound)
-            XCTAssertEqual(transport.requests.count, 1)
-        } catch { XCTFail("\(error)") }
+        let error = try await #require(throws: IntrospectionError.self) {
+            try await collect(client.tasks.runs.stream("t1", "r1", options: Self.fast))
+        }
+        #expect(error.kind == .notFound)
+        #expect(transport.requests.count == 1)
 
         let flaky = MockTransport { _, index in
             index < 2
@@ -169,24 +161,22 @@ final class RunStreamTests: XCTestCase {
                 : .stream(status: 200, headers: [:], chunks: [RunStreamTests.finished], error: nil)
         }
         let events = try? await collect(makeClient(flaky).tasks.runs.stream("t1", "r1", options: Self.fast))
-        XCTAssertEqual(events?.count, 1)
-        XCTAssertEqual(flaky.requests.count, 3)
+        #expect(events?.count == 1)
+        #expect(flaky.requests.count == 3)
     }
 
-    func testInvalidFrameIsADecodingErrorNotAReconnect() async {
+    @Test func invalidFrameIsADecodingErrorNotAReconnect() async throws {
         let transport = MockTransport { _, _ in
             .stream(status: 200, headers: [:], chunks: [RunStreamTests.frame("1", "ag_ui", "{not json")], error: nil)
         }
-        do {
-            _ = try await collect(makeClient(transport).tasks.runs.stream("t1", "r1", options: Self.fast))
-            XCTFail("expected decoding error")
-        } catch let error as IntrospectionError {
-            XCTAssertEqual(error.kind, .decoding)
-            XCTAssertEqual(transport.requests.count, 1)
-        } catch { XCTFail("\(error)") }
+        let error = try await #require(throws: IntrospectionError.self) {
+            try await collect(makeClient(transport).tasks.runs.stream("t1", "r1", options: Self.fast))
+        }
+        #expect(error.kind == .decoding)
+        #expect(transport.requests.count == 1)
     }
 
-    func testCancellingTheConsumerCancelsTheRequest() async throws {
+    @Test func cancellingTheConsumerCancelsTheRequest() async throws {
         let transport = HangingTransport()
         let client = IntrospectionClient(
             configuration: .init(
@@ -205,7 +195,7 @@ final class RunStreamTests: XCTestCase {
         consumer.cancel()
         _ = try? await consumer.value
         try await transport.waitUntilTerminated()
-        XCTAssertEqual(transport.attaches, 1)
+        #expect(transport.attaches == 1)
     }
 }
 
@@ -244,6 +234,6 @@ final class HangingTransport: HTTPTransport, @unchecked Sendable {
         for _ in 0..<500 where !lock.withLock({ _terminated }) {
             try await Task.sleep(nanoseconds: 2_000_000)
         }
-        XCTAssertTrue(lock.withLock { _terminated }, "the underlying byte stream was not cancelled")
+        #expect(lock.withLock { _terminated }, "the underlying byte stream was not cancelled")
     }
 }

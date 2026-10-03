@@ -1,5 +1,5 @@
 import Foundation
-import XCTest
+import Testing
 
 @testable import IntrospectionSDK
 
@@ -31,8 +31,8 @@ private let toolSpanJSON = #"""
      "attributes":{"gen_ai":{"operation":{"name":"execute_tool"},"tool":{"name":"search","call":{"id":"call-1"}}}}}
     """#
 
-final class ConversationsTests: XCTestCase {
-    func testListSerializesReadWindowAndMetadata() async throws {
+@Suite struct ConversationsTests {
+    @Test func listSerializesReadWindowAndMetadata() async throws {
         let transport = MockTransport(json: #"{"records":[\#(conversationJSON)],"count":1,"total_count":null,"next":null}"#)
         let client = makeClient(transport)
         let now = Date(timeIntervalSince1970: 1_790_000_000)
@@ -43,90 +43,93 @@ final class ConversationsTests: XCTestCase {
                 metadata: ["tenant": "acme", "flow": "company:x"]
             ), now: now)
         let page = try await paginator.firstPage()
-        let conversation = try XCTUnwrap(page.records.first)
-        XCTAssertEqual(conversation.metrics?.llmCallCount, 4)
-        XCTAssertEqual(conversation.agents?.last?.invocationId, "run-9")
-        XCTAssertEqual(conversation.metadata, ["flow": "company"])
-        XCTAssertEqual(conversation.cost?.usd, 0.01)
+        let conversation = try #require(page.records.first)
+        #expect(conversation.metrics?.llmCallCount == 4)
+        #expect(conversation.agents?.last?.invocationId == "run-9")
+        #expect(conversation.metadata == ["flow": "company"])
+        #expect(conversation.cost?.usd == 0.01)
 
-        let q = try XCTUnwrap(transport.last).query
-        XCTAssertEqual(transport.last?.path, "/v1/conversations")
-        XCTAssertEqual(q["direction"], ["asc"])
-        XCTAssertEqual(q["start_date"], [ISO8601.format(now.addingTimeInterval(-86_400))])
-        XCTAssertNil(q["end_date"])
-        XCTAssertNil(q["lookback"])
-        XCTAssertNil(q["order"])
-        XCTAssertEqual(q["sort"], ["cost"])
-        XCTAssertEqual(q["status"], ["Error"])
-        XCTAssertEqual(q["conversation_ids"], ["a", "b"])
-        XCTAssertEqual(q["service_names"], ["x", "y"])
-        XCTAssertEqual(q["metadata"], ["flow:company:x", "tenant:acme"])
+        let q = try #require(transport.last).query
+        #expect(transport.last?.path == "/v1/conversations")
+        #expect(q["direction"] == ["asc"])
+        #expect(q["start_date"] == [ISO8601.format(now.addingTimeInterval(-86_400))])
+        #expect(q["end_date"] == nil)
+        #expect(q["lookback"] == nil)
+        #expect(q["order"] == nil)
+        #expect(q["sort"] == ["cost"])
+        #expect(q["status"] == ["Error"])
+        #expect(q["conversation_ids"] == ["a", "b"])
+        #expect(q["service_names"] == ["x", "y"])
+        #expect(q["metadata"] == ["flow:company:x", "tenant:acme"])
     }
 
-    func testReadWindowValidationThrowsBeforeSending() throws {
+    @Test func readWindowValidationThrowsBeforeSending() throws {
         let transport = MockTransport(json: "{}")
         let client = makeClient(transport)
-        XCTAssertThrowsError(try client.conversations.list(ConversationListParams(start: Date(), lookback: "1h"))) { error in
-            XCTAssertEqual((error as? IntrospectionError)?.kind, .validation)
+        let error = try #require(throws: IntrospectionError.self) {
+            try client.conversations.list(ConversationListParams(start: Date(), lookback: "1h"))
         }
-        XCTAssertThrowsError(try client.conversations.list(ConversationListParams(lookback: "3 days")))
-        XCTAssertThrowsError(try client.conversations.list(ConversationListParams(lookback: "5m5")))
-        XCTAssertEqual(transport.requests.count, 0)
+        #expect(error.kind == .validation)
+        #expect(throws: (any Error).self) { try client.conversations.list(ConversationListParams(lookback: "3 days")) }
+        #expect(throws: (any Error).self) { try client.conversations.list(ConversationListParams(lookback: "5m5")) }
+        #expect(transport.requests.count == 0)
 
-        XCTAssertEqual(ReadLookback("500ms").seconds, 0.5)
-        XCTAssertEqual(ReadLookback("2w").seconds, 1_209_600)
-        XCTAssertEqual(ReadLookback.minutes(5).seconds, 300)
-        XCTAssertNil(ReadLookback("h").seconds)
+        #expect(ReadLookback("500ms").seconds == 0.5)
+        #expect(ReadLookback("2w").seconds == 1_209_600)
+        #expect(ReadLookback.minutes(5).seconds == 300)
+        #expect(ReadLookback("h").seconds == nil)
     }
 
-    func testExplicitWindow() async throws {
+    @Test func explicitWindow() async throws {
         let transport = MockTransport(json: #"{"records":[],"count":0,"next":null}"#)
         let client = makeClient(transport)
         let start = Date(timeIntervalSince1970: 1_000)
         let end = Date(timeIntervalSince1970: 2_000)
         _ = try await client.conversations.list(ConversationListParams(start: start, end: end)).firstPage()
-        XCTAssertEqual(transport.last?.query["start_date"], [ISO8601.format(start)])
-        XCTAssertEqual(transport.last?.query["end_date"], [ISO8601.format(end)])
+        #expect(transport.last?.query["start_date"] == [ISO8601.format(start)])
+        #expect(transport.last?.query["end_date"] == [ISO8601.format(end)])
     }
 
-    func testGenAISpanDecodingAndAccessors() throws {
+    @Test func genAISpanDecodingAndAccessors() throws {
         let span = try JSONCoding.decoder.decode(GenAISpan.self, from: Data(chatSpanJSON.utf8))
-        XCTAssertEqual(span.operationName, "chat")
-        XCTAssertEqual(span.responseId, "resp-1")
-        XCTAssertEqual(span.clientMessageId, "cm-1")
-        XCTAssertEqual(span.inputTokens, 5)
-        XCTAssertEqual(span.kind, .client)
-        XCTAssertEqual(span.status?.code, .ok)
-        XCTAssertEqual(span.attribute("custom.attr"), "kept")
-        XCTAssertEqual(span.inputMessages.count, 2)
+        #expect(span.operationName == "chat")
+        #expect(span.responseId == "resp-1")
+        #expect(span.clientMessageId == "cm-1")
+        #expect(span.inputTokens == 5)
+        #expect(span.kind == .client)
+        #expect(span.status?.code == .ok)
+        #expect(span.attribute("custom.attr") == "kept")
+        #expect(span.inputMessages.count == 2)
 
         guard case let .toolCallResponse(response) = span.inputMessages[1].parts[0] else {
-            return XCTFail("expected tool_call_response")
+            Issue.record("expected tool_call_response")
+            return
         }
-        XCTAssertEqual(response.response, ["ok": true])
+        #expect(response.response == ["ok": true])
 
-        let parts = try XCTUnwrap(span.outputMessages.first).parts
-        XCTAssertEqual(parts.map(\.type), ["reasoning", "text", "tool_call", "image-url", "hologram"])
+        let parts = try #require(span.outputMessages.first).parts
+        #expect(parts.map(\.type) == ["reasoning", "text", "tool_call", "image-url", "hologram"])
         guard case let .thinking(thinking) = parts[0], case let .toolCall(call) = parts[2],
             case let .media(media) = parts[3], case let .unknown(raw) = parts[4]
         else {
-            return XCTFail("unexpected part shapes")
+            Issue.record("unexpected part shapes")
+            return
         }
-        XCTAssertEqual(thinking.content, "think")
-        XCTAssertEqual(call.arguments, ["q": "x"])
-        XCTAssertEqual(media.url, "https://x/y.png")
-        XCTAssertEqual(raw["depth"], 3)
-        XCTAssertEqual(span.outputMessages.first?.finishReason, "stop")
-        XCTAssertEqual(span.outputMessages.first?.text, "hello")
+        #expect(thinking.content == "think")
+        #expect(call.arguments == ["q": "x"])
+        #expect(media.url == "https://x/y.png")
+        #expect(raw["depth"] == 3)
+        #expect(span.outputMessages.first?.finishReason == "stop")
+        #expect(span.outputMessages.first?.text == "hello")
 
         // Unknown parts round-trip unchanged; a legacy `result` re-encodes as `response`.
         let reencoded = try JSONCoding.decoder.decode(GenAIMessagePart.self, from: JSONCoding.encoder.encode(parts[4]))
-        XCTAssertEqual(reencoded, parts[4])
+        #expect(reencoded == parts[4])
         let encodedResponse = try JSONValue.from(span.inputMessages[1].parts[0])
-        XCTAssertEqual(encodedResponse, ["type": "tool_call_response", "id": "call-0", "response": ["ok": true]])
+        #expect(encodedResponse == ["type": "tool_call_response", "id": "call-0", "response": ["ok": true]])
     }
 
-    func testItemsListNormalizesAndFollowsNext() async throws {
+    @Test func itemsListNormalizesAndFollowsNext() async throws {
         let transport = MockTransport { _, index in
             index == 0
                 ? .response(
@@ -138,33 +141,27 @@ final class ConversationsTests: XCTestCase {
         let items = try await client.conversations.items.list(
             "conv/1", ConversationItemListParams(limit: 1, include: [.events, .toolDefinitions], agent: "root", fromCompaction: true)
         ).collect()
-        XCTAssertEqual(items.map(\.spanId), ["s2", "s1"])
-        XCTAssertTrue(transport.requests[0].request.url.absoluteString.contains("/v1/conversations/conv%2F1/items?"))
-        XCTAssertEqual(transport.requests[0].query["include"], ["events", "gen_ai.tool.definitions"])
-        XCTAssertEqual(transport.requests[0].query["agent"], ["root"])
-        XCTAssertEqual(transport.requests[0].query["from_compaction"], ["true"])
-        XCTAssertEqual(transport.requests[1].query["next"], ["n2"])
+        #expect(items.map(\.spanId) == ["s2", "s1"])
+        #expect(transport.requests[0].request.url.absoluteString.contains("/v1/conversations/conv%2F1/items?"))
+        #expect(transport.requests[0].query["include"] == ["events", "gen_ai.tool.definitions"])
+        #expect(transport.requests[0].query["agent"] == ["root"])
+        #expect(transport.requests[0].query["from_compaction"] == ["true"])
+        #expect(transport.requests[1].query["next"] == ["n2"])
 
         let messages = items[0].attribute("gen_ai.input.messages")?.arrayValue ?? []
         let part = messages[1]["parts"]?[0]
-        XCTAssertEqual(part?["response"], ["ok": true])
-        XCTAssertNil(part?["result"])
+        #expect(part?["response"] == ["ok": true])
+        #expect(part?["result"] == nil)
     }
 
-    func testItemsListRejectsHasMoreWithoutNext() async {
+    @Test func itemsListRejectsHasMoreWithoutNext() async throws {
         let transport = MockTransport(json: #"{"object":"list","data":[],"has_more":true,"next":null}"#)
         let client = makeClient(transport)
-        do {
-            _ = try await client.conversations.items.list("c").collect()
-            XCTFail("expected error")
-        } catch let error as IntrospectionError {
-            XCTAssertEqual(error.kind, .decoding)
-        } catch {
-            XCTFail("unexpected \(error)")
-        }
+        let error = try await #require(throws: IntrospectionError.self) { try await client.conversations.items.list("c").collect() }
+        #expect(error.kind == .decoding)
     }
 
-    func testRetrieveFindsLatestChatTurn() async throws {
+    @Test func retrieveFindsLatestChatTurn() async throws {
         let transport = MockTransport { request, _ in
             request.url.path.hasSuffix("/items")
                 ? .response(.json(#"{"object":"list","data":[\#(toolSpanJSON),\#(chatSpanJSON)],"has_more":false,"next":null}"#))
@@ -172,15 +169,15 @@ final class ConversationsTests: XCTestCase {
         }
         let client = makeClient(transport)
         let span = try await client.conversations.retrieve(conversationId: "c1")
-        XCTAssertEqual(span?.spanId, "s2")
-        XCTAssertEqual(transport.last?.path, "/v1/conversations/c1/items/s2")
+        #expect(span?.spanId == "s2")
+        #expect(transport.last?.path == "/v1/conversations/c1/items/s2")
 
         let empty = makeClient(MockTransport(json: #"{"object":"list","data":[],"has_more":false}"#))
         let none = try await empty.conversations.retrieve(conversationId: "c1")
-        XCTAssertNil(none)
+        #expect(none == nil)
     }
 
-    func testGetTurnsAndExports() async throws {
+    @Test func getTurnsAndExports() async throws {
         let turnJSON = #"""
             {"object":"list","data":[{"object":"conversation.turn","id":"turn-1","trace_id":"t1","ordinal":1,
              "started_at":"2026-10-01T12:00:00Z","ended_at":"2026-10-01T12:00:05Z","status":"completed",
@@ -211,32 +208,32 @@ final class ConversationsTests: XCTestCase {
         let client = makeClient(transport)
 
         let conversation = try await client.conversations.get("conv-1", shareId: "sh")
-        XCTAssertEqual(conversation.taskTitle, "Hello")
-        XCTAssertEqual(transport.last?.query["share_id"], ["sh"])
+        #expect(conversation.taskTitle == "Hello")
+        #expect(transport.last?.query["share_id"] == ["sh"])
 
         let turns = try await client.conversations.turns("conv-1", ConversationTurnListParams(limit: 5, agent: "root", lookbackDays: 7))
             .collect()
-        XCTAssertEqual(turns.first?.status, .completed)
-        XCTAssertEqual(turns.first?.messages?.first?.channelReply?.status, "sent")
-        XCTAssertEqual(turns.first?.messages?.first?.parts.first?.type, "text")
-        XCTAssertEqual(transport.last?.path, "/v1/conversations/conv-1/turns")
-        XCTAssertEqual(transport.last?.query["lookback_days"], ["7"])
+        #expect(turns.first?.status == .completed)
+        #expect(turns.first?.messages?.first?.channelReply?.status == "sent")
+        #expect(turns.first?.messages?.first?.parts.first?.type == "text")
+        #expect(transport.last?.path == "/v1/conversations/conv-1/turns")
+        #expect(transport.last?.query["lookback_days"] == ["7"])
 
         let exported = try await client.conversations.exportJSON("conv-1", ConversationExportParams(agent: "root", fromCompaction: true))
-        XCTAssertEqual(exported.data.count, 1)
-        XCTAssertEqual(transport.last?.request.headers["Accept"], "application/json")
-        XCTAssertEqual(transport.last?.query["from_compaction"], ["true"])
+        #expect(exported.data.count == 1)
+        #expect(transport.last?.request.headers["Accept"] == "application/json")
+        #expect(transport.last?.query["from_compaction"] == ["true"])
 
         let trajectory = try await client.conversations.exportTrajectory("conv-1")
-        XCTAssertEqual(trajectory.map(\.role), ["meta", "user", "assistant", "tool"])
-        XCTAssertNil(trajectory[2].content)
-        XCTAssertEqual(trajectory[2].toolCalls?.first?.name, "ls")
-        XCTAssertEqual(trajectory[3].ok, true)
-        XCTAssertEqual(transport.last?.request.headers["Accept"], "application/vnd.letta.trajectory+json;version=1")
+        #expect(trajectory.map(\.role) == ["meta", "user", "assistant", "tool"])
+        #expect(trajectory[2].content == nil)
+        #expect(trajectory[2].toolCalls?.first?.name == "ls")
+        #expect(trajectory[3].ok == true)
+        #expect(transport.last?.request.headers["Accept"] == "application/vnd.letta.trajectory+json;version=1")
 
         let stream = try await client.conversations.exportStream("conv-1", format: .arrow)
         let bytes = try await stream.collect()
-        XCTAssertEqual(bytes, Data([1, 2, 3]))
-        XCTAssertEqual(transport.last?.request.headers["Accept"], "application/vnd.apache.arrow.stream")
+        #expect(bytes == Data([1, 2, 3]))
+        #expect(transport.last?.request.headers["Accept"] == "application/vnd.apache.arrow.stream")
     }
 }

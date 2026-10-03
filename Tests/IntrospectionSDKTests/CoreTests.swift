@@ -1,48 +1,46 @@
 import Foundation
-import XCTest
+import Testing
 
 @testable import IntrospectionSDK
 
-final class CoreTests: XCTestCase {
-    func testJSONValueRoundTripKeepsKeys() throws {
+@Suite struct CoreTests {
+    @Test func jsonValueRoundTripKeepsKeys() throws {
         let value: JSONValue = ["workspace_id": "w1", "count": 3, "nested": ["a_b": true, "list": [1, "x", nil]]]
         let data = try JSONCoding.encoder.encode(value)
         let decoded = try JSONCoding.decoder.decode(JSONValue.self, from: data)
-        XCTAssertEqual(decoded, value)
-        XCTAssertEqual(decoded["workspace_id"]?.stringValue, "w1")
-        XCTAssertEqual(decoded["nested"]?["a_b"]?.boolValue, true)
+        #expect(decoded == value)
+        #expect(decoded["workspace_id"]?.stringValue == "w1")
+        #expect(decoded["nested"]?["a_b"]?.boolValue == true)
     }
 
-    func testISO8601Shapes() {
-        XCTAssertNotNil(ISO8601.parse("2026-10-03T12:00:00Z"))
-        XCTAssertNotNil(ISO8601.parse("2026-10-03T12:00:00.123456Z"))
-        XCTAssertNotNil(ISO8601.parse("2026-10-03T12:00:00.1+02:00"))
-        XCTAssertNotNil(ISO8601.parse("2026-10-03T12:00:00"))
-        XCTAssertNotNil(ISO8601.parse("2026-10-03 12:00:00.5"))
-        XCTAssertEqual(
-            ISO8601.parse("2026-10-03T12:00:00.500Z"),
-            ISO8601.parse("2026-10-03T12:00:00.5Z")
-        )
+    @Test func iso8601Shapes() {
+        #expect(ISO8601.parse("2026-10-03T12:00:00Z") != nil)
+        #expect(ISO8601.parse("2026-10-03T12:00:00.123456Z") != nil)
+        #expect(ISO8601.parse("2026-10-03T12:00:00.1+02:00") != nil)
+        #expect(ISO8601.parse("2026-10-03T12:00:00") != nil)
+        #expect(ISO8601.parse("2026-10-03 12:00:00.5") != nil)
+        #expect(ISO8601.parse("2026-10-03T12:00:00.500Z") == ISO8601.parse("2026-10-03T12:00:00.5Z"))
     }
 
-    func testErrorMapping() {
+    @Test func errorMapping() {
         let body = Data(#"{"detail":[{"loc":["body","name"],"msg":"field required"}],"code":"invalid_request"}"#.utf8)
         let error = IntrospectionError.fromResponse(status: 422, headers: ["x-request-id": "r1"], body: body)
-        XCTAssertEqual(error.kind, .validation)
-        XCTAssertEqual(error.message, "body.name: field required")
-        XCTAssertEqual(error.requestId, "r1")
+        #expect(error.kind == .validation)
+        #expect(error.message == "body.name: field required")
+        #expect(error.requestId == "r1")
         let scope = IntrospectionError.fromResponse(
             status: 403, headers: [:], body: Data(#"{"detail":"no","code":"insufficient_scope","missing_capability":"tasks:write"}"#.utf8)
         )
-        XCTAssertEqual(scope.kind, .insufficientScope(missingCapability: "tasks:write"))
-        XCTAssertEqual(
-            IntrospectionError.fromResponse(status: 401, headers: [:], body: Data(#"{"code":"runner_expired"}"#.utf8)).kind, .runnerExpired)
-        XCTAssertEqual(IntrospectionError.parseRetryAfter("3"), 3)
-        XCTAssertEqual(IntrospectionError.parseRetryAfter("-2"), 0)
-        XCTAssertNotNil(IntrospectionError.parseRetryAfter("Wed, 21 Oct 2099 07:28:00 GMT"))
+        #expect(scope.kind == .insufficientScope(missingCapability: "tasks:write"))
+        #expect(
+            IntrospectionError.fromResponse(status: 401, headers: [:], body: Data(#"{"code":"runner_expired"}"#.utf8)).kind
+                == .runnerExpired)
+        #expect(IntrospectionError.parseRetryAfter("3") == 3)
+        #expect(IntrospectionError.parseRetryAfter("-2") == 0)
+        #expect(IntrospectionError.parseRetryAfter("Wed, 21 Oct 2099 07:28:00 GMT") != nil)
     }
 
-    func testRetriesRateLimitThenSucceeds() async throws {
+    @Test func retriesRateLimitThenSucceeds() async throws {
         let transport = MockTransport { _, index in
             index == 0
                 ? .response(.json(#"{"detail":"slow down"}"#, status: 429, headers: ["retry-after": "0"]))
@@ -50,23 +48,21 @@ final class CoreTests: XCTestCase {
         }
         let client = makeClient(transport)
         let value = try await client.dataPlane.json("POST", "/v1/x", body: .json(Data("{}".utf8)), as: JSONValue.self)
-        XCTAssertEqual(value["ok"]?.boolValue, true)
-        XCTAssertEqual(transport.requests.count, 2)
+        #expect(value["ok"]?.boolValue == true)
+        #expect(transport.requests.count == 2)
     }
 
-    func testDoesNotRetryPostOn503() async {
+    @Test func doesNotRetryPostOn503() async throws {
         let transport = MockTransport { _, _ in .response(.json(#"{"detail":"down"}"#, status: 503)) }
         let client = makeClient(transport)
-        do {
-            _ = try await client.dataPlane.json("POST", "/v1/x", as: JSONValue.self)
-            XCTFail("expected error")
-        } catch let error as IntrospectionError {
-            XCTAssertEqual(error.kind, .unavailable)
-            XCTAssertEqual(transport.requests.count, 1)
-        } catch { XCTFail("\(error)") }
+        let error = try await #require(throws: IntrospectionError.self) {
+            try await client.dataPlane.json("POST", "/v1/x", as: JSONValue.self)
+        }
+        #expect(error.kind == .unavailable)
+        #expect(transport.requests.count == 1)
     }
 
-    func testRefreshOn401RetriesOnce() async throws {
+    @Test func refreshOn401RetriesOnce() async throws {
         actor Counter: CredentialProvider {
             var token = "old"
             func authorization() async throws -> String? { "Bearer \(token)" }
@@ -77,23 +73,23 @@ final class CoreTests: XCTestCase {
         }
         let http = HTTPClient(baseURL: URL(string: "https://dp.test")!, credentials: Counter(), transport: transport)
         _ = try await http.json("GET", "/v1/tasks/1", as: JSONValue.self)
-        XCTAssertEqual(transport.requests.count, 2)
+        #expect(transport.requests.count == 2)
     }
 
-    func testEveryRequestCarriesTheSDKUserAgentUnlessOverridden() async throws {
+    @Test func everyRequestCarriesTheSDKUserAgentUnlessOverridden() async throws {
         let transport = MockTransport { _, _ in .response(.json("{}")) }
         _ = try await HTTPClient(baseURL: URL(string: "https://dp.test")!, transport: transport).json("GET", "/v1/x", as: JSONValue.self)
-        XCTAssertEqual(transport.last?.request.headers["User-Agent"], "introspection-sdk/\(IntrospectionSDK.version)")
+        #expect(transport.last?.request.headers["User-Agent"] == "introspection-sdk/\(IntrospectionSDK.version)")
 
         let custom = HTTPClient(
             baseURL: URL(string: "https://dp.test")!, transport: transport,
             options: .init(additionalHeaders: ["user-agent": "ark/1.0"]))
         _ = try await custom.json("GET", "/v1/x", as: JSONValue.self)
-        XCTAssertEqual(transport.last?.request.headers["user-agent"], "ark/1.0")
-        XCTAssertNil(transport.last?.request.headers["User-Agent"])
+        #expect(transport.last?.request.headers["user-agent"] == "ark/1.0")
+        #expect(transport.last?.request.headers["User-Agent"] == nil)
     }
 
-    func testPaginatorWalksCursorsAndStopsOnRepeat() async throws {
+    @Test func paginatorWalksCursorsAndStopsOnRepeat() async throws {
         let transport = MockTransport { request, _ in
             let next = URLComponents(url: request.url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "next" }?.value
             switch next {
@@ -104,42 +100,41 @@ final class CoreTests: XCTestCase {
         }
         let client = makeClient(transport)
         let items = try await client.dataPlane.paginate("/v1/things", as: Int.self).collect()
-        XCTAssertEqual(items, [1, 2, 3])
+        #expect(items == [1, 2, 3])
     }
 
-    func testURLEncodingOfPathAndQuery() {
+    @Test func urlEncodingOfPathAndQuery() {
         let http = HTTPClient(baseURL: URL(string: "https://dp.test/base/")!)
         var query = Query()
         query.add("name_contains", "a b&c")
         query.add("tag", ["x", "y"])
         let url = http.url("/v1/files/\(pathSegment("a/b"))", query: query)
-        XCTAssertEqual(url.absoluteString, "https://dp.test/base/v1/files/a%2Fb?name_contains=a%20b%26c&tag=x&tag=y")
+        #expect(url.absoluteString == "https://dp.test/base/v1/files/a%2Fb?name_contains=a%20b%26c&tag=x&tag=y")
     }
 
-    func testSSEParser() {
+    @Test func sseParser() {
         var parser = SSEParser()
         var frames = parser.push(Data("id: 1\nevent: ag_ui\ndata: {\"a\":1}\n".utf8))
-        XCTAssertTrue(frames.isEmpty)
+        #expect(frames.isEmpty)
         frames = parser.push(Data("\r\n: comment\n\nevent: heartbeat\ndata:\n\ndata: a\ndata: b\n\nevent: partial\n".utf8))
-        XCTAssertEqual(
-            frames,
-            [
+        #expect(
+            frames == [
                 SSEFrame(event: "ag_ui", data: "{\"a\":1}", id: "1"),
                 SSEFrame(event: "heartbeat", data: ""),
                 SSEFrame(event: "message", data: "a\nb"),
             ])
     }
 
-    func testMultipartAndForm() {
+    @Test func multipartAndForm() {
         var form = MultipartFormData(boundary: "B")
         form.append(name: "name", value: "x")
         form.append(name: "file", filename: "a.txt", contentType: "text/plain", data: Data("hi".utf8))
-        XCTAssertEqual(
-            String(decoding: form.data, as: UTF8.self),
-            "--B\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\nx\r\n--B\r\nContent-Disposition: form-data; name=\"file\"; filename=\"a.txt\"\r\nContent-Type: text/plain\r\n\r\nhi\r\n--B--\r\n"
+        #expect(
+            String(decoding: form.data, as: UTF8.self)
+                == "--B\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\nx\r\n--B\r\nContent-Disposition: form-data; name=\"file\"; filename=\"a.txt\"\r\nContent-Type: text/plain\r\n\r\nhi\r\n--B--\r\n"
         )
         let (body, type) = RequestBody.form([("grant_type", "refresh_token"), ("a", "b c+")]).encoded()
-        XCTAssertEqual(type, "application/x-www-form-urlencoded")
-        XCTAssertEqual(String(decoding: body!, as: UTF8.self), "grant_type=refresh_token&a=b+c%2B")
+        #expect(type == "application/x-www-form-urlencoded")
+        #expect(String(decoding: body!, as: UTF8.self) == "grant_type=refresh_token&a=b+c%2B")
     }
 }

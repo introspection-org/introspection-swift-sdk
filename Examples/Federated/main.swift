@@ -6,12 +6,13 @@
 //
 //     SUBJECT_TOKEN=<supabase access token> \
 //     INTROSPECTION_FEDERATED_CLIENT_ID=intro_app_xxx \
-//     INTROSPECTION_PROJECT=ark INTROSPECTION_RUNTIME=ark \
+//     INTROSPECTION_PROJECT=ark INTROSPECTION_RUNTIME_ID=<runtime version id> \
 //     INTROSPECTION_BASE_API_URL=https://api.staging.introspection.dev \
 //       swift run FederatedExample
 //
 // In an app, `subjectToken` returns the provider SDK's current token instead,
-// for example `{ try await supabase.auth.session.accessToken }`.
+// for example `{ try await supabase.auth.session.accessToken }`, and the runtime
+// version id comes from the app's backend, which resolves it with a service account.
 
 import Foundation
 import IntrospectionSDK
@@ -30,13 +31,12 @@ let client = try await IntrospectionClient.federated(
     subjectToken: { subjectToken },
     clientID: required("INTROSPECTION_FEDERATED_CLIENT_ID"),
     project: required("INTROSPECTION_PROJECT"),
-    runtime: required("INTROSPECTION_RUNTIME"),
     controlPlaneURL: URL(string: env["INTROSPECTION_BASE_API_URL"] ?? "https://api.introspection.dev")!
 )
 print("data plane: \(client.dataPlane.baseURL)")
 
-// The runtime group resolves to its current version on the Data Plane.
-let run = try await client.tasks.start(prompt: "Say hello in one sentence.")
+let runtimeId = required("INTROSPECTION_RUNTIME_ID")
+let run = try await client.tasks.start(prompt: "Say hello in one sentence.", TaskCreate(runtimeId: runtimeId))
 print("task=\(run.run.taskId)")
 print(try await run.text())
 

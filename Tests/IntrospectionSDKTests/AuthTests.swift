@@ -1,5 +1,5 @@
 import Foundation
-import XCTest
+import Testing
 
 @testable import IntrospectionSDK
 
@@ -47,53 +47,53 @@ private actor Counter {
 
 private let tokenJSON = #"{"access_token":"AT","token_type":"Bearer","expires_in":900,"scope":"*"}"#
 
-final class AuthTests: XCTestCase {
+@Suite struct AuthTests {
     // MARK: Crypto
 
-    func testPKCEMatchesRFC7636AppendixB() throws {
+    @Test func pkceMatchesRFC7636AppendixB() throws {
         let pkce = try PKCE(verifier: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk")
-        XCTAssertEqual(pkce.challenge, "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM")
-        XCTAssertEqual(pkce.method, "S256")
+        #expect(pkce.challenge == "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM")
+        #expect(pkce.method == "S256")
     }
 
-    func testGeneratedPKCEIsValidAndRandom() throws {
+    @Test func generatedPKCEIsValidAndRandom() throws {
         let first = PKCE()
         let second = PKCE()
-        XCTAssertEqual(first.verifier.count, 64)
-        XCTAssertNotEqual(first.verifier, second.verifier)
-        XCTAssertNoThrow(try PKCE(verifier: first.verifier))
-        XCTAssertEqual(PKCE(length: 10).verifier.count, 43)
-        XCTAssertEqual(PKCE(length: 500).verifier.count, 128)
-        XCTAssertFalse(first.challenge.contains("="))
-        XCTAssertThrowsError(try PKCE(verifier: "short"))
-        XCTAssertThrowsError(try PKCE(verifier: String(repeating: "a", count: 42) + "!"))
-        XCTAssertFalse(PKCE.randomURLSafeString().contains(where: { "+/=".contains($0) }))
+        #expect(first.verifier.count == 64)
+        #expect(first.verifier != second.verifier)
+        #expect(throws: Never.self) { try PKCE(verifier: first.verifier) }
+        #expect(PKCE(length: 10).verifier.count == 43)
+        #expect(PKCE(length: 500).verifier.count == 128)
+        #expect(!first.challenge.contains("="))
+        #expect(throws: (any Error).self) { try PKCE(verifier: "short") }
+        #expect(throws: (any Error).self) { try PKCE(verifier: String(repeating: "a", count: 42) + "!") }
+        #expect(!PKCE.randomURLSafeString().contains(where: { "+/=".contains($0) }))
     }
 
     // MARK: JWT
 
-    func testJWTClaimsDecodeWithoutVerification() throws {
+    @Test func jwtClaimsDecodeWithoutVerification() throws {
         let token = makeJWT([
             "exp": 1_900_000_000, "iat": 1_899_999_100, "jti": "sess-1", "org_id": "org-1",
             "project_id": "proj-1", "member_id": "mem-1", "member_type": "business", "org_role": "admin",
             "aud": "https://api.gcp01.example.dev", "scope": "*", "type": "access_token",
         ])
         let claims = try JWTClaims(token: token)
-        XCTAssertEqual(claims.jti, "sess-1")
-        XCTAssertEqual(claims.orgId, "org-1")
-        XCTAssertEqual(claims.projectId, "proj-1")
-        XCTAssertEqual(claims.memberType, "business")
-        XCTAssertEqual(claims.orgRole, "admin")
-        XCTAssertEqual(claims.audience, ["https://api.gcp01.example.dev"])
-        XCTAssertEqual(claims.expiresAt, Date(timeIntervalSince1970: 1_900_000_000))
-        XCTAssertEqual(claims.tokenType, "access_token")
-        XCTAssertThrowsError(try JWTClaims(token: "not-a-jwt"))
-        XCTAssertEqual(try JWTClaims(token: makeJWT(["aud": ["a", "b"]])).audience, ["a", "b"])
+        #expect(claims.jti == "sess-1")
+        #expect(claims.orgId == "org-1")
+        #expect(claims.projectId == "proj-1")
+        #expect(claims.memberType == "business")
+        #expect(claims.orgRole == "admin")
+        #expect(claims.audience == ["https://api.gcp01.example.dev"])
+        #expect(claims.expiresAt == Date(timeIntervalSince1970: 1_900_000_000))
+        #expect(claims.tokenType == "access_token")
+        #expect(throws: (any Error).self) { try JWTClaims(token: "not-a-jwt") }
+        #expect(try JWTClaims(token: makeJWT(["aud": ["a", "b"]])).audience == ["a", "b"])
     }
 
     // MARK: Token models
 
-    func testOAuthTokenDecodesKnownAndExtraFields() throws {
+    @Test func oauthTokenDecodesKnownAndExtraFields() throws {
         let json = #"""
             {"access_token":"AT","token_type":"Bearer","expires_in":900,"refresh_token":"RT","scope":"*",
              "session_id":"sess","org_id":"org","project_id":"proj","dp_url":"https://api.dp.test",
@@ -101,100 +101,93 @@ final class AuthTests: XCTestCase {
              "act":{"sub":"agent","type":"agent"},"git_url":null,"novel":{"x":1}}
             """#
         let token = try JSONCoding.decoder.decode(OAuthToken.self, from: Data(json.utf8))
-        XCTAssertEqual(token.accessToken, "AT")
-        XCTAssertEqual(token.expiresIn, 900)
-        XCTAssertEqual(token.refreshToken, "RT")
-        XCTAssertEqual(token.sessionId, "sess")
-        XCTAssertEqual(token.dpUrl, "https://api.dp.test")
-        XCTAssertEqual(token.memberName, "Ada")
-        XCTAssertEqual(token.act?["type"], "agent")
-        XCTAssertNil(token.gitUrl)
-        XCTAssertEqual(token.extra, ["novel": ["x": 1]])
+        #expect(token.accessToken == "AT")
+        #expect(token.expiresIn == 900)
+        #expect(token.refreshToken == "RT")
+        #expect(token.sessionId == "sess")
+        #expect(token.dpUrl == "https://api.dp.test")
+        #expect(token.memberName == "Ada")
+        #expect(token.act?["type"] == "agent")
+        #expect(token.gitUrl == nil)
+        #expect(token.extra == ["novel": ["x": 1]])
         let roundTrip = try JSONCoding.decoder.decode(OAuthToken.self, from: JSONCoding.encoder.encode(token))
-        XCTAssertEqual(roundTrip, token)
-        XCTAssertEqual(token.expiresAt(receivedAt: Date(timeIntervalSince1970: 0)), Date(timeIntervalSince1970: 900))
+        #expect(roundTrip == token)
+        #expect(token.expiresAt(receivedAt: Date(timeIntervalSince1970: 0)) == Date(timeIntervalSince1970: 900))
     }
 
     // MARK: Grants
 
-    func testClientCredentialsFormBody() async throws {
+    @Test func clientCredentialsFormBody() async throws {
         let transport = MockTransport(json: #"{"access_token":"AT","token_type":"Bearer","expires_in":900,"dp_url":"https://api.dp"}"#)
         let token = try await makeClient(transport).auth.clientCredentials(
             clientId: "intro_app_1", clientSecret: "intro_sk_ x", project: "my-proj", scope: "tasks:read tasks:write"
         )
-        XCTAssertEqual(token.dpUrl, "https://api.dp")
-        let request = try XCTUnwrap(transport.last)
-        XCTAssertEqual(request.request.method, "POST")
-        XCTAssertEqual(request.path, "/v1/oauth/token")
-        XCTAssertEqual(request.request.headers["Content-Type"], "application/x-www-form-urlencoded")
-        XCTAssertNil(request.request.headers["Authorization"])
-        XCTAssertEqual(
-            form(request),
-            [
+        #expect(token.dpUrl == "https://api.dp")
+        let request = try #require(transport.last)
+        #expect(request.request.method == "POST")
+        #expect(request.path == "/v1/oauth/token")
+        #expect(request.request.headers["Content-Type"] == "application/x-www-form-urlencoded")
+        #expect(request.request.headers["Authorization"] == nil)
+        #expect(
+            form(request) == [
                 "grant_type": "client_credentials", "client_id": "intro_app_1", "client_secret": "intro_sk_ x",
                 "project": "my-proj", "scope": "tasks:read tasks:write",
             ])
     }
 
-    func testTokenExchangeAndJWTBearerFormBodies() async throws {
+    @Test func tokenExchangeAndJWTBearerFormBodies() async throws {
         let transport = MockTransport(json: tokenJSON)
         let auth = makeClient(transport).auth
         _ = try await auth.tokenExchange(subjectToken: "IDT", clientId: "intro_app_f", project: "p")
-        XCTAssertEqual(
-            form(transport.last),
-            [
+        #expect(
+            form(transport.last) == [
                 "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange", "client_id": "intro_app_f",
                 "subject_token": "IDT", "subject_token_type": "urn:ietf:params:oauth:token-type:id_token", "project": "p",
             ])
         _ = try await auth.tokenExchange(subjectToken: "LOGIN", clientId: "cli", subjectTokenType: OAuthTokenType.accessToken)
-        XCTAssertEqual(form(transport.last)["subject_token_type"], "urn:ietf:params:oauth:token-type:access_token")
-        XCTAssertNil(form(transport.last)["project"])
+        #expect(form(transport.last)["subject_token_type"] == "urn:ietf:params:oauth:token-type:access_token")
+        #expect(form(transport.last)["project"] == nil)
         _ = try await auth.jwtBearer(assertion: "IDJAG", clientId: "c", project: "p", resource: "https://mcp")
-        XCTAssertEqual(
-            form(transport.last),
-            [
+        #expect(
+            form(transport.last) == [
                 "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer", "client_id": "c",
                 "assertion": "IDJAG", "project": "p", "resource": "https://mcp",
             ])
     }
 
-    func testAuthorizationCodeRefreshAndRevokeFormBodies() async throws {
+    @Test func authorizationCodeRefreshAndRevokeFormBodies() async throws {
         let transport = MockTransport { request, _ in
             request.url.path == "/v1/oauth/revoke" ? .response(.json(#"{"status":"revoked"}"#)) : .response(.json(tokenJSON))
         }
         let auth = makeClient(transport).auth
         _ = try await auth.exchangeCode(code: "C", clientID: "spa_1", redirectURI: "app://cb", codeVerifier: "V")
-        XCTAssertEqual(
-            form(transport.last),
-            [
+        #expect(
+            form(transport.last) == [
                 "grant_type": "authorization_code", "client_id": "spa_1", "code": "C",
                 "redirect_uri": "app://cb", "code_verifier": "V",
             ])
         _ = try await auth.refresh(refreshToken: "RT", clientId: "dataplane", sessionId: "S", orgId: "O")
-        XCTAssertEqual(
-            form(transport.last),
-            [
+        #expect(
+            form(transport.last) == [
                 "grant_type": "refresh_token", "client_id": "dataplane", "refresh_token": "RT",
                 "session_id": "S", "org_id": "O",
             ])
         try await auth.revoke(sessionId: "S", orgId: "O")
-        XCTAssertEqual(transport.last?.path, "/v1/oauth/revoke")
-        XCTAssertEqual(form(transport.last), ["client_id": "dataplane", "session_id": "S", "org_id": "O"])
+        #expect(transport.last?.path == "/v1/oauth/revoke")
+        #expect(form(transport.last) == ["client_id": "dataplane", "session_id": "S", "org_id": "O"])
     }
 
-    func testTokenEndpointErrorExposesOAuthCode() async throws {
+    @Test func tokenEndpointErrorExposesOAuthCode() async throws {
         let transport = MockTransport(status: 400, json: #"{"error":"invalid_grant","error_description":"please re-authorize"}"#)
-        do {
-            _ = try await makeClient(transport).auth.refresh(refreshToken: "RT", clientId: "x", sessionId: "S", orgId: "O")
-            XCTFail("expected an error")
-        } catch let error as IntrospectionError {
-            XCTAssertEqual(error.kind, .validation)
-            XCTAssertEqual(error.oauthError, "invalid_grant")
-            XCTAssertEqual(error.oauthErrorDescription, "please re-authorize")
+        let error = try await #require(throws: IntrospectionError.self) {
+            try await makeClient(transport).auth.refresh(refreshToken: "RT", clientId: "x", sessionId: "S", orgId: "O")
         }
+        #expect(error.kind == .validation)
+        #expect(error.oauthError == "invalid_grant")
+        #expect(error.oauthErrorDescription == "please re-authorize")
     }
 
-    func testMintDataPlaneTokenWithExplicitBearer() async throws {
+    @Test func mintDataPlaneTokenWithExplicitBearer() async throws {
         let jwt = makeJWT(["jti": "sess-9", "org_id": "org-9", "aud": "https://api.gcp01.example.dev"])
         let transport = MockTransport(
             json: """
@@ -203,37 +196,37 @@ final class AuthTests: XCTestCase {
                 """)
         let auth = makeClient(transport).auth
         let session = try await auth.dataPlaneSession(oidcAccessToken: "ZITADEL", project: "proj", environment: "staging")
-        let request = try XCTUnwrap(transport.last)
-        XCTAssertEqual(request.path, "/v1/tokens")
-        XCTAssertEqual(request.request.headers["Authorization"], "Bearer ZITADEL")
-        XCTAssertEqual(request.json, ["project": "proj", "include_refresh_token": true, "environment": "staging"])
-        XCTAssertEqual(session.sessionId, "sess-9")
-        XCTAssertEqual(session.orgId, "org-9")
-        XCTAssertEqual(session.refreshToken, "RT")
-        XCTAssertEqual(session.dataPlaneURL, "https://api.gcp01.example.dev")
-        XCTAssertEqual(session.expiresAt, ISO8601.parse("2026-10-03T12:00:00Z"))
+        let request = try #require(transport.last)
+        #expect(request.path == "/v1/tokens")
+        #expect(request.request.headers["Authorization"] == "Bearer ZITADEL")
+        #expect(request.json == ["project": "proj", "include_refresh_token": true, "environment": "staging"])
+        #expect(session.sessionId == "sess-9")
+        #expect(session.orgId == "org-9")
+        #expect(session.refreshToken == "RT")
+        #expect(session.dataPlaneURL == "https://api.gcp01.example.dev")
+        #expect(session.expiresAt == ISO8601.parse("2026-10-03T12:00:00Z"))
 
         _ = try await auth.mintDataPlaneToken(DataPlaneTokenRequest(project: "proj", expiresMinutes: 30))
-        XCTAssertEqual(transport.last?.request.headers["Authorization"], "Bearer cp-token")
-        XCTAssertEqual(transport.last?.json, ["project": "proj", "expires_minutes": 30])
+        #expect(transport.last?.request.headers["Authorization"] == "Bearer cp-token")
+        #expect(transport.last?.json == ["project": "proj", "expires_minutes": 30])
     }
 
     // MARK: Device flow
 
-    func testDeviceAuthorizationRequest() async throws {
+    @Test func deviceAuthorizationRequest() async throws {
         let transport = MockTransport(
             json: #"""
                 {"device_code":"DC","user_code":"ABCD-EFGH","verification_uri":"https://app/activate",
                  "verification_uri_complete":"https://app/activate?user_code=ABCD-EFGH","expires_in":600,"interval":5}
                 """#)
         let device = try await makeClient(transport).auth.deviceAuthorization(project: "p", capabilities: ["runtimes", "reviews"])
-        XCTAssertEqual(device.userCode, "ABCD-EFGH")
-        XCTAssertEqual(device.interval, 5)
-        XCTAssertEqual(transport.last?.path, "/v1/oauth/device/code")
-        XCTAssertEqual(form(transport.last), ["client_id": "cli", "project": "p", "capabilities": "runtimes,reviews"])
+        #expect(device.userCode == "ABCD-EFGH")
+        #expect(device.interval == 5)
+        #expect(transport.last?.path == "/v1/oauth/device/code")
+        #expect(form(transport.last) == ["client_id": "cli", "project": "p", "capabilities": "runtimes,reviews"])
     }
 
-    func testDevicePollingHandlesPendingAndSlowDown() async throws {
+    @Test func devicePollingHandlesPendingAndSlowDown() async throws {
         let replies = [
             #"{"error":"authorization_pending","error_description":"pending"}"#,
             #"{"error":"slow_down","error_description":"slow"}"#,
@@ -251,65 +244,59 @@ final class AuthTests: XCTestCase {
                 slept.append(seconds)
                 _ = await sleeps.increment()
             })
-        XCTAssertEqual(token.accessToken, "AT")
-        XCTAssertEqual(slept.values, [5, 5, 10, 10])
-        XCTAssertEqual(transport.requests.count, 4)
-        XCTAssertEqual(
-            form(transport.last),
-            [
+        #expect(token.accessToken == "AT")
+        #expect(slept.values == [5, 5, 10, 10])
+        #expect(transport.requests.count == 4)
+        #expect(
+            form(transport.last) == [
                 "grant_type": "urn:ietf:params:oauth:grant-type:device_code", "client_id": "cli", "device_code": "DC",
             ])
     }
 
-    func testDevicePollingDeniedIsAuthenticationError() async throws {
+    @Test func devicePollingDeniedIsAuthenticationError() async throws {
         let transport = MockTransport(status: 400, json: #"{"error":"access_denied","error_description":"denied"}"#)
         let device = DeviceAuthorization(deviceCode: "DC", userCode: "U", verificationUri: "v", expiresIn: 600, interval: 1)
-        do {
-            _ = try await makeClient(transport).auth.pollDeviceToken(device, sleep: { _ in })
-            XCTFail("expected an error")
-        } catch let error as IntrospectionError {
-            XCTAssertEqual(error.kind, .authentication)
-            XCTAssertEqual(error.code, "access_denied")
+        let error = try await #require(throws: IntrospectionError.self) {
+            try await makeClient(transport).auth.pollDeviceToken(device, sleep: { _ in })
         }
+        #expect(error.kind == .authentication)
+        #expect(error.code == "access_denied")
     }
 
-    func testDevicePollingStopsAtExpiry() async throws {
+    @Test func devicePollingStopsAtExpiry() async throws {
         let transport = MockTransport(status: 400, json: #"{"error":"authorization_pending"}"#)
         let clock = Clock(Date(timeIntervalSince1970: 0))
         let device = DeviceAuthorization(deviceCode: "DC", userCode: "U", verificationUri: "v", expiresIn: 12, interval: 5)
-        do {
-            _ = try await makeClient(transport).auth.pollDeviceToken(device, now: { clock.now }, sleep: { clock.advance($0) })
-            XCTFail("expected an error")
-        } catch let error as IntrospectionError {
-            XCTAssertEqual(error.kind, .authentication)
-            XCTAssertEqual(error.code, "expired_token")
+        let error = try await #require(throws: IntrospectionError.self) {
+            try await makeClient(transport).auth.pollDeviceToken(device, now: { clock.now }, sleep: { clock.advance($0) })
         }
-        XCTAssertEqual(transport.requests.count, 2)
+        #expect(error.kind == .authentication)
+        #expect(error.code == "expired_token")
+        #expect(transport.requests.count == 2)
     }
 
     // MARK: Hosted login and OIDC
 
-    func testHostedLoginAuthorizeURL() throws {
+    @Test func hostedLoginAuthorizeURL() throws {
         let auth = AuthAPI(controlPlaneURL: URL(string: "https://cp.test")!, transport: MockTransport(json: "{}"))
         let pkce = try PKCE(verifier: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk")
         let login = auth.hostedLogin(clientID: "spa_1", redirectURI: "myapp://callback", project: "proj", pkce: pkce, state: "st")
-        let components = try XCTUnwrap(URLComponents(url: login.url, resolvingAgainstBaseURL: false))
-        XCTAssertEqual(components.host, "cp.test")
-        XCTAssertEqual(components.path, "/v1/oauth/authorize")
+        let components = try #require(URLComponents(url: login.url, resolvingAgainstBaseURL: false))
+        #expect(components.host == "cp.test")
+        #expect(components.path == "/v1/oauth/authorize")
         let items = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).map { ($0.name, $0.value ?? "") })
-        XCTAssertEqual(
-            items,
-            [
+        #expect(
+            items == [
                 "client_id": "spa_1", "redirect_uri": "myapp://callback", "response_type": "code", "state": "st",
                 "scope": "*", "project": "proj", "code_challenge": "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
                 "code_challenge_method": "S256",
             ])
-        XCTAssertEqual(login.pkce, pkce)
+        #expect(login.pkce == pkce)
         let decoded = try JSONCoding.decoder.decode(HostedLoginRequest.self, from: JSONCoding.encoder.encode(login))
-        XCTAssertEqual(decoded, login)
+        #expect(decoded == login)
     }
 
-    func testCompleteHostedLoginChecksStateAndExchanges() async throws {
+    @Test func completeHostedLoginChecksStateAndExchanges() async throws {
         let transport = MockTransport(
             json: #"""
                 {"access_token":"AT","token_type":"Bearer","expires_in":900,"refresh_token":"RT","session_id":"S","org_id":"O","dp_url":"https://api.dp"}
@@ -317,32 +304,27 @@ final class AuthTests: XCTestCase {
         let auth = makeClient(transport).auth
         let login = auth.hostedLogin(clientID: "spa_1", redirectURI: "myapp://callback", project: "proj", state: "good")
 
-        do {
-            _ = try await auth.completeHostedLogin(login, callbackURL: URL(string: "myapp://callback?code=C&state=evil")!)
-            XCTFail("expected a state mismatch")
-        } catch let error as IntrospectionError {
-            XCTAssertEqual(error.code, "invalid_state")
+        let mismatch = try await #require(throws: IntrospectionError.self) {
+            try await auth.completeHostedLogin(login, callbackURL: URL(string: "myapp://callback?code=C&state=evil")!)
         }
-        do {
-            _ = try await auth.completeHostedLogin(login, callbackURL: URL(string: "myapp://callback?error=access_denied&state=good")!)
-            XCTFail("expected an error")
-        } catch let error as IntrospectionError {
-            XCTAssertEqual(error.kind, .authentication)
-            XCTAssertEqual(error.code, "access_denied")
+        #expect(mismatch.code == "invalid_state")
+        let denied = try await #require(throws: IntrospectionError.self) {
+            try await auth.completeHostedLogin(login, callbackURL: URL(string: "myapp://callback?error=access_denied&state=good")!)
         }
-        XCTAssertTrue(transport.requests.isEmpty)
+        #expect(denied.kind == .authentication)
+        #expect(denied.code == "access_denied")
+        #expect(transport.requests.isEmpty)
 
         let token = try await auth.completeHostedLogin(login, callbackURL: URL(string: "myapp://callback?code=C%2B1&state=good")!)
-        XCTAssertEqual(token.sessionId, "S")
-        XCTAssertEqual(
-            form(transport.last),
-            [
+        #expect(token.sessionId == "S")
+        #expect(
+            form(transport.last) == [
                 "grant_type": "authorization_code", "client_id": "spa_1", "code": "C+1",
                 "redirect_uri": "myapp://callback", "code_verifier": login.codeVerifier,
             ])
     }
 
-    func testOIDCAuthorizationRequestAndCallbackParsing() throws {
+    @Test func oidcAuthorizationRequestAndCallbackParsing() throws {
         let request = OIDC.authorizationRequest(
             authorizationEndpoint: URL(string: "https://idp.test/oauth/v2/authorize")!,
             clientId: "zitadel-app", redirectURI: "myapp://cb", additionalParameters: [("prompt", "login")]
@@ -350,20 +332,20 @@ final class AuthTests: XCTestCase {
         let items = Dictionary(
             uniqueKeysWithValues: (URLComponents(url: request.url, resolvingAgainstBaseURL: false)?.queryItems ?? [])
                 .map { ($0.name, $0.value ?? "") })
-        XCTAssertEqual(items["scope"], "openid profile email offline_access")
-        XCTAssertEqual(items["code_challenge"], request.pkce.challenge)
-        XCTAssertEqual(items["state"], request.state)
-        XCTAssertEqual(items["nonce"], request.nonce)
-        XCTAssertEqual(items["prompt"], "login")
-        XCTAssertFalse(request.url.absoluteString.contains("+"))
+        #expect(items["scope"] == "openid profile email offline_access")
+        #expect(items["code_challenge"] == request.pkce.challenge)
+        #expect(items["state"] == request.state)
+        #expect(items["nonce"] == request.nonce)
+        #expect(items["prompt"] == "login")
+        #expect(!request.url.absoluteString.contains("+"))
 
         let fragment = OIDC.parseCallback(URL(string: "myapp://cb#code=abc&state=xyz&iss=https%3A%2F%2Fidp.test")!)
-        XCTAssertEqual(fragment.code, "abc")
-        XCTAssertEqual(fragment.issuer, "https://idp.test")
-        XCTAssertEqual(try fragment.authorizationCode(expectedState: "xyz"), "abc")
+        #expect(fragment.code == "abc")
+        #expect(fragment.issuer == "https://idp.test")
+        #expect(try fragment.authorizationCode(expectedState: "xyz") == "abc")
     }
 
-    func testOIDCExchangeAndDiscoveryUseArbitraryEndpoints() async throws {
+    @Test func oidcExchangeAndDiscoveryUseArbitraryEndpoints() async throws {
         let transport = MockTransport { request, _ in
             if request.url.path.hasSuffix("openid-configuration") {
                 return .response(
@@ -375,17 +357,16 @@ final class AuthTests: XCTestCase {
                 .json(#"{"access_token":"ZAT","token_type":"Bearer","expires_in":43199,"id_token":"IDT","refresh_token":"ZRT"}"#))
         }
         let metadata = try await OIDC.discover(issuer: URL(string: "https://idp.test/")!, transport: transport)
-        XCTAssertEqual(transport.last?.request.url.absoluteString, "https://idp.test/.well-known/openid-configuration")
-        XCTAssertEqual(metadata.tokenEndpoint, "https://idp.test/oauth/v2/token")
+        #expect(transport.last?.request.url.absoluteString == "https://idp.test/.well-known/openid-configuration")
+        #expect(metadata.tokenEndpoint == "https://idp.test/oauth/v2/token")
         let token = try await OIDC.exchangeCode(
             tokenEndpoint: URL(string: "https://idp.test/oauth/v2/token")!, code: "C", redirectURI: "myapp://cb",
             clientId: "zitadel-app", codeVerifier: "V", transport: transport
         )
-        XCTAssertEqual(token.idToken, "IDT")
-        XCTAssertEqual(transport.last?.request.url.absoluteString, "https://idp.test/oauth/v2/token")
-        XCTAssertEqual(
-            form(transport.last),
-            [
+        #expect(token.idToken == "IDT")
+        #expect(transport.last?.request.url.absoluteString == "https://idp.test/oauth/v2/token")
+        #expect(
+            form(transport.last) == [
                 "grant_type": "authorization_code", "code": "C", "redirect_uri": "myapp://cb",
                 "client_id": "zitadel-app", "code_verifier": "V",
             ])
@@ -393,7 +374,7 @@ final class AuthTests: XCTestCase {
 
     // MARK: SessionCredentials
 
-    func testConcurrentCallersShareOneRefresh() async throws {
+    @Test func concurrentCallersShareOneRefresh() async throws {
         let counter = Counter()
         let credentials = SessionCredentials(token: SessionToken(accessToken: "old", expiresAt: .distantPast)) { _ in
             let count = await counter.increment()
@@ -407,11 +388,11 @@ final class AuthTests: XCTestCase {
             return all
         }
         let refreshes = await counter.value
-        XCTAssertEqual(refreshes, 1)
-        XCTAssertEqual(Set(headers), ["Bearer new-1"])
+        #expect(refreshes == 1)
+        #expect(Set(headers) == ["Bearer new-1"])
     }
 
-    func testProactiveRefreshHonoursLeeway() async throws {
+    @Test func proactiveRefreshHonoursLeeway() async throws {
         let clock = Clock(Date(timeIntervalSince1970: 1000))
         let counter = Counter()
         let credentials = SessionCredentials(
@@ -422,15 +403,15 @@ final class AuthTests: XCTestCase {
             SessionToken(accessToken: "B", expiresAt: Date(timeIntervalSince1970: 5000))
         }
         let early = try await credentials.authorization()
-        XCTAssertEqual(early, "Bearer A")
+        #expect(early == "Bearer A")
         clock.advance(150)
         let late = try await credentials.authorization()
-        XCTAssertEqual(late, "Bearer B")
+        #expect(late == "Bearer B")
         let recorded = await counter.tokens
-        XCTAssertEqual(recorded.map(\.accessToken), ["B"])
+        #expect(recorded.map(\.accessToken) == ["B"])
     }
 
-    func testUnauthorizedTriggersRefreshAndRetry() async throws {
+    @Test func unauthorizedTriggersRefreshAndRetry() async throws {
         let credentials = SessionCredentials(token: SessionToken(accessToken: "stale", expiresAt: .distantFuture)) { _ in
             SessionToken(accessToken: "fresh", expiresAt: .distantFuture)
         }
@@ -445,23 +426,19 @@ final class AuthTests: XCTestCase {
                 dataPlaneCredentials: credentials, transport: transport
             ))
         let automation = try await client.automations.get("a1")
-        XCTAssertEqual(automation.id, "a1")
-        XCTAssertEqual(transport.requests.map { $0.request.headers["Authorization"] }, ["Bearer stale", "Bearer fresh"])
+        #expect(automation.id == "a1")
+        #expect(transport.requests.map { $0.request.headers["Authorization"] } == ["Bearer stale", "Bearer fresh"])
     }
 
-    func testRefreshFailureIsAuthentication() async throws {
+    @Test func refreshFailureIsAuthentication() async throws {
         let credentials = SessionCredentials(token: SessionToken(accessToken: "A", expiresAt: .distantPast)) { _ in
             throw IntrospectionError(kind: .network, message: "offline")
         }
-        do {
-            _ = try await credentials.authorization()
-            XCTFail("expected an error")
-        } catch let error as IntrospectionError {
-            XCTAssertEqual(error.kind, .authentication)
-        }
+        let error = try await #require(throws: IntrospectionError.self) { try await credentials.authorization() }
+        #expect(error.kind == .authentication)
     }
 
-    func testPlatformSessionRefreshesThroughCPGrant() async throws {
+    @Test func platformSessionRefreshesThroughCPGrant() async throws {
         let rotated = makeJWT(["jti": "S", "org_id": "O", "exp": 4_000_000_000])
         let transport = MockTransport(
             json: """
@@ -475,32 +452,27 @@ final class AuthTests: XCTestCase {
             onTokenUpdate: { await updates.record($0) }
         )
         try await credentials.refresh()
-        XCTAssertEqual(
-            form(transport.last),
-            [
+        #expect(
+            form(transport.last) == [
                 "grant_type": "refresh_token", "client_id": "spa_1", "refresh_token": "RT1", "session_id": "S", "org_id": "O",
             ])
         let stored = await updates.tokens
-        XCTAssertEqual(stored.first?.refreshToken, "RT2")
-        XCTAssertEqual(stored.first?.dataPlaneURL, "https://api.dp")
+        #expect(stored.first?.refreshToken == "RT2")
+        #expect(stored.first?.dataPlaneURL == "https://api.dp")
         let header = try await credentials.authorization()
-        XCTAssertEqual(header, "Bearer \(rotated)")
+        #expect(header == "Bearer \(rotated)")
     }
 
-    func testDataPlaneSessionWithoutRefreshTokenFails() async throws {
+    @Test func dataPlaneSessionWithoutRefreshTokenFails() async throws {
         let credentials = SessionCredentials.dataPlaneSession(
             token: SessionToken(accessToken: "A", expiresAt: .distantPast),
             controlPlane: makeClient(MockTransport(json: tokenJSON)).auth
         )
-        do {
-            _ = try await credentials.authorization()
-            XCTFail("expected an error")
-        } catch let error as IntrospectionError {
-            XCTAssertEqual(error.kind, .authentication)
-        }
+        let error = try await #require(throws: IntrospectionError.self) { try await credentials.authorization() }
+        #expect(error.kind == .authentication)
     }
 
-    func testTokenExchangeCredentialsReExchangeAndCoalesce() async throws {
+    @Test func tokenExchangeCredentialsReExchangeAndCoalesce() async throws {
         let transport = MockTransport { _, index in
             .response(
                 .json(#"{"access_token":"DP\#(index)","token_type":"Bearer","expires_in":900,"scope":"*","dp_url":"https://api.dp"}"#))
@@ -516,25 +488,24 @@ final class AuthTests: XCTestCase {
             for try await header in group { all.append(header) }
             return all
         }
-        XCTAssertEqual(Set(headers), ["Bearer DP0"])
-        XCTAssertEqual(transport.requests.count, 1)
-        XCTAssertEqual(
-            form(transport.last),
-            [
+        #expect(Set(headers) == ["Bearer DP0"])
+        #expect(transport.requests.count == 1)
+        #expect(
+            form(transport.last) == [
                 "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange", "client_id": "intro_app_jwks",
                 "subject_token": "supabase-1", "subject_token_type": "urn:ietf:params:oauth:token-type:id_token",
                 "project": "proj",
             ])
         let token = await credentials.token
-        XCTAssertEqual(token.dataPlaneURL, "https://api.dp")
+        #expect(token.dataPlaneURL == "https://api.dp")
 
         try await credentials.refresh()
-        XCTAssertEqual(form(transport.last)["subject_token"], "supabase-2")
+        #expect(form(transport.last)["subject_token"] == "supabase-2")
         let header = try await credentials.authorization()
-        XCTAssertEqual(header, "Bearer DP1")
+        #expect(header == "Bearer DP1")
     }
 
-    func testFromServiceAccountUsesReturnedDataPlaneURL() async throws {
+    @Test func fromServiceAccountUsesReturnedDataPlaneURL() async throws {
         let transport = MockTransport { request, _ in
             request.url.path == "/v1/oauth/token"
                 ? .response(.json(#"{"access_token":"SA","token_type":"Bearer","expires_in":900,"dp_url":"https://api.dp.test"}"#))
@@ -544,10 +515,10 @@ final class AuthTests: XCTestCase {
             clientId: "intro_app_1", clientSecret: "intro_sk_1", project: "p",
             controlPlaneURL: URL(string: "https://cp.test")!, transport: transport
         )
-        XCTAssertEqual(client.dataPlane.baseURL.absoluteString, "https://api.dp.test")
+        #expect(client.dataPlane.baseURL.absoluteString == "https://api.dp.test")
         _ = try await client.automations.list().firstPage()
-        XCTAssertEqual(transport.last?.request.url.host, "api.dp.test")
-        XCTAssertEqual(transport.last?.request.headers["Authorization"], "Bearer SA")
+        #expect(transport.last?.request.url.host == "api.dp.test")
+        #expect(transport.last?.request.headers["Authorization"] == "Bearer SA")
     }
 }
 

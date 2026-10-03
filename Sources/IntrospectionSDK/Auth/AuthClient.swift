@@ -142,6 +142,7 @@ public actor AuthClient {
 
     private var current: AuthSession?
     private var restored = false
+    private var restoring: Task<Void, Never>?
     private var refreshing: Task<AuthSession, any Error>?
     private var listeners: [UUID: AsyncStream<(AuthChangeEvent, AuthSession?)>.Continuation] = [:]
 
@@ -328,14 +329,20 @@ public actor AuthClient {
         if hadSession { emit(.signedOut, nil) }
     }
 
+    /// Concurrent first callers share one load, so none of them sees the session as absent while it is read.
     private func restoreIfNeeded() async {
         guard !restored else { return }
-        restored = true
-        if let data = try? await configuration.storage.load(key: configuration.storageKey),
-            let session = try? JSONCoding.decoder.decode(AuthSession.self, from: data)
-        {
-            current = session
+        if let restoring { return await restoring.value }
+        let task = Task {
+            let data = try? await self.configuration.storage.load(key: self.configuration.storageKey)
+            if !self.restored, let data, let session = try? JSONCoding.decoder.decode(AuthSession.self, from: data) {
+                self.current = session
+            }
+            self.restored = true
+            self.restoring = nil
         }
+        restoring = task
+        await task.value
     }
 
     private func emit(_ event: AuthChangeEvent, _ session: AuthSession?) {
