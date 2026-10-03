@@ -7,7 +7,7 @@ Read settings from the environment or files, log what the SDK does, and connect 
 Enable the `Configuration` package trait to read the client's settings through [swift-configuration](https://github.com/apple/swift-configuration). Values can then come from environment variables, files or command-line arguments:
 
 ```swift
-.package(url: "https://github.com/introspection-org/introspection-swift-sdk", from: "0.1.0", traits: ["Configuration"])
+.package(url: "https://github.com/introspection-org/introspection-swift-sdk", .upToNextMinor(from: "X.Y.Z"), traits: ["Configuration"])
 ```
 
 ```swift

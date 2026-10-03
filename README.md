@@ -1,127 +1,116 @@
-# Introspection Swift SDK
+<div align="center">
+  <a href="https://introspection.dev">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset=".github/images/logo-dark.svg">
+      <source media="(prefers-color-scheme: light)" srcset=".github/images/logo-light.svg">
+      <img alt="Introspection" src=".github/images/logo-light.svg" width="30%">
+    </picture>
+  </a>
+</div>
 
-A pure-Swift client for the Introspection REST API: Control Plane and Data Plane, with resumable run streams, cursor pagination, typed errors and session management. Swift 6, built on `URLSession` and Apple's own packages (`swift-crypto`, `swift-log`, `swift-distributed-tracing`, and `swift-configuration` behind an opt-in trait). Supports iOS 18, macOS 15, tvOS 18, watchOS 11 and visionOS 2, and builds on Linux.
+<h4 align="center">The infrastructure for long-horizon vertical agents.</h4>
 
-It covers the REST surface of the JavaScript and Rust SDKs. OpenTelemetry export (tracking, feedback, span processors) and Apache Arrow decoding are not included.
+<div align="center">
+  <a href="https://introspection.dev"><img src="https://img.shields.io/badge/website-introspection.dev-blue" alt="Website"></a>
+  <a href="https://github.com/introspection-org/introspection-swift-sdk/releases/latest"><img src="https://img.shields.io/github/v/release/introspection-org/introspection-swift-sdk?label=%20" alt="Latest release"></a>
+  <a href="https://www.apache.org/licenses/LICENSE-2.0"><img src="https://img.shields.io/badge/license-Apache%202.0-green" alt="License"></a>
+  <a href="https://x.com/IntrospectionAI"><img src="https://img.shields.io/twitter/follow/IntrospectionAI" alt="Follow on X"></a>
+</div>
+
+[Introspection](https://introspection.dev) is the infrastructure for
+long-horizon vertical agents, powered by Pi. Define an agent as a
+[Recipe](https://pi.recipes) — agents, skills, policies, and evals in plain
+source you own in Git — deploy it to a governed per-customer Runtime, and
+improve it in production with conversations, observations, judges, and
+experiments.
+
+This is the Swift SDK: run tasks against a deployed runtime from an app or a
+server, stream their output, and read back tasks, files and conversations.
+It supports iOS 18, macOS 15, tvOS 18, watchOS 11, visionOS 2 and Linux.
 
 ## Install
 
-```swift
-.package(url: "https://github.com/introspection-org/introspection-swift-sdk", from: "0.1.0"),  // x-release-please-version
-```
+In Xcode, use File > Add Package Dependencies with the repository URL and the
+"Up to Next Minor Version" rule. In `Package.swift`, with `X.Y.Z` the
+[latest release](https://github.com/introspection-org/introspection-swift-sdk/releases/latest):
 
 ```swift
-.product(name: "IntrospectionSDK", package: "introspection-swift-sdk")
+dependencies: [
+    .package(url: "https://github.com/introspection-org/introspection-swift-sdk", .upToNextMinor(from: "X.Y.Z")),
+],
+targets: [
+    .target(name: "App", dependencies: [
+        .product(name: "IntrospectionSDK", package: "introspection-swift-sdk"),
+    ]),
+]
 ```
 
-## Signing in
+| Trait | Adds |
+| --- | --- |
+| `Configuration` | `IntrospectionClient.Configuration(config:)`, read through [swift-configuration](https://github.com/apple/swift-configuration) |
 
-### Federated identity provider (Supabase, Auth0, Okta, ...)
-
-The app keeps its own identity provider and its SDK (for example supabase-swift) for sign-in and the session. An Introspection Application of type Direct JWKS, federated to that provider's issuer, turns the provider's token into a platform token for a `customer` member. No app backend is involved.
+## Run a task
 
 ```swift
 import IntrospectionSDK
-import Supabase
 
-let client = try await IntrospectionClient.federated(
-    subjectToken: { try await supabase.auth.session.accessToken },
-    clientID: "intro_app_...",
-    project: "my-project",
-    controlPlaneURL: URL(string: "https://api.introspection.dev")!
-)
-let run = try await client.tasks.start(prompt: "Hello", TaskCreate(runtimeId: runtimeId))
-```
-
-A federated token is not a runner token, so a task runs on the app's runtime only when its create and runs name the runtime version (`runtimeId`). Customer tokens cannot call the Control Plane, so the app's backend resolves that id with a service account (`client.runtimes.list(...)`) and returns it with the session, as with the JavaScript browser client. The provider must sign with asymmetric keys (ES256 or RS256), and the Application's federation must name its issuer (for Supabase, `https://<ref>.supabase.co/auth/v1`). The member is the same on every sign-in: it is derived from the federation and the provider's `sub`.
-
-The first exchange runs inside `federated(...)`, which also learns the Data Plane URL. Later exchanges run before the platform token expires or after a 401, each time asking for a current provider token. Sign out with the provider's SDK. For lower-level control, use `SessionCredentials.tokenExchange` with your own `IntrospectionClient`.
-
-### Platform sign-in (`AuthClient`)
-
-`AuthClient` manages a platform session the way the Supabase Auth client does: sign in, persist, refresh, sign out and observe changes.
-
-```swift
-let auth = AuthClient(configuration: .init(
+let client = IntrospectionClient(
     controlPlaneURL: URL(string: "https://api.introspection.dev")!,
-    clientID: "intro_app_...",
-    project: "my-project",
-    method: .hostedLogin,
-    storage: KeychainSessionStorage()
-))
-
-// Hosted login in the system sheet (Apple platforms).
-let presenter = HostedLoginPresenter(anchor: window)
-try await presenter.signIn(with: auth, redirectURI: "https://app.example.com/auth/callback")
-
-for await (event, session) in await auth.authStateChanges() {
-    print(event, session?.user.memberId ?? "signed out")
-}
-
-let client = try await auth.client()
-```
-
-`.emailCode` (`signInWithOTP(email:)` / `verifyOTP(email:token:)`) targets the Control Plane's native email-code sign-in, which is proposed and not yet available on the platform.
-
-### Machines and servers
-
-The same runner flow as the JavaScript and Rust SDKs:
-
-```swift
-let client = IntrospectionClient(controlPlaneURL: baseURL, credentials: BearerToken(apiKey))
-// or: try await IntrospectionClient.fromServiceAccount(clientId: id, clientSecret: secret, project: "my-project")
-
+    credentials: BearerToken(apiKey)
+)
 let runner = try await client.runtimes("customer-agent").run(identity: .init(userId: "user_123"))
 
 let handle = try await runner.tasks.start(prompt: "Say hello in one sentence.")
 for try await event in handle.stream() where event.eventType == .textMessageContent {
     print(event.delta ?? "", terminator: "")
 }
+```
 
-// Or wait for the finished answer, then continue the same task.
+Or wait for the finished answer, then continue the same task:
+
+```swift
 let answer = try await runner.tasks.start(prompt: "Summarize my open tickets.").text()
-let followUp = try await runner.tasks.runs.create(handle.run.taskId, text: "And the oldest one?")
-
-runner.close()
+let followUp = try await runner.tasks.runs.create(handle.run.taskId, text: "Now draft the reply.")
+print(try await followUp.text())
 ```
 
-`AuthAPI` exposes every grant directly: client credentials, token exchange, JWT bearer, authorization code with PKCE, refresh, device code and revoke. `OIDC` helps with any external issuer.
+The runner also exposes `files`, `conversations`, `events`, `metrics` and `shares`.
 
-## Data Plane
+## End users signed in with your identity provider
 
-Available on `IntrospectionClient` and on a `Runner`:
+An app that signs users in with Supabase, Auth0 or another OpenID provider
+exchanges the provider's token for an Introspection token through a Direct
+JWKS Application, with no app backend:
 
-- `tasks`, `tasks.runs`: create and steer runs, resumable AG-UI streams (`Last-Event-ID`, readiness waits, reconnect budget).
-- `files`, `files.versions`: upload, text writes, versions, tags and metadata, downloads.
-- `conversations`, `conversations.items`: summaries, turns, GenAI spans, exports.
-- `events`, `metrics`, `shares`, `automations`.
-- `TranscriptAccumulator`, `foldSpans`, `mergeTranscripts`: one transcript from live events and stored spans.
-
-## Control Plane
-
-`runtimes` (and runners), `experiments`, `recipes`, `connectors` and connections, `repositories`, `annotations`, `projectLabels`, `organizations`, `projects`, `members`.
-
-## Examples
-
-Runnable programs in `Examples/`:
-
-- `swift run RuntimesExample`: open a runner from a runtime, stream a task, list conversations and upload files (the Rust SDK's `examples/api/runtimes.rs`).
-- `swift run FederatedExample`: exchange an identity provider's token and run a task as that end user.
-
-## Errors
-
-Every failure is an `IntrospectionError` with a `kind` (`.authentication`, `.insufficientScope`, `.notFound`, `.conflict`, `.validation`, `.rateLimited`, `.unavailable`, `.network`, ...), the HTTP status, the error `code`, the request id and `Retry-After`. Rate-limited requests and idempotent `502/503/504` are retried automatically.
-
-## Development
-
-```sh
-swift build
-swift test
-scripts/lint.sh          # swift format lint, as CI runs it (--fix to rewrite)
-scripts/coverage.sh      # tests with the line-coverage floor
-scripts/setup-hooks.sh   # install the pre-commit hook
+```swift
+let client = try await IntrospectionClient.federated(
+    subjectToken: { try await supabase.auth.session.accessToken },
+    clientID: "intro_app_...",
+    project: "my-project"
+)
+let run = try await client.tasks.start(prompt: "Hello", TaskCreate(runtimeId: runtimeId))
 ```
 
-`scripts/docker-test.sh` runs the tests in the official `swift:6.4-noble` image, for machines without a Swift toolchain. `KeychainSessionStorage` and `HostedLoginPresenter` compile only on Apple platforms; CI builds them for macOS and iOS. Read [AGENTS.md](AGENTS.md) before contributing.
+A federated token is not bound to a runtime, so each task names the runtime
+version. Resolve it on your backend with a service account, as with the
+JavaScript browser client.
 
-Releases are cut by release-please from Conventional Commit PR titles; Swift Package Manager installs from the resulting tags.
+## Environment variables
+
+With the `Configuration` trait:
+
+```shell
+export INTROSPECTION_TOKEN="intro_xxx"
+export INTROSPECTION_BASE_API_URL="https://api.introspection.dev"   # optional
+```
+
+## Documentation
+
+- DocC articles in [`Sources/IntrospectionSDK/Documentation.docc`](Sources/IntrospectionSDK/Documentation.docc)
+- Runnable examples: `swift run RuntimesExample`, `swift run FederatedExample`
+- [Authentication](https://docs.introspection.dev/sdk/authentication)
+- [AGENTS.md](AGENTS.md) for contributors
+
+## License
+
+Apache-2.0
