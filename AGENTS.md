@@ -12,9 +12,9 @@ scripts/lint.sh --fix    # swift format, then the strict lint CI runs
 scripts/coverage.sh      # tests with the line-coverage floor
 ```
 
-No Swift toolchain? `scripts/docker-test.sh` runs the tests in `swift:6.1-noble`.
+No Swift toolchain? `scripts/docker-test.sh` runs the tests in `swift:6.4-noble`.
 
-The pre-commit hook runs the lint, a warnings-as-errors build and the coverage-gated tests. CI runs the same checks plus a secrets scan, actionlint, Apple-platform builds (including iOS and documentation), and the PR title check. CI is the source of truth.
+The pre-commit hook runs the lint, a build with every trait enabled and the coverage-gated tests. CI runs the same checks plus a secrets scan, actionlint, Apple-platform builds (including iOS and documentation), and the PR title check. CI is the source of truth.
 
 ## Pull requests and releases
 
@@ -24,7 +24,8 @@ The pre-commit hook runs the lint, a warnings-as-errors build and the coverage-g
 
 ## Code conventions
 
-- **Platform libraries before code of our own.** The one dependency is Apple's `swift-crypto` (CryptoKit on Apple platforms, the same API on Linux); never hand-roll a primitive it or Foundation provides. HTTP is `URLSession`. The package must build on Linux (`FoundationNetworking` under `#if canImport`). Apple-only code (Keychain, AuthenticationServices) is guarded with `#if canImport(...)` and is compiled by the macOS CI job.
+- **Platform libraries before code of our own.** Dependencies are Apple packages only: `swift-crypto` (CryptoKit on Apple platforms, the same API on Linux), `swift-log`, `swift-distributed-tracing`, and `swift-configuration` behind the `Configuration` trait. Never hand-roll what they or Foundation provide. HTTP is `URLSession`.
+- **Swift 6 language mode, Swift tools 6.2, built and tested on the latest toolchain (6.4).** Shared mutable state is a `Mutex`/`Atomic` or an actor, never `@unchecked Sendable`. Warnings are errors (`Package.swift`). The package must build on Linux (`FoundationNetworking` under `#if canImport`). Apple-only code (Keychain, AuthenticationServices) is guarded with `#if canImport(...)` and is compiled by the macOS CI job.
 - **The wire format is the server's.** Model properties are camelCase Swift with an explicit `CodingKeys` enum for every snake_case wire name. Never set a key-coding strategy: it would also rewrite the keys of open-ended `JSONValue` metadata.
 - **Decoding never fails on an unknown value.** Response fields are optional unless the server guarantees them, and status-like fields are `RawRepresentable` structs with static constants, so a value added on the server still decodes.
 - **Ids are `String`, timestamps are `Date`**, open-ended objects are `JSONObject` / `JSONValue`.

@@ -8,11 +8,11 @@ public struct TaskStatus: RawRepresentable, Codable, Sendable, Hashable, Express
     public init(rawValue: String) { self.rawValue = rawValue }
     public init(stringLiteral value: String) { rawValue = value }
 
-    public init(from decoder: Decoder) throws {
+    public init(from decoder: any Decoder) throws {
         rawValue = try decoder.singleValueContainer().decode(String.self)
     }
 
-    public func encode(to encoder: Encoder) throws {
+    public func encode(to encoder: any Encoder) throws {
         var container = encoder.singleValueContainer()
         try container.encode(rawValue)
     }
@@ -42,11 +42,11 @@ public struct TaskKind: RawRepresentable, Codable, Sendable, Hashable, Expressib
     public init(rawValue: String) { self.rawValue = rawValue }
     public init(stringLiteral value: String) { rawValue = value }
 
-    public init(from decoder: Decoder) throws {
+    public init(from decoder: any Decoder) throws {
         rawValue = try decoder.singleValueContainer().decode(String.self)
     }
 
-    public func encode(to encoder: Encoder) throws {
+    public func encode(to encoder: any Encoder) throws {
         var container = encoder.singleValueContainer()
         try container.encode(rawValue)
     }
@@ -63,11 +63,11 @@ public struct TaskInclude: RawRepresentable, Codable, Sendable, Hashable, Expres
     public init(rawValue: String) { self.rawValue = rawValue }
     public init(stringLiteral value: String) { rawValue = value }
 
-    public init(from decoder: Decoder) throws {
+    public init(from decoder: any Decoder) throws {
         rawValue = try decoder.singleValueContainer().decode(String.self)
     }
 
-    public func encode(to encoder: Encoder) throws {
+    public func encode(to encoder: any Encoder) throws {
         var container = encoder.singleValueContainer()
         try container.encode(rawValue)
     }
@@ -82,11 +82,11 @@ public struct TaskRunKind: RawRepresentable, Codable, Sendable, Hashable, Expres
     public init(rawValue: String) { self.rawValue = rawValue }
     public init(stringLiteral value: String) { rawValue = value }
 
-    public init(from decoder: Decoder) throws {
+    public init(from decoder: any Decoder) throws {
         rawValue = try decoder.singleValueContainer().decode(String.self)
     }
 
-    public func encode(to encoder: Encoder) throws {
+    public func encode(to encoder: any Encoder) throws {
         var container = encoder.singleValueContainer()
         try container.encode(rawValue)
     }
@@ -102,11 +102,11 @@ public struct TaskCancelMode: RawRepresentable, Codable, Sendable, Hashable, Exp
     public init(rawValue: String) { self.rawValue = rawValue }
     public init(stringLiteral value: String) { rawValue = value }
 
-    public init(from decoder: Decoder) throws {
+    public init(from decoder: any Decoder) throws {
         rawValue = try decoder.singleValueContainer().decode(String.self)
     }
 
-    public func encode(to encoder: Encoder) throws {
+    public func encode(to encoder: any Encoder) throws {
         var container = encoder.singleValueContainer()
         try container.encode(rawValue)
     }
@@ -231,7 +231,7 @@ public struct IntrospectionTask: Codable, Sendable, Hashable {
         case conversationMetadata = "conversation_metadata"
     }
 
-    public init(from decoder: Decoder) throws {
+    public init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(String.self, forKey: .id)
         orgId = try c.decodeIfPresent(String.self, forKey: .orgId)

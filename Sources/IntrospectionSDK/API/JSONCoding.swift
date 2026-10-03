@@ -49,11 +49,11 @@ public enum ISO8601 {
             let millis = String((digits + "000").prefix(3))
             value = String(value[..<dot]) + "." + millis + String(value[digitsEnd...])
         }
-        return fractional.date(from: value) ?? plain.date(from: value)
+        return (try? fractional.parse(value)) ?? (try? plain.parse(value))
     }
 
     public static func format(_ date: Date) -> String {
-        fractional.string(from: date)
+        date.formatted(fractional)
     }
 
     private static func hasZone(_ value: String) -> Bool {
@@ -63,15 +63,6 @@ public enum ISO8601 {
         return time.contains("+") || time.dropFirst().contains("-")
     }
 
-    private static let fractional: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
-
-    private static let plain: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter
-    }()
+    private static let fractional = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
+    private static let plain = Date.ISO8601FormatStyle()
 }

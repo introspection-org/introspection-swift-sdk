@@ -28,7 +28,7 @@ jobs:
     name: Identity modes against a deployment
     runs-on: ubuntu-latest
     environment: build
-    container: swift:6.1-noble
+    container: swift:6.4-noble
     # Each setting may be a variable or a secret in the environment.
     env:
       INTROSPECTION_LIVE: "1"

@@ -177,7 +177,7 @@ public struct GenAISpan: Codable, Sendable, Hashable {
         case durationNs = "duration_ns"
     }
 
-    public init(from decoder: Decoder) throws {
+    public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         traceId = try container.decodeIfPresent(String.self, forKey: .traceId) ?? ""
         spanId = try container.decodeIfPresent(String.self, forKey: .spanId)
@@ -316,7 +316,7 @@ public struct GenAISpanList: Codable, Sendable, Hashable {
         case hasMore = "has_more"
     }
 
-    public init(from decoder: Decoder) throws {
+    public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         object = try container.decodeIfPresent(String.self, forKey: .object)
         data = try container.decodeIfPresent([GenAISpan].self, forKey: .data) ?? []
@@ -373,7 +373,7 @@ public struct GenAIMessage: Codable, Sendable, Hashable {
         case responseId = "response_id"
     }
 
-    public init(from decoder: Decoder) throws {
+    public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         role = try container.decodeIfPresent(GenAIMessageRole.self, forKey: .role) ?? ""
         parts = try container.decodeIfPresent([GenAIMessagePart].self, forKey: .parts) ?? []
@@ -426,7 +426,7 @@ public enum GenAIMessagePart: Codable, Sendable, Hashable {
         }
     }
 
-    public init(from decoder: Decoder) throws {
+    public init(from decoder: any Decoder) throws {
         let value = try JSONValue(from: decoder)
         guard case let .object(raw) = value else {
             throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Message part is not an object"))
@@ -449,7 +449,7 @@ public enum GenAIMessagePart: Codable, Sendable, Hashable {
         }
     }
 
-    public func encode(to encoder: Encoder) throws {
+    public func encode(to encoder: any Encoder) throws {
         switch self {
         case let .text(part): try part.encode(to: encoder)
         case let .thinking(part): try part.encode(to: encoder)
@@ -539,7 +539,7 @@ public struct GenAIToolCallResponsePart: Codable, Sendable, Hashable {
         case type, id, name, response, result
     }
 
-    public init(from decoder: Decoder) throws {
+    public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decodeIfPresent(String.self, forKey: .id)
         name = try container.decodeIfPresent(String.self, forKey: .name)
@@ -548,7 +548,7 @@ public struct GenAIToolCallResponsePart: Codable, Sendable, Hashable {
             ?? container.decodeIfPresent(JSONValue.self, forKey: .result)
     }
 
-    public func encode(to encoder: Encoder) throws {
+    public func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(type, forKey: .type)
         try container.encodeIfPresent(id, forKey: .id)
@@ -1071,7 +1071,7 @@ public struct ConversationTurnMessage: Codable, Sendable, Hashable {
         case responseId = "response_id"
     }
 
-    public init(from decoder: Decoder) throws {
+    public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(String.self, forKey: .id)
         role = try container.decodeIfPresent(GenAIMessageRole.self, forKey: .role) ?? ""

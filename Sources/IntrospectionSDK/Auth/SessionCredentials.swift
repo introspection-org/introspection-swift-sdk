@@ -146,7 +146,7 @@ public actor SessionCredentials: CredentialProvider {
     private let refresher: Refresh
     private let onTokenUpdate: TokenUpdate?
     private let now: @Sendable () -> Date
-    private var inFlight: Task<SessionToken, Error>?
+    private var inFlight: Task<SessionToken, any Error>?
 
     public init(
         token: SessionToken,
@@ -185,7 +185,7 @@ public actor SessionCredentials: CredentialProvider {
     public func refresh() async throws -> SessionToken {
         if let inFlight { return try await inFlight.value }
         let current = token
-        let task = Task<SessionToken, Error> {
+        let task = Task<SessionToken, any Error> {
             defer { self.inFlight = nil }
             let next: SessionToken
             do {

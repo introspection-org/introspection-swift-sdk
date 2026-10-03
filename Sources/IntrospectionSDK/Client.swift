@@ -1,4 +1,5 @@
 import Foundation
+import Logging
 
 /// Anything that holds a Data Plane connection: the root client, and a
 /// `Runner` opened from a runtime. Data Plane resources (`tasks`, `files`,
@@ -39,7 +40,6 @@ public final class IntrospectionClient: DataPlaneConnection {
         public var dataPlaneCredentials: (any CredentialProvider)?
         public var transport: any HTTPTransport
         public var options: HTTPClient.Options
-        public var userAgent: String?
         /// Runtime group slug or id that task creates and runs bind to when the
         /// token is not a runner (a federated member's, for example). Resolved on
         /// the Data Plane and cached; ignored for runner tokens by the server.
@@ -52,7 +52,6 @@ public final class IntrospectionClient: DataPlaneConnection {
             dataPlaneCredentials: (any CredentialProvider)? = nil,
             transport: any HTTPTransport = URLSessionTransport(),
             options: HTTPClient.Options = HTTPClient.Options(),
-            userAgent: String? = "introspection-swift/\(IntrospectionSDK.version)",
             runtime: String? = nil
         ) {
             self.controlPlaneURL = controlPlaneURL
@@ -61,7 +60,6 @@ public final class IntrospectionClient: DataPlaneConnection {
             self.dataPlaneCredentials = dataPlaneCredentials
             self.transport = transport
             self.options = options
-            self.userAgent = userAgent
             self.runtime = runtime
         }
     }
@@ -75,10 +73,7 @@ public final class IntrospectionClient: DataPlaneConnection {
 
     public init(configuration: Configuration) {
         self.configuration = configuration
-        var options = configuration.options
-        if let userAgent = configuration.userAgent, options.additionalHeaders["User-Agent"] == nil {
-            options.additionalHeaders["User-Agent"] = userAgent
-        }
+        let options = configuration.options
         controlPlane = HTTPClient(
             baseURL: configuration.controlPlaneURL,
             credentials: configuration.controlPlaneCredentials,
@@ -115,4 +110,8 @@ public final class IntrospectionClient: DataPlaneConnection {
 
 public enum IntrospectionSDK {
     public static let version = "0.1.0"  // x-release-please-version
+    /// The same `User-Agent` the Rust and TypeScript SDKs send.
+    public static let userAgent = "introspection-sdk/\(version)"
+    /// The default logger: discards everything until the app passes its own.
+    public static let silentLogger = Logger(label: "dev.introspection.sdk", factory: { _ in SwiftLogNoOpLogHandler() })
 }

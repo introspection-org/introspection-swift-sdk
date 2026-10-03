@@ -98,7 +98,7 @@ public struct ExperimentGoal: Codable, Sendable, Hashable {
 
     private enum CodingKeys: String, CodingKey { case kind, direction, components }
 
-    public init(from decoder: Decoder) throws {
+    public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         kind = try container.decodeIfPresent(String.self, forKey: .kind)
         direction = try container.decodeIfPresent(ExperimentGoalDirection.self, forKey: .direction)

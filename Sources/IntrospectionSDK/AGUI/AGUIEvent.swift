@@ -7,11 +7,11 @@ public struct AGUIEvent: Sendable, Hashable, Codable {
 
     public init(raw: JSONValue) { self.raw = raw }
 
-    public init(from decoder: Decoder) throws {
+    public init(from decoder: any Decoder) throws {
         raw = try JSONValue(from: decoder)
     }
 
-    public func encode(to encoder: Encoder) throws {
+    public func encode(to encoder: any Encoder) throws {
         try raw.encode(to: encoder)
     }
 

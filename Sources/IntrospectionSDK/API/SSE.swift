@@ -79,7 +79,7 @@ public struct SSEParser: Sendable {
 
 extension HTTPStreamResponse {
     /// The body parsed as Server-Sent Events frames.
-    public var frames: AsyncThrowingStream<SSEFrame, Error> {
+    public var frames: AsyncThrowingStream<SSEFrame, any Error> {
         let bytes = self.bytes
         return AsyncThrowingStream { continuation in
             let task = Task {

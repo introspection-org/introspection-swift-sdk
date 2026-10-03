@@ -162,22 +162,22 @@ private struct ProbeError: Error {}
 private struct ProbeDecoder: Decoder {
     let probe: KeyProbe
     let depth: Int
-    var codingPath: [CodingKey] { [] }
+    var codingPath: [any CodingKey] { [] }
     var userInfo: [CodingUserInfoKey: Any] { [:] }
 
     func container<Key: CodingKey>(keyedBy _: Key.Type) throws -> KeyedDecodingContainer<Key> {
         KeyedDecodingContainer(ProbeKeyedContainer<Key>(probe: probe, depth: depth))
     }
 
-    func unkeyedContainer() throws -> UnkeyedDecodingContainer { ProbeUnkeyedContainer() }
+    func unkeyedContainer() throws -> any UnkeyedDecodingContainer { ProbeUnkeyedContainer() }
 
-    func singleValueContainer() throws -> SingleValueDecodingContainer { ProbeSingleValueContainer(probe: probe, depth: depth) }
+    func singleValueContainer() throws -> any SingleValueDecodingContainer { ProbeSingleValueContainer(probe: probe, depth: depth) }
 }
 
 private struct ProbeKeyedContainer<Key: CodingKey>: KeyedDecodingContainerProtocol {
     let probe: KeyProbe
     let depth: Int
-    var codingPath: [CodingKey] { [] }
+    var codingPath: [any CodingKey] { [] }
     var allKeys: [Key] { [] }
 
     private func note(_ key: Key) {
@@ -221,14 +221,14 @@ private struct ProbeKeyedContainer<Key: CodingKey>: KeyedDecodingContainerProtoc
         return KeyedDecodingContainer(ProbeKeyedContainer<NestedKey>(probe: probe, depth: depth + 1))
     }
 
-    func nestedUnkeyedContainer(forKey key: Key) throws -> UnkeyedDecodingContainer {
+    func nestedUnkeyedContainer(forKey key: Key) throws -> any UnkeyedDecodingContainer {
         note(key)
         return ProbeUnkeyedContainer()
     }
 
-    func superDecoder() throws -> Decoder { nested }
+    func superDecoder() throws -> any Decoder { nested }
 
-    func superDecoder(forKey key: Key) throws -> Decoder {
+    func superDecoder(forKey key: Key) throws -> any Decoder {
         note(key)
         return nested
     }
@@ -236,7 +236,7 @@ private struct ProbeKeyedContainer<Key: CodingKey>: KeyedDecodingContainerProtoc
 
 /// Always empty, so arrays decode without asking for elements.
 private struct ProbeUnkeyedContainer: UnkeyedDecodingContainer {
-    var codingPath: [CodingKey] { [] }
+    var codingPath: [any CodingKey] { [] }
     var count: Int? { 0 }
     var isAtEnd: Bool { true }
     var currentIndex: Int { 0 }
@@ -262,14 +262,14 @@ private struct ProbeUnkeyedContainer: UnkeyedDecodingContainer {
         throw ProbeError()
     }
 
-    mutating func nestedUnkeyedContainer() throws -> UnkeyedDecodingContainer { throw ProbeError() }
-    mutating func superDecoder() throws -> Decoder { throw ProbeError() }
+    mutating func nestedUnkeyedContainer() throws -> any UnkeyedDecodingContainer { throw ProbeError() }
+    mutating func superDecoder() throws -> any Decoder { throw ProbeError() }
 }
 
 private struct ProbeSingleValueContainer: SingleValueDecodingContainer {
     let probe: KeyProbe
     let depth: Int
-    var codingPath: [CodingKey] { [] }
+    var codingPath: [any CodingKey] { [] }
 
     func decodeNil() -> Bool { false }
     func decode(_: Bool.Type) throws -> Bool { true }

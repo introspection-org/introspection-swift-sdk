@@ -7,8 +7,8 @@ public struct AutomationTriggerType: RawRepresentable, Codable, Sendable, Hashab
     public let rawValue: String
     public init(rawValue: String) { self.rawValue = rawValue }
     public init(stringLiteral value: String) { rawValue = value }
-    public init(from decoder: Decoder) throws { rawValue = try decoder.singleValueContainer().decode(String.self) }
-    public func encode(to encoder: Encoder) throws {
+    public init(from decoder: any Decoder) throws { rawValue = try decoder.singleValueContainer().decode(String.self) }
+    public func encode(to encoder: any Encoder) throws {
         var container = encoder.singleValueContainer()
         try container.encode(rawValue)
     }
@@ -22,8 +22,8 @@ public struct AutomationKind: RawRepresentable, Codable, Sendable, Hashable, Exp
     public let rawValue: String
     public init(rawValue: String) { self.rawValue = rawValue }
     public init(stringLiteral value: String) { rawValue = value }
-    public init(from decoder: Decoder) throws { rawValue = try decoder.singleValueContainer().decode(String.self) }
-    public func encode(to encoder: Encoder) throws {
+    public init(from decoder: any Decoder) throws { rawValue = try decoder.singleValueContainer().decode(String.self) }
+    public func encode(to encoder: any Encoder) throws {
         var container = encoder.singleValueContainer()
         try container.encode(rawValue)
     }
@@ -38,8 +38,8 @@ public struct AutomationConditionType: RawRepresentable, Codable, Sendable, Hash
     public let rawValue: String
     public init(rawValue: String) { self.rawValue = rawValue }
     public init(stringLiteral value: String) { rawValue = value }
-    public init(from decoder: Decoder) throws { rawValue = try decoder.singleValueContainer().decode(String.self) }
-    public func encode(to encoder: Encoder) throws {
+    public init(from decoder: any Decoder) throws { rawValue = try decoder.singleValueContainer().decode(String.self) }
+    public func encode(to encoder: any Encoder) throws {
         var container = encoder.singleValueContainer()
         try container.encode(rawValue)
     }
@@ -54,8 +54,8 @@ public struct AutomationExecutionStatus: RawRepresentable, Codable, Sendable, Ha
     public let rawValue: String
     public init(rawValue: String) { self.rawValue = rawValue }
     public init(stringLiteral value: String) { rawValue = value }
-    public init(from decoder: Decoder) throws { rawValue = try decoder.singleValueContainer().decode(String.self) }
-    public func encode(to encoder: Encoder) throws {
+    public init(from decoder: any Decoder) throws { rawValue = try decoder.singleValueContainer().decode(String.self) }
+    public func encode(to encoder: any Encoder) throws {
         var container = encoder.singleValueContainer()
         try container.encode(rawValue)
     }

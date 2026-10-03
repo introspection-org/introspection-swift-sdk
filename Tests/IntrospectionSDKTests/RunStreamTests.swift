@@ -20,7 +20,7 @@ final class RunStreamTests: XCTestCase {
     static let finished = frame("c-9", "ag_ui", #"{"type":"RUN_FINISHED","threadId":"t1","runId":"r1"}"#)
     static let fast = RunStreamOptions(backoff: 0.001)
 
-    func collect(_ stream: AsyncThrowingStream<AGUIEvent, Error>) async throws -> [AGUIEvent] {
+    func collect(_ stream: AsyncThrowingStream<AGUIEvent, any Error>) async throws -> [AGUIEvent] {
         var events: [AGUIEvent] = []
         for try await event in stream { events.append(event) }
         return events
@@ -224,7 +224,7 @@ final class HangingTransport: HTTPTransport, @unchecked Sendable {
 
     func stream(_ request: HTTPRequest) async throws -> HTTPStreamResponse {
         lock.withLock { _attaches += 1 }
-        let bytes = AsyncThrowingStream<Data, Error> { continuation in
+        let bytes = AsyncThrowingStream<Data, any Error> { continuation in
             continuation.onTermination = { [weak self] _ in
                 self?.lock.withLock { self?._terminated = true }
             }

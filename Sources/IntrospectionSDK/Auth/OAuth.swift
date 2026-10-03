@@ -111,7 +111,7 @@ public struct OAuthToken: Codable, Sendable, Hashable {
         self.extra = extra
     }
 
-    public init(from decoder: Decoder) throws {
+    public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         accessToken = try container.decode(String.self, forKey: .accessToken)
         tokenType = try container.decodeIfPresent(String.self, forKey: .tokenType)
@@ -139,7 +139,7 @@ public struct OAuthToken: Codable, Sendable, Hashable {
         extra = all
     }
 
-    public func encode(to encoder: Encoder) throws {
+    public func encode(to encoder: any Encoder) throws {
         var object = extra
         object[CodingKeys.accessToken.rawValue] = .string(accessToken)
         let optionals: [(CodingKeys, String?)] = [

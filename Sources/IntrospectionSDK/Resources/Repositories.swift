@@ -164,7 +164,7 @@ public enum RepositoryContent: Codable, Sendable, Hashable {
 
     private enum CodingKeys: String, CodingKey { case type }
 
-    public init(from decoder: Decoder) throws {
+    public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let type = try container.decodeIfPresent(String.self, forKey: .type)
         if type == "dir" {
@@ -174,7 +174,7 @@ public enum RepositoryContent: Codable, Sendable, Hashable {
         }
     }
 
-    public func encode(to encoder: Encoder) throws {
+    public func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         switch self {
         case let .directory(directory):

@@ -55,7 +55,7 @@ enum RunStream {
         taskId: String,
         runId: String,
         options: RunStreamOptions
-    ) -> AsyncThrowingStream<AGUIEvent, Error> {
+    ) -> AsyncThrowingStream<AGUIEvent, any Error> {
         AsyncThrowingStream { continuation in
             let worker = Task {
                 do {

@@ -1,4 +1,7 @@
 import Foundation
+import Instrumentation
+import Logging
+import ServiceContextModule
 
 /// The HTTP core every resource client uses: URL building, auth headers,
 /// error mapping, `429` and idempotent `502/503/504` retries with
@@ -13,14 +16,26 @@ public final class HTTPClient: Sendable {
         public var timeout: TimeInterval?
         /// Headers merged into every request.
         public var additionalHeaders: [String: String]
+        /// Sent as `User-Agent` unless `additionalHeaders` sets one.
+        public var userAgent: String
+        /// Requests, retries, refreshes and stream reconnects are logged here; silent by default.
+        /// Tokens and bodies are never logged.
+        public var logger: Logger
 
         public init(
-            maxRetries: Int = 2, retryBase: TimeInterval = 0.5, timeout: TimeInterval? = 60, additionalHeaders: [String: String] = [:]
+            maxRetries: Int = 2,
+            retryBase: TimeInterval = 0.5,
+            timeout: TimeInterval? = 60,
+            additionalHeaders: [String: String] = [:],
+            userAgent: String = IntrospectionSDK.userAgent,
+            logger: Logger = IntrospectionSDK.silentLogger
         ) {
             self.maxRetries = maxRetries
             self.retryBase = retryBase
             self.timeout = timeout
             self.additionalHeaders = additionalHeaders
+            self.userAgent = userAgent
+            self.logger = logger
         }
     }
 
@@ -99,6 +114,12 @@ public final class HTTPClient: Sendable {
                     error.kind == .rateLimited
                     || (method == "GET" && [502, 503, 504].contains(error.status))
                 guard retryable, attempt < maxRetries else { throw error }
+                options.logger.notice(
+                    "Retrying request",
+                    metadata: [
+                        "http.method": "\(method)", "url.path": "\(url.path)", "http.status": "\(error.status)",
+                        "attempt": "\(attempt + 1)",
+                    ])
                 try await Backoff.sleep(Backoff.delay(attempt: attempt, retryAfter: error.retryAfter, base: options.retryBase))
                 attempt += 1
             }
@@ -114,9 +135,16 @@ public final class HTTPClient: Sendable {
         if response.status == 401, authenticated, let credentials,
             try await credentials.refreshAfterUnauthorized(rejected: sent)
         {
+            options.logger.debug("Credentials refreshed after a 401", metadata: ["url.path": "\(url.path)"])
             (response, sent) = try await perform(
                 method: method, url: url, data: data, contentType: contentType, headers: headers, authenticated: authenticated)
         }
+        options.logger.debug(
+            "Request finished",
+            metadata: [
+                "http.method": "\(method)", "url.path": "\(url.path)", "http.status": "\(response.status)",
+                "request.id": "\(response.headers["x-request-id"] ?? "")",
+            ])
         guard response.isSuccess else {
             throw IntrospectionError.fromResponse(status: response.status, headers: response.headers, body: response.body)
         }
@@ -147,6 +175,10 @@ public final class HTTPClient: Sendable {
     private func buildHeaders(extra: [String: String], contentType: String?, authenticated: Bool) async throws -> [String: String] {
         var headers = options.additionalHeaders
         headers["Accept"] = headers["Accept"] ?? "application/json"
+        if !headers.keys.contains(where: { $0.caseInsensitiveCompare("User-Agent") == .orderedSame }) {
+            headers["User-Agent"] = options.userAgent
+        }
+        InstrumentationSystem.instrument.inject(ServiceContext.current ?? .topLevel, into: &headers, using: HeaderInjector())
         if authenticated, let authorization = try await credentials?.authorization() {
             headers["Authorization"] = authorization
         }
@@ -246,5 +278,13 @@ public final class HTTPClient: Sendable {
         } catch {
             throw IntrospectionError(kind: .network, message: error.localizedDescription, underlying: error)
         }
+    }
+}
+
+/// Writes trace context (W3C `traceparent`, `tracestate`, `baggage`) from the
+/// app's bootstrapped instrument into request headers.
+struct HeaderInjector: Injector {
+    func inject(_ value: String, forKey key: String, into carrier: inout [String: String]) {
+        carrier[key] = value
     }
 }

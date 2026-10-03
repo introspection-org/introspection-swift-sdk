@@ -25,7 +25,7 @@ public struct Page<Item: Decodable & Sendable>: Decodable, Sendable {
         case hasMore = "has_more"
     }
 
-    public init(from decoder: Decoder) throws {
+    public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let items =
             try container.decodeIfPresent([Item].self, forKey: .records)

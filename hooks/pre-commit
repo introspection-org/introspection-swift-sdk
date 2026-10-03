@@ -6,8 +6,8 @@ set -e
 echo "Checking formatting..."
 scripts/lint.sh || { echo "Formatting issues. Run 'scripts/lint.sh --fix'."; exit 1; }
 
-echo "Building with warnings as errors..."
-swift build -Xswiftc -warnings-as-errors
+echo "Building (warnings are errors)..."
+swift build --build-tests --enable-all-traits
 
 echo "Running tests with coverage..."
 scripts/coverage.sh

@@ -127,7 +127,7 @@ public struct TaskRunsAPI: Sendable {
     /// Stream a run's AG-UI events, resuming transparently across disconnects.
     public func stream(
         _ taskId: String, _ runId: String, options: RunStreamOptions = RunStreamOptions()
-    ) -> AsyncThrowingStream<AGUIEvent, Error> {
+    ) -> AsyncThrowingStream<AGUIEvent, any Error> {
         RunStream.events(http: http, taskId: taskId, runId: runId, options: options)
     }
 }
@@ -146,7 +146,7 @@ public struct RunHandle: Sendable {
     }
 
     /// The run's resumable AG-UI event stream.
-    public func stream(options: RunStreamOptions = RunStreamOptions()) -> AsyncThrowingStream<AGUIEvent, Error> {
+    public func stream(options: RunStreamOptions = RunStreamOptions()) -> AsyncThrowingStream<AGUIEvent, any Error> {
         runs.stream(run.taskId, run.id, options: options)
     }
 

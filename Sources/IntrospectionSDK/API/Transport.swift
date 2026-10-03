@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 
 #if canImport(FoundationNetworking)
 import FoundationNetworking
@@ -40,9 +41,9 @@ public struct HTTPResponse: Sendable {
 public struct HTTPStreamResponse: Sendable {
     public let status: Int
     public let headers: [String: String]
-    public let bytes: AsyncThrowingStream<Data, Error>
+    public let bytes: AsyncThrowingStream<Data, any Error>
 
-    public init(status: Int, headers: [String: String], bytes: AsyncThrowingStream<Data, Error>) {
+    public init(status: Int, headers: [String: String], bytes: AsyncThrowingStream<Data, any Error>) {
         self.status = status
         self.headers = Dictionary(headers.map { ($0.key.lowercased(), $0.value) }, uniquingKeysWith: { _, last in last })
         self.bytes = bytes
@@ -65,49 +66,33 @@ public protocol HTTPTransport: Sendable {
 
 /// The default transport, on `URLSession`. Streaming uses a delegate so it
 /// works on every platform Foundation supports, including Linux.
-public final class URLSessionTransport: HTTPTransport, @unchecked Sendable {
+public final class URLSessionTransport: HTTPTransport, Sendable {
     private let session: URLSession
-    private let configuration: URLSessionConfiguration
 
     public init(configuration: URLSessionConfiguration = .default) {
-        self.configuration = configuration
         session = URLSession(configuration: configuration)
     }
 
     public func send(_ request: HTTPRequest) async throws -> HTTPResponse {
-        let urlRequest = Self.urlRequest(request)
-        let box = TaskBox()
-        return try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<HTTPResponse, Error>) in
-                let task = session.dataTask(with: urlRequest) { data, response, error in
-                    if let error {
-                        continuation.resume(throwing: Self.networkError(error))
-                        return
-                    }
-                    guard let http = response as? HTTPURLResponse else {
-                        continuation.resume(throwing: IntrospectionError(kind: .network, message: "No HTTP response"))
-                        return
-                    }
-                    continuation.resume(
-                        returning: HTTPResponse(
-                            status: http.statusCode, headers: Self.headers(http), body: data ?? Data()
-                        ))
-                }
-                box.set(task)
-                task.resume()
-            }
-        } onCancel: {
-            box.cancel()
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: Self.urlRequest(request))
+        } catch {
+            throw Self.networkError(error)
         }
+        guard let http = response as? HTTPURLResponse else {
+            throw IntrospectionError(kind: .network, message: "No HTTP response")
+        }
+        return HTTPResponse(status: http.statusCode, headers: Self.headers(http), body: data)
     }
 
     public func stream(_ request: HTTPRequest) async throws -> HTTPStreamResponse {
         let delegate = StreamDelegate()
-        let streamSession = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
+        let streamSession = URLSession(configuration: session.configuration, delegate: delegate, delegateQueue: nil)
         let task = streamSession.dataTask(with: Self.urlRequest(request))
-        delegate.session = streamSession
         return try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<HTTPStreamResponse, Error>) in
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<HTTPStreamResponse, any Error>) in
                 delegate.start(task: task, continuation: continuation)
             }
         } onCancel: {
@@ -132,7 +117,7 @@ public final class URLSessionTransport: HTTPTransport, @unchecked Sendable {
         return headers
     }
 
-    static func networkError(_ error: Error) -> Error {
+    static func networkError(_ error: any Error) -> any Error {
         if let urlError = error as? URLError, urlError.code == .cancelled {
             return CancellationError()
         }
@@ -140,38 +125,16 @@ public final class URLSessionTransport: HTTPTransport, @unchecked Sendable {
     }
 }
 
-private final class TaskBox: @unchecked Sendable {
-    private let lock = NSLock()
-    private var task: URLSessionTask?
-    private var cancelled = false
-
-    func set(_ task: URLSessionTask) {
-        lock.lock()
-        self.task = task
-        let shouldCancel = cancelled
-        lock.unlock()
-        if shouldCancel { task.cancel() }
+private final class StreamDelegate: NSObject, URLSessionDataDelegate, Sendable {
+    private struct State {
+        var head: CheckedContinuation<HTTPStreamResponse, any Error>?
+        var body: AsyncThrowingStream<Data, any Error>.Continuation?
     }
 
-    func cancel() {
-        lock.lock()
-        cancelled = true
-        let task = self.task
-        lock.unlock()
-        task?.cancel()
-    }
-}
+    private let state = Mutex(State())
 
-private final class StreamDelegate: NSObject, URLSessionDataDelegate, @unchecked Sendable {
-    private let lock = NSLock()
-    private var headContinuation: CheckedContinuation<HTTPStreamResponse, Error>?
-    private var bodyContinuation: AsyncThrowingStream<Data, Error>.Continuation?
-    var session: URLSession?
-
-    func start(task: URLSessionDataTask, continuation: CheckedContinuation<HTTPStreamResponse, Error>) {
-        lock.lock()
-        headContinuation = continuation
-        lock.unlock()
+    func start(task: URLSessionDataTask, continuation: CheckedContinuation<HTTPStreamResponse, any Error>) {
+        state.withLock { $0.head = continuation }
         task.resume()
     }
 
@@ -179,21 +142,21 @@ private final class StreamDelegate: NSObject, URLSessionDataDelegate, @unchecked
         _: URLSession,
         dataTask: URLSessionDataTask,
         didReceive response: URLResponse,
-        completionHandler: @escaping (URLSession.ResponseDisposition) -> Void
+        completionHandler: @escaping @Sendable (URLSession.ResponseDisposition) -> Void
     ) {
         guard let http = response as? HTTPURLResponse else {
             completionHandler(.cancel)
             return
         }
-        let (stream, continuation) = AsyncThrowingStream<Data, Error>.makeStream()
+        let (stream, continuation) = AsyncThrowingStream<Data, any Error>.makeStream()
         continuation.onTermination = { termination in
             if case .cancelled = termination { dataTask.cancel() }
         }
-        lock.lock()
-        bodyContinuation = continuation
-        let head = headContinuation
-        headContinuation = nil
-        lock.unlock()
+        let head = state.withLock { state in
+            state.body = continuation
+            defer { state.head = nil }
+            return state.head
+        }
         head?.resume(
             returning: HTTPStreamResponse(
                 status: http.statusCode, headers: URLSessionTransport.headers(http), bytes: stream
@@ -202,20 +165,14 @@ private final class StreamDelegate: NSObject, URLSessionDataDelegate, @unchecked
     }
 
     func urlSession(_: URLSession, dataTask _: URLSessionDataTask, didReceive data: Data) {
-        lock.lock()
-        let body = bodyContinuation
-        lock.unlock()
-        body?.yield(data)
+        _ = state.withLock { $0.body }?.yield(data)
     }
 
-    func urlSession(_ session: URLSession, task _: URLSessionTask, didCompleteWithError error: Error?) {
-        lock.lock()
-        let head = headContinuation
-        let body = bodyContinuation
-        headContinuation = nil
-        bodyContinuation = nil
-        self.session = nil
-        lock.unlock()
+    func urlSession(_ session: URLSession, task _: URLSessionTask, didCompleteWithError error: (any Error)?) {
+        let (head, body) = state.withLock { state in
+            defer { state = State() }
+            return (state.head, state.body)
+        }
         if let head {
             head.resume(
                 throwing: error.map(URLSessionTransport.networkError)

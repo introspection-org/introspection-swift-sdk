@@ -181,8 +181,7 @@ final class RunnerTests: XCTestCase {
                 dataPlaneURL: URL(string: "https://dp.test")!,
                 controlPlaneCredentials: BearerToken("cp-token"),
                 transport: transport,
-                options: .init(maxRetries: 0, additionalHeaders: ["X-Custom": "1"]),
-                userAgent: "test-agent"
+                options: .init(maxRetries: 0, additionalHeaders: ["X-Custom": "1"], userAgent: "test-agent")
             ))
         let runner = try await client.runtimes.run("rt-1", project: "acme")
         XCTAssertEqual(transport.last?.query["project"], ["acme"])

@@ -274,7 +274,7 @@ public struct MetricResultRow: Codable, Sendable, Hashable {
         case timestamp, dimensions, metrics
     }
 
-    public init(from decoder: Decoder) throws {
+    public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         timestamp = try container.decodeIfPresent(Int64.self, forKey: .timestamp)
         dimensions = try container.decodeIfPresent([MetricDimensionValue].self, forKey: .dimensions) ?? []
@@ -336,7 +336,7 @@ public struct MetricQueryResponse: Codable, Sendable, Hashable {
         case data, meta
     }
 
-    public init(from decoder: Decoder) throws {
+    public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         data = try container.decodeIfPresent([MetricResultRow].self, forKey: .data) ?? []
         meta = try container.decodeIfPresent(MetricQueryMeta.self, forKey: .meta)

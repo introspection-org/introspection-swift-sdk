@@ -142,7 +142,7 @@ public actor AuthClient {
 
     private var current: AuthSession?
     private var restored = false
-    private var refreshing: Task<AuthSession, Error>?
+    private var refreshing: Task<AuthSession, any Error>?
     private var listeners: [UUID: AsyncStream<(AuthChangeEvent, AuthSession?)>.Continuation] = [:]
 
     public init(configuration: Configuration, now: @escaping @Sendable () -> Date = { Date() }) {
@@ -220,7 +220,7 @@ public actor AuthClient {
         guard let session = current else {
             throw IntrospectionError(kind: .authentication, message: "Not signed in")
         }
-        let task = Task<AuthSession, Error> {
+        let task = Task<AuthSession, any Error> {
             defer { self.refreshing = nil }
             do {
                 let next = AuthSession(token: try await self.renew(session.token))

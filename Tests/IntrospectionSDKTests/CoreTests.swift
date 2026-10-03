@@ -80,6 +80,19 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(transport.requests.count, 2)
     }
 
+    func testEveryRequestCarriesTheSDKUserAgentUnlessOverridden() async throws {
+        let transport = MockTransport { _, _ in .response(.json("{}")) }
+        _ = try await HTTPClient(baseURL: URL(string: "https://dp.test")!, transport: transport).json("GET", "/v1/x", as: JSONValue.self)
+        XCTAssertEqual(transport.last?.request.headers["User-Agent"], "introspection-sdk/\(IntrospectionSDK.version)")
+
+        let custom = HTTPClient(
+            baseURL: URL(string: "https://dp.test")!, transport: transport,
+            options: .init(additionalHeaders: ["user-agent": "ark/1.0"]))
+        _ = try await custom.json("GET", "/v1/x", as: JSONValue.self)
+        XCTAssertEqual(transport.last?.request.headers["user-agent"], "ark/1.0")
+        XCTAssertNil(transport.last?.request.headers["User-Agent"])
+    }
+
     func testPaginatorWalksCursorsAndStopsOnRepeat() async throws {
         let transport = MockTransport { request, _ in
             let next = URLComponents(url: request.url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "next" }?.value

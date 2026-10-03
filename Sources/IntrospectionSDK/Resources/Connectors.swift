@@ -477,7 +477,7 @@ struct ConnectorAuthorizeBody: Encodable {
         case expiresIn = "expires_in"
     }
 
-    func encode(to encoder: Encoder) throws {
+    func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(connectorId, forKey: .connectorId)
         try container.encodeIfPresent(params.app, forKey: .app)
@@ -675,7 +675,7 @@ struct ConnectionTokenBody: Encodable {
         case requestedPermissions = "requested_permissions"
     }
 
-    func encode(to encoder: Encoder) throws {
+    func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(connectorId, forKey: .connectorId)
         try container.encodeIfPresent(params.connectionId, forKey: .connectionId)
@@ -723,7 +723,7 @@ public enum ConnectionTokenResult: Codable, Sendable, Hashable {
         case approvalUrl = "approval_url"
     }
 
-    public init(from decoder: Decoder) throws {
+    public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         if try container.decodeIfPresent(String.self, forKey: .status) == "authorization_pending" {
             self = .authorizationPending(
@@ -735,7 +735,7 @@ public enum ConnectionTokenResult: Codable, Sendable, Hashable {
         }
     }
 
-    public func encode(to encoder: Encoder) throws {
+    public func encode(to encoder: any Encoder) throws {
         switch self {
         case let .token(token):
             try token.encode(to: encoder)

@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 
 // MARK: Run request
 
@@ -104,7 +105,7 @@ public struct RunCaller: Codable, Sendable, Hashable {
         init?(intValue: Int) { nil }
     }
 
-    public init(from decoder: Decoder) throws {
+    public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         ip = try container.decodeIfPresent(String.self, forKey: .ip)
         userAgent = try container.decodeIfPresent(String.self, forKey: .userAgent)
@@ -119,7 +120,7 @@ public struct RunCaller: Codable, Sendable, Hashable {
         self.extra = extra
     }
 
-    public func encode(to encoder: Encoder) throws {
+    public func encode(to encoder: any Encoder) throws {
         var all = encoder.container(keyedBy: AnyKey.self)
         for (key, value) in extra where CodingKeys(rawValue: key) == nil {
             try all.encode(value, forKey: AnyKey(stringValue: key))
@@ -318,10 +319,8 @@ public enum RunnerSource: Sendable, Hashable {
 ///
 /// The Data Plane refreshes the session's access tokens itself; the SDK never
 /// refreshes automatically. `refresh()` mints a brand-new session on demand.
-public final class Runner: DataPlaneConnection, @unchecked Sendable {
-    private let lock = NSLock()
-    private var currentSpec: RunnerSpec
-    private var currentHTTP: HTTPClient
+public final class Runner: DataPlaneConnection, Sendable {
+    private let current: Mutex<(spec: RunnerSpec, http: HTTPClient)>
     private let gate: RunnerGate
     private let template: HTTPClient
     private let controlPlane: HTTPClient?
@@ -336,8 +335,7 @@ public final class Runner: DataPlaneConnection, @unchecked Sendable {
         self.template = template
         self.controlPlane = controlPlane
         self.source = source
-        currentSpec = spec
-        currentHTTP = try Self.makeHTTP(spec: spec, template: template, gate: gate)
+        current = Mutex((spec, try Self.makeHTTP(spec: spec, template: template, gate: gate)))
     }
 
     /// Build a runner from a spec using the client's transport and options; `refresh()` is unavailable.
@@ -365,17 +363,11 @@ public final class Runner: DataPlaneConnection, @unchecked Sendable {
         return template.with(baseURL: url, credentials: RunnerCredentials(token: spec.sessionToken, gate: gate))
     }
 
-    private func withLock<T>(_ body: () -> T) -> T {
-        lock.lock()
-        defer { lock.unlock() }
-        return body()
-    }
-
     /// The Data Plane client bound to this runner's deployment and session token.
-    public var dataPlane: HTTPClient { withLock { currentHTTP } }
+    public var dataPlane: HTTPClient { current.withLock { $0.http } }
 
     /// The current spec (replaced by `refresh()`).
-    public var spec: RunnerSpec { withLock { currentSpec } }
+    public var spec: RunnerSpec { current.withLock { $0.spec } }
 
     /// Session id assigned by the Control Plane.
     public var sessionId: String { spec.sessionId }
@@ -422,10 +414,7 @@ public final class Runner: DataPlaneConnection, @unchecked Sendable {
             "POST", source.path, query: query, body: .encode(source.request), as: RunnerSpec.self
         )
         let http = try Self.makeHTTP(spec: fresh, template: template, gate: gate)
-        withLock {
-            currentSpec = fresh
-            currentHTTP = http
-        }
+        current.withLock { $0 = (fresh, http) }
     }
 
     /// Mark the runner closed locally: later requests fail with `runnerExpired`
@@ -436,25 +425,16 @@ public final class Runner: DataPlaneConnection, @unchecked Sendable {
 }
 
 /// Shared closed flag between a runner and its credentials.
-final class RunnerGate: @unchecked Sendable {
-    private let lock = NSLock()
-    private var closed = false
+final class RunnerGate: Sendable {
+    private let closed = Atomic(false)
 
     static let closedError = IntrospectionError(
         kind: .runnerExpired, message: "Runner has been closed", status: 401, code: "runner_expired"
     )
 
-    var isClosed: Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return closed
-    }
+    var isClosed: Bool { closed.load(ordering: .acquiring) }
 
-    func close() {
-        lock.lock()
-        closed = true
-        lock.unlock()
-    }
+    func close() { closed.store(true, ordering: .releasing) }
 }
 
 /// The session token as a bearer, refusing every request once the runner is closed.
