@@ -6,19 +6,25 @@ public struct IntrospectionEventName: RawRepresentable, Codable, Sendable, Hasha
     public init(rawValue: String) { self.rawValue = rawValue }
     public init(stringLiteral value: String) { rawValue = value }
 
-    public static let annotation: IntrospectionEventName = "introspection.annotation"
-    public static let feedback: IntrospectionEventName = "introspection.feedback"
-    public static let observation: IntrospectionEventName = "introspection.observation"
-    public static let observationClusteringRun: IntrospectionEventName = "introspection.observation_clustering.run"
-    public static let judgement: IntrospectionEventName = "introspection.judgement"
-    public static let pattern: IntrospectionEventName = "introspection.pattern"
-    public static let patternAssignment: IntrospectionEventName = "introspection.pattern.assignment"
+    public static let annotation = IntrospectionEventName(rawValue: PlatformEventNames.annotation)
+    public static let feedback = IntrospectionEventName(rawValue: PlatformEventNames.feedback)
+    public static let observation = IntrospectionEventName(rawValue: PlatformEventNames.observation)
+    public static let observationClusteringRun = IntrospectionEventName(rawValue: PlatformEventNames.observationClusteringRun)
+    public static let judgement = IntrospectionEventName(rawValue: PlatformEventNames.judgement)
+    public static let pattern = IntrospectionEventName(rawValue: PlatformEventNames.pattern)
+    public static let patternAssignment = IntrospectionEventName(rawValue: PlatformEventNames.patternAssignment)
     /// The virtual projection of SDK `track()` events.
-    public static let track: IntrospectionEventName = "introspection.track"
-    public static let issue: IntrospectionEventName = "introspection.issue"
-    public static let repositoryCreated: IntrospectionEventName = "introspection.repository.created"
-    public static let repositoryPushed: IntrospectionEventName = "introspection.repository.pushed"
-    public static let repositoryMerge: IntrospectionEventName = "introspection.repository.merge"
+    public static let track = IntrospectionEventName(rawValue: PlatformEventNames.track)
+    public static let issue = IntrospectionEventName(rawValue: PlatformEventNames.issue)
+    public static let repositoryCreated = IntrospectionEventName(rawValue: PlatformEventNames.repositoryCreated)
+    public static let repositoryPushed = IntrospectionEventName(rawValue: PlatformEventNames.repositoryPushed)
+    public static let repositoryMerge = IntrospectionEventName(rawValue: PlatformEventNames.repositoryMerge)
+
+    /// Every family the platform serves, in its registry order.
+    public static let allCases: [IntrospectionEventName] = [
+        .annotation, .feedback, .observation, .observationClusteringRun, .judgement, .pattern, .patternAssignment, .track,
+        .issue, .repositoryCreated, .repositoryPushed, .repositoryMerge,
+    ]
 }
 
 /// Event sort fields. Valid values depend on the family.

@@ -30,11 +30,7 @@ private let automationJSON = #"""
       "next_trigger_at": "2026-10-05T09:00:00.123456Z",
       "created_at": "2026-09-01T10:00:00Z",
       "updated_at": "2026-09-28T09:00:01Z",
-      "owner_role": "operator",
-      "runtime_group_id": "0199a1b2-0000-7000-8000-0000000000dd",
-      "environment": "staging",
-      "target_task_id": "0199a1b2-0000-7000-8000-0000000000ee",
-      "member_type": "business"
+      "owner_role": "operator"
     }
     """#
 
@@ -49,9 +45,6 @@ final class AutomationsTests: XCTestCase {
         XCTAssertEqual(automation.tags, ["digest"])
         XCTAssertEqual(automation.lastTriggeredAt, ISO8601.parse("2026-09-28T09:00:00Z"))
         XCTAssertNotNil(automation.nextTriggerAt)
-        XCTAssertEqual(automation.runtimeGroupId, "0199a1b2-0000-7000-8000-0000000000dd")
-        XCTAssertEqual(automation.targetTaskId, "0199a1b2-0000-7000-8000-0000000000ee")
-        XCTAssertEqual(automation.environment, "staging")
         let metadata = try XCTUnwrap(automation.typedMetadata)
         XCTAssertEqual(metadata.cronSchedules, ["0 9 * * 1", "0 17 * * 5"])
         XCTAssertEqual(metadata.timezone, "Europe/London")
@@ -71,13 +64,13 @@ final class AutomationsTests: XCTestCase {
                 : .response(.json(#"{"records":[{"id":"b","name":"second","trigger_type":"manual"}],"count":1,"next":null}"#))
         }
         let all = try await makeClient(transport).automations
-            .list(AutomationListParams(limit: 1, kind: .observationSynthesis, enabled: true, runtimeGroupId: "rg"))
+            .list(AutomationListParams(limit: 1, kind: .observationSynthesis, enabled: true))
             .collect()
         XCTAssertEqual(all.map(\.name), ["Weekly digest", "second"])
         XCTAssertEqual(transport.requests.count, 2)
         let first = transport.requests[0]
         XCTAssertEqual(first.path, "/v1/automations")
-        XCTAssertEqual(first.query, ["limit": ["1"], "kind": ["observation_synthesis"], "enabled": ["true"], "runtime_group_id": ["rg"]])
+        XCTAssertEqual(first.query, ["limit": ["1"], "kind": ["observation_synthesis"], "enabled": ["true"]])
         XCTAssertEqual(transport.requests[1].query["next"], ["cur-2"])
     }
 
@@ -101,15 +94,11 @@ final class AutomationsTests: XCTestCase {
 
         _ = try await makeClient(transport).automations.create(
             AutomationCreate(
-                name: "Nudge", triggerType: .manual, prompt: "Check in", enabled: false,
-                runtimeGroupId: "rg", environment: "production", targetTaskId: "t1"
+                name: "Nudge", triggerType: .manual, prompt: "Check in", enabled: false
             ))
         XCTAssertEqual(
             transport.last?.json,
-            [
-                "name": "Nudge", "trigger_type": "manual", "prompt": "Check in", "enabled": false,
-                "runtime_group_id": "rg", "environment": "production", "target_task_id": "t1",
-            ])
+            ["name": "Nudge", "trigger_type": "manual", "prompt": "Check in", "enabled": false])
     }
 
     func testGetUpdateDeleteAndTrigger() async throws {
@@ -136,6 +125,6 @@ final class AutomationsTests: XCTestCase {
         XCTAssertEqual(transport.last?.request.url.absoluteString, "https://dp.test/v1/automations/a%2F1/trigger")
         XCTAssertEqual(triggered.status, .triggered)
         XCTAssertEqual(triggered.taskId, "t-9")
-        XCTAssertNil(triggered.occurrenceId)
+        XCTAssertNil(triggered.reason)
     }
 }

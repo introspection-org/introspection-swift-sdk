@@ -166,16 +166,6 @@ public struct Automation: Codable, Sendable, Hashable {
     public let ownerRole: String?
     public let createdAt: Date?
     public let updatedAt: Date?
-    /// User automations only (needs a server that supports them): the runtime group it runs in.
-    public let runtimeGroupId: String?
-    /// User automations only: `staging` or `production`.
-    public let environment: String?
-    /// User automations only: the existing task each occurrence continues.
-    public let targetTaskId: String?
-    /// User automations only: the owning member.
-    public let memberId: String?
-    public let memberType: String?
-    public let actorMemberId: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -194,12 +184,6 @@ public struct Automation: Codable, Sendable, Hashable {
         case ownerRole = "owner_role"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
-        case runtimeGroupId = "runtime_group_id"
-        case environment
-        case targetTaskId = "target_task_id"
-        case memberId = "member_id"
-        case memberType = "member_type"
-        case actorMemberId = "actor_member_id"
     }
 
     /// `metadata` decoded into its typed shape, or nil if it does not fit.
@@ -220,12 +204,6 @@ public struct AutomationCreate: Encodable, Sendable, Hashable {
     public var prompt: String?
     public var metadata: JSONObject?
     public var enabled: Bool?
-    /// User automations: requires a server that supports them (rejected as an unknown field otherwise).
-    public var runtimeGroupId: String?
-    /// User automations: `staging` or `production` (server default `production`).
-    public var environment: String?
-    /// User automations: continue this owned task; requires `runtimeGroupId`.
-    public var targetTaskId: String?
 
     enum CodingKeys: String, CodingKey {
         case name
@@ -233,9 +211,6 @@ public struct AutomationCreate: Encodable, Sendable, Hashable {
         case description
         case cronSchedule = "cron_schedule"
         case kind, prompt, metadata, enabled
-        case runtimeGroupId = "runtime_group_id"
-        case environment
-        case targetTaskId = "target_task_id"
     }
 
     public init(
@@ -246,10 +221,7 @@ public struct AutomationCreate: Encodable, Sendable, Hashable {
         kind: AutomationKind? = nil,
         prompt: String? = nil,
         metadata: JSONObject? = nil,
-        enabled: Bool? = nil,
-        runtimeGroupId: String? = nil,
-        environment: String? = nil,
-        targetTaskId: String? = nil
+        enabled: Bool? = nil
     ) {
         self.name = name
         self.triggerType = triggerType
@@ -259,9 +231,6 @@ public struct AutomationCreate: Encodable, Sendable, Hashable {
         self.prompt = prompt
         self.metadata = metadata
         self.enabled = enabled
-        self.runtimeGroupId = runtimeGroupId
-        self.environment = environment
-        self.targetTaskId = targetTaskId
     }
 }
 
@@ -301,27 +270,21 @@ public struct AutomationUpdate: Encodable, Sendable, Hashable {
 public struct AutomationListParams: Sendable, Hashable {
     /// Page size, 1...1000 (server default 100).
     public var limit: Int?
+    /// Starting cursor.
+    public var next: String?
     public var kind: AutomationKind?
     public var enabled: Bool?
-    /// User-automation filters: ignored by servers without user automations.
-    public var runtimeGroupId: String?
-    public var environment: String?
-    public var memberType: String?
 
     public init(
         limit: Int? = nil,
+        next: String? = nil,
         kind: AutomationKind? = nil,
-        enabled: Bool? = nil,
-        runtimeGroupId: String? = nil,
-        environment: String? = nil,
-        memberType: String? = nil
+        enabled: Bool? = nil
     ) {
         self.limit = limit
+        self.next = next
         self.kind = kind
         self.enabled = enabled
-        self.runtimeGroupId = runtimeGroupId
-        self.environment = environment
-        self.memberType = memberType
     }
 
     var query: Query {
@@ -329,9 +292,6 @@ public struct AutomationListParams: Sendable, Hashable {
         query.add("limit", limit)
         query.add("kind", kind)
         query.add("enabled", enabled)
-        query.add("runtime_group_id", runtimeGroupId)
-        query.add("environment", environment)
-        query.add("member_type", memberType)
         return query
     }
 }
@@ -342,15 +302,12 @@ public struct AutomationTriggerResponse: Codable, Sendable, Hashable {
     public let automationId: String?
     public let taskId: String?
     public let reason: String?
-    /// User automations only.
-    public let occurrenceId: String?
 
     enum CodingKeys: String, CodingKey {
         case status
         case automationId = "automation_id"
         case taskId = "task_id"
         case reason
-        case occurrenceId = "occurrence_id"
     }
 }
 
@@ -366,7 +323,7 @@ public struct AutomationsAPI: Sendable {
 
     /// List this project's automations.
     public func list(_ params: AutomationListParams = AutomationListParams()) -> Paginator<Automation> {
-        http.paginate("/v1/automations", query: params.query, as: Automation.self)
+        http.paginate("/v1/automations", query: params.query, start: params.next, as: Automation.self)
     }
 
     /// Create an automation.

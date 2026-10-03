@@ -137,9 +137,8 @@ public enum TranscriptEntry: Codable, Sendable, Hashable {
     }
 }
 
-private let delegationOperations: Set<String> = ["invoke_agent", "create_agent"]
+private let delegationOperations: Set<String> = [GenAIOperationNames.invokeAgent, GenAIOperationNames.createAgent]
 private let agentToolName = "agent"
-private let messageIdentityEvent = "introspection.message_identity"
 
 /// The error bit a tool response carries, in the shapes emitters use.
 private func responseIsError(_ value: JSONValue?) -> Bool {
@@ -387,7 +386,7 @@ public final class TranscriptAccumulator {
         case "ACTIVITY_SNAPSHOT", "ACTIVITY_DELTA":
             onActivity?(event)
         case "CUSTOM":
-            if event.name == messageIdentityEvent,
+            if event.name == CustomEventNames.messageIdentity,
                 let messageId = event.value?["messageId"]?.stringValue,
                 let responseId = event.value?["responseId"]?.stringValue,
                 let index = messageIndex[messageId]

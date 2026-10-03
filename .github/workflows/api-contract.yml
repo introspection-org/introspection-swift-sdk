@@ -1,0 +1,27 @@
+# Watches the published API reference for drift against this SDK's request and response surface.
+# Scheduled rather than run on pull requests: it goes red when the *API* changes, which is a fact
+# about the world and not about the commit under review, and a gate people learn to ignore is how
+# the last one went unnoticed.
+name: API Contract
+
+on:
+  schedule:
+    # 07:00 UTC daily, so a red run is waiting at the start of the day.
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sdk-surface:
+    name: SDK surface vs published reference
+    runs-on: ubuntu-latest
+    container: swift:6.1-noble
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compare the SDK surface against the reference
+        env:
+          INTROSPECTION_API_CONTRACT: "1"
+        run: swift test --filter APIContractTests

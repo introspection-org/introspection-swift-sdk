@@ -212,44 +212,44 @@ public struct GenAISpan: Codable, Sendable, Hashable {
     }
 
     /// `gen_ai.operation.name`: `chat`, `execute_tool`, `invoke_agent`, ...
-    public var operationName: String? { string("gen_ai.operation.name") }
+    public var operationName: String? { string(GenAIAttributes.operationName) }
     /// `gen_ai.conversation.id`.
-    public var conversationId: String? { string("gen_ai.conversation.id") }
-    public var providerName: String? { string("gen_ai.provider.name") }
-    public var requestModel: String? { string("gen_ai.request.model") }
-    public var responseModel: String? { string("gen_ai.response.model") }
+    public var conversationId: String? { string(GenAIAttributes.conversationId) }
+    public var providerName: String? { string(GenAIAttributes.providerName) }
+    public var requestModel: String? { string(GenAIAttributes.requestModel) }
+    public var responseModel: String? { string(GenAIAttributes.responseModel) }
     /// `gen_ai.response.id`.
-    public var responseId: String? { string("gen_ai.response.id") }
-    public var agentId: String? { string("gen_ai.agent.id") }
-    public var agentName: String? { string("gen_ai.agent.name") }
-    public var toolName: String? { string("gen_ai.tool.name") }
+    public var responseId: String? { string(GenAIAttributes.responseId) }
+    public var agentId: String? { string(GenAIAttributes.agentId) }
+    public var agentName: String? { string(GenAIAttributes.agentName) }
+    public var toolName: String? { string(GenAIAttributes.toolName) }
     /// `gen_ai.tool.call.id` on an `execute_tool` span.
-    public var toolCallId: String? { string("gen_ai.tool.call.id") }
+    public var toolCallId: String? { string(GenAIAttributes.toolCallId) }
     /// `gen_ai.tool.call.arguments`, JSON-encoded.
     public var toolCallArguments: String? {
-        guard let value = attribute("gen_ai.tool.call.arguments") else { return nil }
+        guard let value = attribute(GenAIAttributes.toolCallArguments) else { return nil }
         return value.stringValue ?? (try? JSONCoding.encoder.encode(value)).map { String(decoding: $0, as: UTF8.self) }
     }
-    public var inputTokens: Int? { attribute("gen_ai.usage.input_tokens")?.intValue }
-    public var outputTokens: Int? { attribute("gen_ai.usage.output_tokens")?.intValue }
+    public var inputTokens: Int? { attribute(GenAIAttributes.usageInputTokens)?.intValue }
+    public var outputTokens: Int? { attribute(GenAIAttributes.usageOutputTokens)?.intValue }
     /// `gen_ai.cost.usd`.
-    public var costUsd: Double? { attribute("gen_ai.cost.usd")?.doubleValue }
+    public var costUsd: Double? { attribute(GenAIAttributes.costUsd)?.doubleValue }
     /// `introspection.agent.invocation_id`, the durable child agent-run id on a delegation span.
-    public var invocationId: String? { string("introspection.agent.invocation_id") }
+    public var invocationId: String? { string(IntrospectionAttributes.agentInvocationId) }
     /// `introspection.conversation.client_message_id`.
-    public var clientMessageId: String? { string("introspection.conversation.client_message_id") }
+    public var clientMessageId: String? { string(IntrospectionAttributes.conversationClientMessageId) }
 
     /// `gen_ai.input.messages`: the turn-local delta on list reads, the full history on item detail.
-    public var inputMessages: [GenAIMessage] { Self.messages(attribute("gen_ai.input.messages")) }
+    public var inputMessages: [GenAIMessage] { Self.messages(attribute(GenAIAttributes.inputMessages)) }
     /// `gen_ai.output.messages`.
-    public var outputMessages: [GenAIMessage] { Self.messages(attribute("gen_ai.output.messages")) }
+    public var outputMessages: [GenAIMessage] { Self.messages(attribute(GenAIAttributes.outputMessages)) }
     /// `gen_ai.system_instructions`, present when requested with that include.
     public var systemInstructions: [GenAISystemInstruction] {
-        (attribute("gen_ai.system_instructions")?.arrayValue ?? []).compactMap { try? $0.decode(GenAISystemInstruction.self) }
+        (attribute(GenAIAttributes.systemInstructions)?.arrayValue ?? []).compactMap { try? $0.decode(GenAISystemInstruction.self) }
     }
     /// `gen_ai.tool.definitions`, present when requested with that include.
     public var toolDefinitions: [GenAIToolDefinition] {
-        (attribute("gen_ai.tool.definitions")?.arrayValue ?? []).compactMap { try? $0.decode(GenAIToolDefinition.self) }
+        (attribute(GenAIAttributes.toolDefinitions)?.arrayValue ?? []).compactMap { try? $0.decode(GenAIToolDefinition.self) }
     }
 
     private static func messages(_ value: JSONValue?) -> [GenAIMessage] {
@@ -794,8 +794,8 @@ public struct ConversationItemInclude: RawRepresentable, Codable, Sendable, Hash
     public init(rawValue: String) { self.rawValue = rawValue }
     public init(stringLiteral value: String) { rawValue = value }
 
-    public static let systemInstructions: ConversationItemInclude = "gen_ai.system_instructions"
-    public static let toolDefinitions: ConversationItemInclude = "gen_ai.tool.definitions"
+    public static let systemInstructions = ConversationItemInclude(rawValue: GenAIAttributes.systemInstructions)
+    public static let toolDefinitions = ConversationItemInclude(rawValue: GenAIAttributes.toolDefinitions)
     public static let events: ConversationItemInclude = "events"
     public static let resourceAttributes: ConversationItemInclude = "resource_attributes"
     public static let spanAttributes: ConversationItemInclude = "span_attributes"
@@ -1284,7 +1284,7 @@ public struct ConversationsAPI: Sendable {
     private func latestTurnId(_ conversationId: String) async throws -> String? {
         var fallback: GenAISpan?
         for try await item in items.list(conversationId) {
-            if item.operationName == "chat" { return item.spanId }
+            if item.operationName == GenAIOperationNames.chat { return item.spanId }
             if fallback == nil, !item.outputMessages.isEmpty { fallback = item }
         }
         return fallback?.spanId

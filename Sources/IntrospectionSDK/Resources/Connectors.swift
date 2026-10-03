@@ -530,7 +530,6 @@ public struct Connection: Codable, Sendable, Hashable {
     public var scopesGranted: [String]?
     public var status: ConnectionStatus?
     public var tokenExpiresAt: Date?
-    public var metadata: JSONObject?
     public var createdAt: Date?
     public var updatedAt: Date?
 
@@ -538,8 +537,7 @@ public struct Connection: Codable, Sendable, Hashable {
         id: String, orgId: String? = nil, connectorId: String? = nil, memberId: String? = nil,
         createdByMemberId: String? = nil, runtimeGroupId: String? = nil, subjectType: ConnectionSubjectType? = nil,
         providerApp: String? = nil, providerAccountId: String? = nil, scopesGranted: [String]? = nil,
-        status: ConnectionStatus? = nil, tokenExpiresAt: Date? = nil, metadata: JSONObject? = nil,
-        createdAt: Date? = nil, updatedAt: Date? = nil
+        status: ConnectionStatus? = nil, tokenExpiresAt: Date? = nil, createdAt: Date? = nil, updatedAt: Date? = nil
     ) {
         self.id = id
         self.orgId = orgId
@@ -553,13 +551,12 @@ public struct Connection: Codable, Sendable, Hashable {
         self.scopesGranted = scopesGranted
         self.status = status
         self.tokenExpiresAt = tokenExpiresAt
-        self.metadata = metadata
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, status, metadata
+        case id, status
         case orgId = "org_id"
         case connectorId = "connector_id"
         case memberId = "member_id"
