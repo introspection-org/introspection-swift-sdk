@@ -23,6 +23,19 @@ public struct DataPlaneRuntime: Codable, Sendable, Hashable {
 
 extension DataPlaneConnection {
     /// List the project's runtime deployments for a runtime group slug or id, through
+    /// the Data Plane alone. See `HTTPClient.listRuntimes(_:)`.
+    public func listRuntimes(_ runtime: String? = nil) async throws -> [DataPlaneRuntime] {
+        try await dataPlane.listRuntimes(runtime)
+    }
+
+    /// The runtime version a new task for this runtime group should use. See `HTTPClient.resolveRuntimeId(_:)`.
+    public func resolveRuntimeId(_ runtime: String) async throws -> String? {
+        try await dataPlane.resolveRuntimeId(runtime)
+    }
+}
+
+extension HTTPClient {
+    /// List the project's runtime deployments for a runtime group slug or id, through
     /// the Data Plane alone.
     ///
     /// A token that is not a runner (a federated `customer` member's, for example)
@@ -39,7 +52,7 @@ extension DataPlaneConnection {
             "method": "tools/call",
             "params": ["name": "list_runtimes", "arguments": .object(arguments)],
         ]
-        let response = try await dataPlane.json(
+        let response = try await json(
             "POST", "/v1/mcp", body: .encode(request), headers: ["Accept": "application/json"], as: JSONValue.self
         )
         if let error = response["error"] {
@@ -61,4 +74,41 @@ extension DataPlaneConnection {
         let runtimes = try await listRuntimes(runtime)
         return (runtimes.first { $0.imageBuildStatus == "ready" } ?? runtimes.first)?.runtimeId
     }
+}
+
+/// Names the runtime version for task creates and new runs on a connection
+/// whose token is not a runner, so every new task and every sandbox restart
+/// uses the version the runtime group serves now. Resolutions are cached for
+/// `ttl` seconds; a cache miss costs one Data Plane call.
+public actor RuntimeSelector {
+    public nonisolated let runtime: String
+    public nonisolated let ttl: TimeInterval
+    private let resolve: @Sendable (String) async throws -> String?
+    private let now: @Sendable () -> Date
+    private var cached: (id: String, at: Date)?
+
+    public init(
+        runtime: String,
+        ttl: TimeInterval = 300,
+        now: @escaping @Sendable () -> Date = { Date() },
+        resolve: @escaping @Sendable (String) async throws -> String?
+    ) {
+        self.runtime = runtime
+        self.ttl = ttl
+        self.now = now
+        self.resolve = resolve
+    }
+
+    /// The runtime version id to send, resolving it when the cache is empty or stale.
+    public func runtimeId() async throws -> String {
+        if let cached, now().timeIntervalSince(cached.at) < ttl { return cached.id }
+        guard let id = try await resolve(runtime) else {
+            throw IntrospectionError(kind: .notFound, message: "No runtime '\(runtime)' in this project")
+        }
+        cached = (id, now())
+        return id
+    }
+
+    /// Forget the cached resolution, for example after a deploy.
+    public func invalidate() { cached = nil }
 }

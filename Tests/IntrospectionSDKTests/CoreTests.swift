@@ -70,7 +70,7 @@ final class CoreTests: XCTestCase {
         actor Counter: CredentialProvider {
             var token = "old"
             func authorization() async throws -> String? { "Bearer \(token)" }
-            func refreshAfterUnauthorized() async throws -> Bool { token = "new"; return true }
+            func refreshAfterUnauthorized(rejected _: String?) async throws -> Bool { token = "new"; return true }
         }
         let transport = MockTransport { request, _ in
             request.headers["Authorization"] == "Bearer new" ? .response(.json("{}")) : .response(.json("{}", status: 401))

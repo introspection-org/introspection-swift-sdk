@@ -464,8 +464,19 @@ public struct ExperimentHandle: Sendable {
     public func get() async throws -> Experiment { try await api.get(id, project: project) }
 
     /// Open a runner on the arm this identity is routed to.
-    public func run(_ request: RunRequest = RunRequest()) async throws -> Runner {
+    public func run(_ request: RunRequest) async throws -> Runner {
         try await api.run(id, request, project: project)
+    }
+
+    /// Open a runner on the experiment, with the request's fields inline.
+    public func run(
+        identity: RunnerIdentity? = nil,
+        caller: RunCaller? = nil,
+        agentName: String? = nil,
+        ttlSeconds: Int? = nil,
+        scope: String? = nil
+    ) async throws -> Runner {
+        try await run(RunRequest(identity: identity, caller: caller, agentName: agentName, ttlSeconds: ttlSeconds, scope: scope))
     }
 
     /// Start the experiment.

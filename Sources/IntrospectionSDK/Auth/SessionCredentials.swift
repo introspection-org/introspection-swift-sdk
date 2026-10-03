@@ -147,10 +147,6 @@ public actor SessionCredentials: CredentialProvider {
     private let onTokenUpdate: TokenUpdate?
     private let now: @Sendable () -> Date
     private var inFlight: Task<SessionToken, Error>?
-    private var lastRefreshAt: Date?
-
-    /// A 401 within this many seconds of a completed refresh retries with that token instead of refreshing again.
-    static let recentRefreshWindow: TimeInterval = 2
 
     public init(
         token: SessionToken,
@@ -174,8 +170,10 @@ public actor SessionCredentials: CredentialProvider {
         return "Bearer \(current.accessToken)"
     }
 
-    public func refreshAfterUnauthorized() async throws -> Bool {
-        if inFlight == nil, let lastRefreshAt, now().timeIntervalSince(lastRefreshAt) < Self.recentRefreshWindow {
+    public func refreshAfterUnauthorized(rejected authorization: String?) async throws -> Bool {
+        // A request that carried an older token only needs a retry; one that carried
+        // the current token proves it is no longer accepted.
+        if inFlight == nil, let authorization, authorization != "Bearer \(token.accessToken)" {
             return true
         }
         _ = try await refresh()
@@ -204,7 +202,6 @@ public actor SessionCredentials: CredentialProvider {
                 )
             }
             self.token = next
-            self.lastRefreshAt = self.now()
             await self.onTokenUpdate?(next)
             return next
         }

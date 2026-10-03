@@ -343,9 +343,26 @@ public struct RuntimeHandle: Sendable {
     }
 
     /// Resolve the runtime and open a runner on it.
-    public func run(_ request: RunRequest = RunRequest()) async throws -> Runner {
+    public func run(_ request: RunRequest) async throws -> Runner {
         let resolved = try await api.resolve(runtime, project: project)
         return try await api.run(resolved.id, request, project: project)
+    }
+
+    /// Resolve the runtime and open a runner, with the request's fields inline
+    /// (`run(identity: .init(userId: "u_42"))`), as the JS SDK takes them.
+    public func run(
+        identity: RunnerIdentity? = nil,
+        caller: RunCaller? = nil,
+        agentName: String? = nil,
+        ttlSeconds: Int? = nil,
+        scope: String? = nil,
+        environment: RuntimeEnvironment? = nil
+    ) async throws -> Runner {
+        try await run(
+            RunRequest(
+                identity: identity, caller: caller, agentName: agentName,
+                ttlSeconds: ttlSeconds, scope: scope, environment: environment
+            ))
     }
 
     /// Resolve the runtime version the group currently serves.

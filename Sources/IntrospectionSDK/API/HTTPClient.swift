@@ -109,10 +109,12 @@ public final class HTTPClient: Sendable {
         method: String, url: URL, data: Data?, contentType: String?,
         headers: [String: String], authenticated: Bool
     ) async throws -> HTTPResponse {
-        var response = try await perform(
+        var (response, sent) = try await perform(
             method: method, url: url, data: data, contentType: contentType, headers: headers, authenticated: authenticated)
-        if response.status == 401, authenticated, let credentials, try await credentials.refreshAfterUnauthorized() {
-            response = try await perform(
+        if response.status == 401, authenticated, let credentials,
+            try await credentials.refreshAfterUnauthorized(rejected: sent)
+        {
+            (response, sent) = try await perform(
                 method: method, url: url, data: data, contentType: contentType, headers: headers, authenticated: authenticated)
         }
         guard response.isSuccess else {
@@ -124,7 +126,7 @@ public final class HTTPClient: Sendable {
     private func perform(
         method: String, url: URL, data: Data?, contentType: String?,
         headers: [String: String], authenticated: Bool
-    ) async throws -> HTTPResponse {
+    ) async throws -> (HTTPResponse, String?) {
         // Rebuilt per attempt: a refresh exists precisely to change the header.
         let request = HTTPRequest(
             method: method, url: url,
@@ -132,7 +134,7 @@ public final class HTTPClient: Sendable {
             body: data, timeout: options.timeout
         )
         do {
-            return try await transport.send(request)
+            return (try await transport.send(request), request.headers["Authorization"])
         } catch let error as IntrospectionError {
             throw error
         } catch is CancellationError {
@@ -215,9 +217,11 @@ public final class HTTPClient: Sendable {
     ) async throws -> HTTPStreamResponse {
         let url = url(path, query: query)
         let (data, contentType) = body.encoded()
-        var response = try await openStream(method: method, url: url, data: data, contentType: contentType, headers: headers)
-        if response.status == 401, let credentials, try await credentials.refreshAfterUnauthorized() {
-            response = try await openStream(method: method, url: url, data: data, contentType: contentType, headers: headers)
+        var (response, sent) = try await openStream(
+            method: method, url: url, data: data, contentType: contentType, headers: headers)
+        if response.status == 401, let credentials, try await credentials.refreshAfterUnauthorized(rejected: sent) {
+            (response, sent) = try await openStream(
+                method: method, url: url, data: data, contentType: contentType, headers: headers)
         }
         guard (200..<300).contains(response.status) else {
             let body = (try? await response.collect()) ?? Data()
@@ -228,13 +232,13 @@ public final class HTTPClient: Sendable {
 
     private func openStream(
         method: String, url: URL, data: Data?, contentType: String?, headers: [String: String]
-    ) async throws -> HTTPStreamResponse {
+    ) async throws -> (HTTPStreamResponse, String?) {
         var merged = try await buildHeaders(extra: [:], contentType: contentType, authenticated: true)
         merged["Accept"] = "text/event-stream"
         for (name, value) in headers { merged[name] = value }
         let request = HTTPRequest(method: method, url: url, headers: merged, body: data, timeout: nil)
         do {
-            return try await transport.stream(request)
+            return (try await transport.stream(request), request.headers["Authorization"])
         } catch let error as IntrospectionError {
             throw error
         } catch is CancellationError {

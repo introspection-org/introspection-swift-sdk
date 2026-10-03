@@ -364,8 +364,9 @@ struct AuthClientCredentials: CredentialProvider {
         return "Bearer \(session.accessToken)"
     }
 
-    func refreshAfterUnauthorized() async throws -> Bool {
-        guard try await auth.session != nil else { return false }
+    func refreshAfterUnauthorized(rejected authorization: String?) async throws -> Bool {
+        guard let session = try await auth.session else { return false }
+        if let authorization, authorization != "Bearer \(session.accessToken)" { return true }
         _ = try await auth.refreshSession()
         return true
     }
