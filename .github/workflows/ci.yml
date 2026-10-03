@@ -77,12 +77,15 @@ jobs:
       - name: Tests
         run: swift test
       # The Keychain storage and the hosted-login sheet compile only here.
+      # SWIFT_TREAT_WARNINGS_AS_ERRORS would also reach swift-crypto, which Xcode builds with
+      # -suppress-warnings, so warnings in our own sources are failed from the log instead.
       - name: Build for iOS
         run: |
+          set -o pipefail
           xcodebuild build -scheme IntrospectionSDK \
             -destination 'generic/platform=iOS' \
-            CODE_SIGNING_ALLOWED=NO \
-            SWIFT_TREAT_WARNINGS_AS_ERRORS=YES
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee ios-build.log
+          if grep -E "/Sources/IntrospectionSDK/.*: warning:" ios-build.log; then exit 1; fi
       # Broken symbol links in documentation comments fail here, like cargo doc -D warnings.
       - name: Build documentation
         run: |
