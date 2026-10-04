@@ -25,6 +25,8 @@ let runner = try await client.runtimes("customer-agent").run(
 )
 ```
 
+The identity names a `customer` member, created on first use. ``RunnerIdentity/tags`` are access-bearing, so they seed a new member only; ``RunnerIdentity/metadata`` grants nothing, so it seeds a new member and is merged into an existing one, the asserted keys overwriting keys of the same name (an admin's included). Find members by it with ``MemberListParams/metadata``.
+
 The runner's own token drives the Data Plane and pins the runtime; it never needs refreshing during its lifetime. Call ``Runner/refresh()`` to mint a new session, and ``Runner/close()`` to refuse further requests locally.
 
 ## Federated identity providers

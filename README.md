@@ -75,6 +75,28 @@ print(try await followUp.text())
 
 The runner also exposes `files`, `conversations`, `events`, `metrics` and `shares`.
 
+### Member tags and metadata
+
+The end user a runner is opened for is a `customer` member. `RunnerIdentity`
+can label it: `tags` seed a new member only (they are access-bearing), while
+`metadata` seeds a new member and is merged into an existing one, its keys
+overwriting keys of the same name.
+
+```swift
+let runner = try await client.runtimes("customer-agent").run(
+    identity: RunnerIdentity(userId: "user_123", tags: ["customer:acme"], metadata: ["plan": "enterprise"])
+)
+```
+
+Metadata grants nothing; it is for finding members. With a Control Plane
+credential, filter on it and edit it. An update needs `members:manage` and
+replaces the whole map; `[:]` clears it:
+
+```swift
+let enterprise = try await client.members.list(MemberListParams(metadata: ["plan": "enterprise"])).collect()
+_ = try await client.members.update(memberId, MemberUpdate(metadata: ["plan": "team"]))
+```
+
 ## End users signed in with your identity provider
 
 An app that signs users in with Supabase, Auth0 or another OpenID provider

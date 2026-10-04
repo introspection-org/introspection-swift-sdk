@@ -140,9 +140,10 @@ import Testing
     }
 
     private func body<T: Encodable>(
-        _ surface: String, _ value: T, _ reference: OpenAPIReference, _ schema: String, exempt: Set<String> = []
+        _ surface: String, _ value: T, _ reference: OpenAPIReference, _ schema: String, exempt: Set<String> = [],
+        sdkOnly: Set<String> = []
     ) throws {
-        compare(surface, .body, sdk: try wireKeys(value), reference: reference.properties(schema), exempt: exempt)
+        compare(surface, .body, sdk: try wireKeys(value), reference: reference.properties(schema), exempt: exempt, sdkOnly: sdkOnly)
     }
 
     /// A read model: the keys its decoder reads, and a decode of a fully populated reference object.
@@ -228,7 +229,8 @@ import Testing
             "DELETE /v1/connectors/{connector_id}/connections/{connection_id}",
             "POST /v1/oauth/connections/authorize", "POST /v1/oauth/connections/token",
             "GET /v1/repositories", "GET /v1/repositories/{repository_id}", "GET /v1/organizations/current",
-            "GET /v1/projects", "GET /v1/projects/{project}", "GET /v1/members", "GET /v1/members/{member_id}",
+            "GET /v1/projects", "GET /v1/projects/{project}", "GET /v1/members", "POST /v1/members",
+            "GET /v1/members/{member_id}", "PATCH /v1/members/{member_id}",
             "GET /v1/oidc/me", "GET /v1/recipes", "GET /v1/recipes/{recipe_id}",
             "POST /v1/oauth/token", "POST /v1/oauth/device/code", "GET /v1/oauth/authorize", "POST /v1/oauth/revoke",
             "POST /v1/tokens", "POST /v1/oauth/email/code",
@@ -544,7 +546,8 @@ import Testing
             _ = try await $0.runtimes.get("rt", project: "p", include: [.mcpRequirements])
         }
 
-        let identity = RunnerIdentity(userId: "u1", anonymousId: "a1", conversationId: "c1", tags: ["a:b"])
+        let identity = RunnerIdentity(
+            userId: "u1", anonymousId: "a1", conversationId: "c1", tags: ["a:b"], metadata: ["plan": "enterprise"])
         let library = RunCallerLibrary(name: "swift", version: "1")
         let page = RunCallerPage(path: "/", referrer: "r", search: "?q", title: "t", url: "https://example.com")
         let caller = RunCaller(ip: "127.0.0.1", userAgent: "ua", locale: "en", library: library, page: page)
@@ -552,7 +555,8 @@ import Testing
             identity: identity, caller: caller, agentName: "agent", ttlSeconds: 600, scope: "tasks:write", environment: .staging,
             recipeId: "rc", bindingsRequired: false)
         try body("RunRequest: POST /v1/runtimes/{id}/run body", run, cp, "RunRequest")
-        try body("RunnerIdentity: RunRequest.identity", identity, cp, "RunnerIdentity")
+        // Member metadata is sent before the server publishes it (introspection-cloud#3144); the stale check flags it once it does.
+        try body("RunnerIdentity: RunRequest.identity", identity, cp, "RunnerIdentity", sdkOnly: ["metadata"])
         try body("RunCaller: RunRequest.caller", caller, cp, "CallerContext")
         try body("RunCallerLibrary: RunCaller.library", library, cp, "CallerLibrary")
         try body("RunCallerPage: RunCaller.page", page, cp, "CallerPage")
@@ -671,14 +675,29 @@ import Testing
         await filters("project list filters: GET /v1/projects", cp, "GET", "/v1/projects", missingIsFatal: true) {
             _ = try await $0.projects.list(ProjectListParams(project: "p", limit: 1, next: "cursor")).firstPage()
         }
-        try readModel("Member: the member read model", Member.self, cp, "Member")
+        // Member metadata is sent before the server publishes it (introspection-cloud#3144); the stale check flags it once it does.
+        try readModel("Member: the member read model", Member.self, cp, "Member", sdkOnly: ["metadata"])
         try readModel("CurrentMember: GET /v1/oidc/me", CurrentMember.self, cp, "OIDCMeResponse")
         let members = MemberListParams(
-            memberType: .customer, connectorId: "cn", applicationIdpId: "idp", tag: "a:b", ids: ["m1"], externalUserIds: ["u1"],
-            project: "p", limit: 1, next: "cursor")
-        await filters("member list filters: GET /v1/members", cp, "GET", "/v1/members", missingIsFatal: true) {
+            memberType: .customer, connectorId: "cn", applicationIdpId: "idp", tag: "a:b", metadata: ["plan": "enterprise"],
+            ids: ["m1"], externalUserIds: ["u1"], project: "p", limit: 1, next: "cursor")
+        await filters("member list filters: GET /v1/members", cp, "GET", "/v1/members", sdkOnly: ["metadata"], missingIsFatal: true) {
             _ = try await $0.members.list(members).firstPage()
         }
+        // The invite route reads only these; the rest of the shared member schema is ignored on create.
+        try body(
+            "MemberCreate: POST /v1/members body",
+            MemberCreate(email: "a@example.com", name: "Ana Lopez", role: "member", tags: ["a:b"], metadata: ["plan": "enterprise"]),
+            cp, "MemberCreate",
+            exempt: [
+                "external_user_id", "image_url", "member_type", "is_deactivated", "application_idp_id", "connector_id", "integration_id",
+            ],
+            sdkOnly: ["metadata"])
+        try body(
+            "MemberUpdate: PATCH /v1/members/{id} body",
+            MemberUpdate(
+                name: "Ana Lopez", imageUrl: "https://example.com/a.png", role: "admin", tags: ["a:b"], metadata: ["plan": "team"]),
+            cp, "MemberUpdate", sdkOnly: ["metadata"])
         await filters("member read options: GET /v1/members/{id}", cp, "GET", "/v1/members/{member_id}", missingIsFatal: true) {
             _ = try await $0.members.get("m1", project: "p")
         }
