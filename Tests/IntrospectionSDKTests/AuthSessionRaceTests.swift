@@ -6,11 +6,26 @@ import Testing
 @Suite struct AuthSessionRaceTests {
     private let key = "introspection.auth.session"
 
-    private func client(_ transport: any HTTPTransport, _ storage: any SessionStorage) -> AuthClient {
+    private func client(
+        _ transport: any HTTPTransport, _ storage: any SessionStorage, method: AuthMethod = .hostedLogin
+    ) -> AuthClient {
         AuthClient(
             configuration: .init(
                 controlPlaneURL: URL(string: "https://cp.test")!, clientID: "app", project: "p",
-                method: .hostedLogin, storage: storage, transport: transport))
+                method: method, storage: storage, transport: transport))
+    }
+
+    /// Starts an email-code or hosted-login sign-in whose token response the transport holds.
+    private func startSignIn(_ auth: AuthClient, hosted: Bool) -> Task<AuthSession, any Error> {
+        Task {
+            if hosted {
+                let request = auth.hostedLoginRequest(redirectURI: "app://callback")
+                var callback = URLComponents(string: "app://callback")!
+                callback.queryItems = [URLQueryItem(name: "code", value: "C"), URLQueryItem(name: "state", value: request.state)]
+                return try await auth.completeHostedLogin(request, callbackURL: callback.url!)
+            }
+            return try await auth.verifyOTP(email: "a@b.test", token: "123456")
+        }
     }
 
     private func token(_ value: String) -> OAuthToken {
@@ -18,7 +33,7 @@ import Testing
     }
 
     @Test(arguments: [false, true]) func oldRefreshCannotReplaceNewSignIn(rejected: Bool) async throws {
-        let transport = SuspendedRefreshTransport()
+        let transport = SuspendedTokenTransport()
         let storage = InMemorySessionStorage()
         let auth = client(transport, storage)
         try await auth.setSession(token("old"))
@@ -33,7 +48,7 @@ import Testing
     }
 
     @Test func oldRefreshCannotUndoSignOut() async throws {
-        let transport = SuspendedRefreshTransport()
+        let transport = SuspendedTokenTransport()
         let storage = InMemorySessionStorage()
         let auth = client(transport, storage)
         try await auth.setSession(token("old"))
@@ -46,8 +61,36 @@ import Testing
         #expect(await storage.load(key: key) == nil)
     }
 
+    @Test(arguments: [false, true]) func signInResponseCannotUndoSignOut(hosted: Bool) async throws {
+        let transport = SuspendedTokenTransport()
+        let storage = InMemorySessionStorage()
+        let auth = client(transport, storage, method: hosted ? .hostedLogin : .emailCode)
+        try await auth.setSession(token("old"))
+        let signIn = startSignIn(auth, hosted: hosted)
+        await transport.gate.waitUntilEntered()
+        try await auth.signOut()
+        await transport.finish()
+        await #expect(throws: CancellationError.self) { try await signIn.value }
+        #expect(try await auth.session == nil)
+        #expect(await storage.load(key: key) == nil)
+    }
+
+    @Test(arguments: [false, true]) func signInResponseCannotReplaceNewerSignIn(hosted: Bool) async throws {
+        let transport = SuspendedTokenTransport()
+        let storage = InMemorySessionStorage()
+        let auth = client(transport, storage, method: hosted ? .hostedLogin : .emailCode)
+        let signIn = startSignIn(auth, hosted: hosted)
+        await transport.gate.waitUntilEntered()
+        try await auth.setSession(token("new"))
+        await transport.finish()
+        await #expect(throws: CancellationError.self) { try await signIn.value }
+        #expect(try await auth.session?.accessToken == "new")
+        let data = try #require(await storage.load(key: key))
+        #expect(try JSONCoding.decoder.decode(AuthSession.self, from: data).accessToken == "new")
+    }
+
     @Test(arguments: [false, true]) func pendingStorageWriteCannotUndoTransition(signIn: Bool) async throws {
-        let transport = SuspendedRefreshTransport()
+        let transport = SuspendedTokenTransport()
         let storage = SuspendedSessionStorage()
         let auth = client(transport, storage)
         try await auth.setSession(token("old"))
@@ -97,7 +140,7 @@ private actor SuspensionGate {
     }
 }
 
-private actor SuspendedRefreshTransport: HTTPTransport {
+private actor SuspendedTokenTransport: HTTPTransport {
     let gate = SuspensionGate()
     private var rejected = false
 
