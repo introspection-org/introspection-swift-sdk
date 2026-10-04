@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.2.0...v0.2.1) (2026-10-04)
+
+
+### Bug Fixes
+
+* build as a dependency of an Xcode app ([#14](https://github.com/introspection-org/introspection-swift-sdk/issues/14)) ([4d14d2e](https://github.com/introspection-org/introspection-swift-sdk/commit/4d14d2e9937ecf1b21a9dba10c2da04121241bd8))
+
 ## [0.2.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.1.0...v0.2.0) (2026-10-03)
 
 
