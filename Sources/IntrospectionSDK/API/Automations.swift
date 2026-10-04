@@ -14,6 +14,7 @@ public struct AutomationTriggerType: RawRepresentable, Codable, Sendable, Hashab
     }
 
     public static let cron: AutomationTriggerType = "cron"
+    /// Runs by hand, or once at a client-set `nextTriggerAt` (a one-off reminder).
     public static let manual: AutomationTriggerType = "manual"
 }
 
@@ -28,8 +29,8 @@ public struct AutomationKind: RawRepresentable, Codable, Sendable, Hashable, Exp
         try container.encode(rawValue)
     }
 
+    /// Project-wide: takes no `runtimeGroupId`.
     public static let observationSynthesis: AutomationKind = "observation_synthesis"
-    /// Requires `metadata.runtime_group_id`.
     public static let observationClustering: AutomationKind = "observation_clustering"
 }
 
@@ -66,6 +67,30 @@ public struct AutomationExecutionStatus: RawRepresentable, Codable, Sendable, Ha
     public static let skipped: AutomationExecutionStatus = "skipped"
 }
 
+/// Why a trigger ran nothing (`introspection.automation.skipped`).
+public struct AutomationSkipReason: RawRepresentable, Codable, Sendable, Hashable, ExpressibleByStringLiteral {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+    public init(stringLiteral value: String) { rawValue = value }
+    public init(from decoder: any Decoder) throws { rawValue = try decoder.singleValueContainer().decode(String.self) }
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
+
+    public static let automationDeleted: AutomationSkipReason = "automation_deleted"
+    public static let executionBlocked: AutomationSkipReason = "execution_blocked"
+    public static let conditionsNotMet: AutomationSkipReason = "conditions_not_met"
+    public static let noProductionRuntime: AutomationSkipReason = "no_production_runtime"
+    public static let slackNotConfigured: AutomationSkipReason = "slack_not_configured"
+    public static let targetTaskDeleted: AutomationSkipReason = "target_task_deleted"
+    public static let targetTaskArchived: AutomationSkipReason = "target_task_archived"
+    public static let targetTaskUnavailable: AutomationSkipReason = "target_task_unavailable"
+    public static let targetTaskRefused: AutomationSkipReason = "target_task_refused"
+    /// The target task stayed mid-turn through every retry.
+    public static let targetBusy: AutomationSkipReason = "target_busy"
+}
+
 // MARK: Metadata
 
 /// One condition stored in an automation's metadata.
@@ -95,9 +120,9 @@ public struct AutomationRepositoryRef: Codable, Sendable, Hashable {
     }
 }
 
-/// The typed shape of an automation's `metadata` object.
+/// The typed shape of an automation's `metadata` object. The runtime group is the
+/// top-level `runtimeGroupId`; the server rejects it inside metadata.
 public struct AutomationMetadata: Codable, Sendable, Hashable {
-    public var runtimeGroupId: String?
     public var repositories: [AutomationRepositoryRef]?
     /// Several cron expressions; `cron_schedule` on the automation is the single-schedule form.
     public var cronSchedules: [String]?
@@ -107,7 +132,6 @@ public struct AutomationMetadata: Codable, Sendable, Hashable {
     public var conditions: [AutomationCondition]?
 
     enum CodingKeys: String, CodingKey {
-        case runtimeGroupId = "runtime_group_id"
         case repositories
         case cronSchedules = "cron_schedules"
         case timezone
@@ -116,14 +140,12 @@ public struct AutomationMetadata: Codable, Sendable, Hashable {
     }
 
     public init(
-        runtimeGroupId: String? = nil,
         repositories: [AutomationRepositoryRef]? = nil,
         cronSchedules: [String]? = nil,
         timezone: String? = nil,
         operatorDefault: String? = nil,
         conditions: [AutomationCondition]? = nil
     ) {
-        self.runtimeGroupId = runtimeGroupId
         self.repositories = repositories
         self.cronSchedules = cronSchedules
         self.timezone = timezone
@@ -155,8 +177,14 @@ public struct Automation: Codable, Sendable, Hashable {
     public let metadata: JSONObject?
     public let tags: [String]?
     public let lastTriggeredAt: Date?
+    /// The next slot: derived from the schedule for `cron`, client-set for a one-off `manual`
+    /// automation and cleared once that slot fires.
     public let nextTriggerAt: Date?
     public let agentMemberId: String?
+    /// The runtime group it runs on (or clusters); nil for `observationSynthesis`.
+    public let runtimeGroupId: String?
+    /// The existing task each firing posts the prompt into; nil creates a task per firing.
+    public let taskId: String?
     public let createdByMemberId: String?
     /// Why the scheduler will not run this automation, when it will not.
     public let executionBlockedReason: String?
@@ -178,6 +206,8 @@ public struct Automation: Codable, Sendable, Hashable {
         case lastTriggeredAt = "last_triggered_at"
         case nextTriggerAt = "next_trigger_at"
         case agentMemberId = "agent_member_id"
+        case runtimeGroupId = "runtime_group_id"
+        case taskId = "task_id"
         case createdByMemberId = "created_by_member_id"
         case executionBlockedReason = "execution_blocked_reason"
         case canManage = "can_manage"
@@ -193,7 +223,8 @@ public struct Automation: Codable, Sendable, Hashable {
     }
 }
 
-/// Body of `POST /v1/automations`.
+/// Body of `POST /v1/automations`. A one-off reminder is a `manual` automation with a future
+/// `nextTriggerAt`; a `cron` automation derives its own slots and must not send one.
 public struct AutomationCreate: Encodable, Sendable, Hashable {
     public var name: String
     public var triggerType: AutomationTriggerType
@@ -202,6 +233,13 @@ public struct AutomationCreate: Encodable, Sendable, Hashable {
     /// Omit for a prompt automation (which then needs `prompt`).
     public var kind: AutomationKind?
     public var prompt: String?
+    /// Required unless `kind` is `observationSynthesis`, which must omit it.
+    public var runtimeGroupId: String?
+    /// An existing task each firing posts the prompt into (prompt automations only).
+    public var taskId: String?
+    /// A one-off slot for a `manual` automation; must be in the future.
+    public var nextTriggerAt: Date?
+    /// Build with `AutomationMetadata.jsonObject()`.
     public var metadata: JSONObject?
     public var enabled: Bool?
 
@@ -210,7 +248,11 @@ public struct AutomationCreate: Encodable, Sendable, Hashable {
         case triggerType = "trigger_type"
         case description
         case cronSchedule = "cron_schedule"
-        case kind, prompt, metadata, enabled
+        case kind, prompt
+        case runtimeGroupId = "runtime_group_id"
+        case taskId = "task_id"
+        case nextTriggerAt = "next_trigger_at"
+        case metadata, enabled
     }
 
     public init(
@@ -220,6 +262,9 @@ public struct AutomationCreate: Encodable, Sendable, Hashable {
         cronSchedule: String? = nil,
         kind: AutomationKind? = nil,
         prompt: String? = nil,
+        runtimeGroupId: String? = nil,
+        taskId: String? = nil,
+        nextTriggerAt: Date? = nil,
         metadata: JSONObject? = nil,
         enabled: Bool? = nil
     ) {
@@ -229,24 +274,38 @@ public struct AutomationCreate: Encodable, Sendable, Hashable {
         self.cronSchedule = cronSchedule
         self.kind = kind
         self.prompt = prompt
+        self.runtimeGroupId = runtimeGroupId
+        self.taskId = taskId
+        self.nextTriggerAt = nextTriggerAt
         self.metadata = metadata
         self.enabled = enabled
     }
 }
 
-/// Body of `PATCH /v1/automations/{id}`. `kind` and `trigger_type` are immutable; `metadata` replaces wholesale.
+/// Body of `PATCH /v1/automations/{id}`. Only set fields are sent and nil leaves a field as it is,
+/// so nothing can be cleared. `kind` and `trigger_type` are immutable; `metadata` replaces wholesale.
 public struct AutomationUpdate: Encodable, Sendable, Hashable {
     public var name: String?
     public var description: String?
     public var cronSchedule: String?
     public var prompt: String?
+    /// Moves a prompt automation to another runtime group.
+    public var runtimeGroupId: String?
+    public var taskId: String?
+    /// Schedules, moves or re-arms a `manual` automation's one-off slot; must be in the future.
+    public var nextTriggerAt: Date?
     public var metadata: JSONObject?
+    /// `false` pauses and keeps the slot.
     public var enabled: Bool?
 
     enum CodingKeys: String, CodingKey {
         case name, description
         case cronSchedule = "cron_schedule"
-        case prompt, metadata, enabled
+        case prompt
+        case runtimeGroupId = "runtime_group_id"
+        case taskId = "task_id"
+        case nextTriggerAt = "next_trigger_at"
+        case metadata, enabled
     }
 
     public init(
@@ -254,6 +313,9 @@ public struct AutomationUpdate: Encodable, Sendable, Hashable {
         description: String? = nil,
         cronSchedule: String? = nil,
         prompt: String? = nil,
+        runtimeGroupId: String? = nil,
+        taskId: String? = nil,
+        nextTriggerAt: Date? = nil,
         metadata: JSONObject? = nil,
         enabled: Bool? = nil
     ) {
@@ -261,6 +323,9 @@ public struct AutomationUpdate: Encodable, Sendable, Hashable {
         self.description = description
         self.cronSchedule = cronSchedule
         self.prompt = prompt
+        self.runtimeGroupId = runtimeGroupId
+        self.taskId = taskId
+        self.nextTriggerAt = nextTriggerAt
         self.metadata = metadata
         self.enabled = enabled
     }
@@ -274,17 +339,21 @@ public struct AutomationListParams: Sendable, Hashable {
     public var next: String?
     public var kind: AutomationKind?
     public var enabled: Bool?
+    /// `true`: only automations with a next slot; `false`: only those without.
+    public var scheduled: Bool?
 
     public init(
         limit: Int? = nil,
         next: String? = nil,
         kind: AutomationKind? = nil,
-        enabled: Bool? = nil
+        enabled: Bool? = nil,
+        scheduled: Bool? = nil
     ) {
         self.limit = limit
         self.next = next
         self.kind = kind
         self.enabled = enabled
+        self.scheduled = scheduled
     }
 
     var query: Query {
@@ -292,11 +361,12 @@ public struct AutomationListParams: Sendable, Hashable {
         query.add("limit", limit)
         query.add("kind", kind)
         query.add("enabled", enabled)
+        query.add("scheduled", scheduled)
         return query
     }
 }
 
-/// Response of a manual trigger.
+/// Response of a hand trigger. A `skipped` status carries its `reason` and records no event.
 public struct AutomationTriggerResponse: Codable, Sendable, Hashable {
     public let status: AutomationExecutionStatus
     public let automationId: String?
@@ -313,7 +383,8 @@ public struct AutomationTriggerResponse: Codable, Sendable, Hashable {
 
 // MARK: API
 
-/// Data Plane `/v1/automations`.
+/// Data Plane `/v1/automations`. The server currently serves these routes to administrators only
+/// (a 403 otherwise); member-owned automations are designed but not yet enabled.
 public struct AutomationsAPI: Sendable {
     let http: HTTPClient
 
@@ -346,8 +417,8 @@ public struct AutomationsAPI: Sendable {
         try await http.empty("DELETE", "/v1/automations/\(pathSegment(automationId))")
     }
 
-    /// Run an automation now: `POST /v1/automations/{id}/trigger`. Legacy and admin-only
-    /// (privileged members); returns `202` with the launched task.
+    /// Run an automation now: `POST /v1/automations/{id}/trigger`. Returns `202` with the task it
+    /// created or posted into; neither reads nor clears a scheduled slot.
     public func trigger(_ automationId: String) async throws -> AutomationTriggerResponse {
         try await http.json("POST", "/v1/automations/\(pathSegment(automationId))/trigger", as: AutomationTriggerResponse.self)
     }

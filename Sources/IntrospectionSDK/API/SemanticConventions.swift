@@ -68,6 +68,8 @@ public enum PlatformEventNames {
     public static let repositoryCreated = "introspection.repository.created"
     public static let repositoryPushed = "introspection.repository.pushed"
     public static let repositoryMerge = "introspection.repository.merge"
+    public static let automationTriggered = "introspection.automation.triggered"
+    public static let automationSkipped = "introspection.automation.skipped"
 }
 
 /// Names of AG-UI `CUSTOM` events on a run stream.

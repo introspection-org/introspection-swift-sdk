@@ -12,6 +12,8 @@ private let automationJSON = #"""
       "description": "Summarize the week",
       "enabled": true,
       "agent_member_id": null,
+      "runtime_group_id": "0199a1b2-0000-7000-8000-0000000000dd",
+      "task_id": "0199a1b2-0000-7000-8000-0000000000ee",
       "created_by_member_id": "0199a1b2-0000-7000-8000-0000000000cc",
       "execution_blocked_reason": null,
       "can_manage": true,
@@ -41,10 +43,13 @@ private let automationJSON = #"""
         #expect(automation.triggerType == .cron)
         #expect(automation.kind == nil)
         #expect(automation.canManage == true)
+        #expect(automation.runtimeGroupId == "0199a1b2-0000-7000-8000-0000000000dd")
+        #expect(automation.taskId == "0199a1b2-0000-7000-8000-0000000000ee")
+        #expect(automation.createdByMemberId == "0199a1b2-0000-7000-8000-0000000000cc")
         #expect(automation.ownerRole == "operator")
         #expect(automation.tags == ["digest"])
         #expect(automation.lastTriggeredAt == ISO8601.parse("2026-09-28T09:00:00Z"))
-        #expect(automation.nextTriggerAt != nil)
+        #expect(automation.nextTriggerAt == ISO8601.parse("2026-10-05T09:00:00.123Z"))
         let metadata = try #require(automation.typedMetadata)
         #expect(metadata.cronSchedules == ["0 9 * * 1", "0 17 * * 5"])
         #expect(metadata.timezone == "Europe/London")
@@ -55,6 +60,9 @@ private let automationJSON = #"""
             Automation.self, from: Data(#"{"id":"a","name":"n","trigger_type":"manual","kind":"observation_clustering"}"#.utf8))
         #expect(minimal.kind == .observationClustering)
         #expect(minimal.metadata == nil)
+        #expect(minimal.runtimeGroupId == nil)
+        #expect(minimal.taskId == nil)
+        #expect(minimal.nextTriggerAt == nil)
     }
 
     @Test func listEncodesFiltersAndPaginates() async throws {
@@ -64,13 +72,13 @@ private let automationJSON = #"""
                 : .response(.json(#"{"records":[{"id":"b","name":"second","trigger_type":"manual"}],"count":1,"next":null}"#))
         }
         let all = try await makeClient(transport).automations
-            .list(AutomationListParams(limit: 1, kind: .observationSynthesis, enabled: true))
+            .list(AutomationListParams(limit: 1, kind: .observationSynthesis, enabled: true, scheduled: false))
             .collect()
         #expect(all.map(\.name) == ["Weekly digest", "second"])
         #expect(transport.requests.count == 2)
         let first = transport.requests[0]
         #expect(first.path == "/v1/automations")
-        #expect(first.query == ["limit": ["1"], "kind": ["observation_synthesis"], "enabled": ["true"]])
+        #expect(first.query == ["limit": ["1"], "kind": ["observation_synthesis"], "enabled": ["true"], "scheduled": ["false"]])
         #expect(transport.requests[1].query["next"] == ["cur-2"])
     }
 
@@ -98,6 +106,21 @@ private let automationJSON = #"""
         #expect(transport.last?.json == ["name": "Nudge", "trigger_type": "manual", "prompt": "Check in", "enabled": false])
     }
 
+    @Test func createsAOneOffReminderIntoAnExistingTask() async throws {
+        let transport = MockTransport(status: 201, json: automationJSON)
+        let slot = try #require(ISO8601.parse("2026-10-10T09:00:00Z"))
+        _ = try await makeClient(transport).automations.create(
+            AutomationCreate(
+                name: "Friday check-in", triggerType: .manual, prompt: "How did the week go?", runtimeGroupId: "rg-1",
+                taskId: "task-1", nextTriggerAt: slot
+            ))
+        #expect(
+            transport.last?.json == [
+                "name": "Friday check-in", "trigger_type": "manual", "prompt": "How did the week go?", "runtime_group_id": "rg-1",
+                "task_id": "task-1", "next_trigger_at": "2026-10-10T09:00:00.000Z",
+            ])
+    }
+
     @Test func getUpdateDeleteAndTrigger() async throws {
         let transport = MockTransport { request, _ in
             switch (request.method, request.url.path) {
@@ -115,6 +138,13 @@ private let automationJSON = #"""
         #expect(transport.last?.request.method == "PATCH")
         #expect(transport.last?.json == ["enabled": false])
 
+        let slot = try #require(ISO8601.parse("2026-10-12T08:30:00Z"))
+        _ = try await api.update("a/1", AutomationUpdate(nextTriggerAt: slot))
+        #expect(transport.last?.json == ["next_trigger_at": "2026-10-12T08:30:00.000Z"])
+
+        _ = try await api.update("a/1", AutomationUpdate(runtimeGroupId: "rg-2", taskId: "task-2"))
+        #expect(transport.last?.json == ["runtime_group_id": "rg-2", "task_id": "task-2"])
+
         try await api.delete("a/1")
         #expect(transport.last?.request.method == "DELETE")
 
@@ -123,5 +153,55 @@ private let automationJSON = #"""
         #expect(triggered.status == .triggered)
         #expect(triggered.taskId == "t-9")
         #expect(triggered.reason == nil)
+        #expect(triggered.automationId == "a/1")
+    }
+
+    @Test func handTriggerSkipCarriesItsReason() async throws {
+        let transport = MockTransport(
+            status: 202, json: #"{"status":"skipped","automation_id":"a1","task_id":null,"reason":"Target task is archived"}"#)
+        let skipped = try await makeClient(transport).automations.trigger("a1")
+        #expect(skipped.status == .skipped)
+        #expect(skipped.taskId == nil)
+        #expect(skipped.reason == "Target task is archived")
+    }
+
+    @Test func readsTriggerAndSkipEvents() async throws {
+        let triggered = #"""
+            {"id":"0199a1b2-0000-5000-8000-000000000001","timestamp":"2026-10-05T09:00:02Z",
+             "event_name":"introspection.automation.triggered","conversation_id":"conv-1",
+             "runtime_group_id":"rg-1","runtime_id":"rt-1",
+             "payload":{"automation_id":"a1","automation_name":"Weekly digest","prompt":"Summarize my week",
+                        "trigger_type":"cron","slot":"2026-10-05T09:00:00Z","task_id":"t1","posted":true,
+                        "member_id":"m1","runtime_group_id":"rg-1","triggered_by_member_id":null}}
+            """#
+        let skipped = #"""
+            {"id":"0199a1b2-0000-5000-8000-000000000002","timestamp":"2026-10-06T09:00:00Z",
+             "event_name":"introspection.automation.skipped","runtime_group_id":"rg-1",
+             "payload":{"automation_id":"a1","trigger_type":"manual","slot":"2026-10-06T09:00:00Z","task_id":"t1",
+                        "reason":"target_busy"}}
+            """#
+        let transport = MockTransport(json: #"{"records":[\#(triggered),\#(skipped)],"count":2,"next":null}"#)
+        let events = try await makeClient(transport).events
+            .list(EventListParams(eventName: .automationTriggered, automationId: "a1", taskId: "t1"))
+            .collect()
+        #expect(transport.last?.query["event_name"] == ["introspection.automation.triggered"])
+        #expect(transport.last?.query["automation_id"] == ["a1"])
+        #expect(transport.last?.query["task_id"] == ["t1"])
+
+        let run = try #require(events[0].automationTriggered)
+        #expect(run.automationName == "Weekly digest")
+        #expect(run.triggerType == .cron)
+        #expect(run.slot == ISO8601.parse("2026-10-05T09:00:00Z"))
+        #expect(run.posted == true)
+        #expect(run.taskId == "t1")
+        #expect(run.memberId == "m1")
+        #expect(run.triggeredByMemberId == nil)
+        #expect(events[0].automationSkipped == nil)
+
+        let skip = try #require(events[1].automationSkipped)
+        #expect(skip.reason == .targetBusy)
+        #expect(skip.triggerType == .manual)
+        #expect(skip.taskId == "t1")
+        #expect(events[1].automationTriggered == nil)
     }
 }
