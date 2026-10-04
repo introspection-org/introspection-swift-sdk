@@ -1,9 +1,12 @@
 name: CI
 
 on:
+  # Top-level Markdown only: DocC articles under Sources still run the documentation build.
   pull_request:
+    paths-ignore: ["*.md"]
   push:
     branches: [main]
+    paths-ignore: ["*.md"]
 
 permissions:
   contents: read
