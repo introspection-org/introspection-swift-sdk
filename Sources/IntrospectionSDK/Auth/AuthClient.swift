@@ -168,16 +168,18 @@ public actor AuthClient {
                 )))
     }
 
-    /// Verify the code sent to `email` and sign in.
+    /// Verify the code sent to `email` and sign in. Throws `CancellationError` when a
+    /// sign-out or another sign-in completes while the code is being verified.
     @discardableResult
     public func verifyOTP(email: String, token code: String) async throws -> AuthSession {
         try requireMethod(.emailCode)
+        let generation = self.generation
         let response = try await api.token(
             grantType: OAuthGrantType.emailCode, clientId: configuration.clientID,
             parameters: [
                 ("email", email), ("code", code), ("project", configuration.project),
             ])
-        return try await signedIn(SessionToken(oauth: response, receivedAt: now()))
+        return try await signedIn(SessionToken(oauth: response, receivedAt: now()), ifCurrent: generation)
     }
 
     /// Start a hosted login: open `request.url` in a browser session and pass the
@@ -186,11 +188,13 @@ public actor AuthClient {
         api.hostedLogin(clientID: configuration.clientID, redirectURI: redirectURI, project: configuration.project, scope: scope)
     }
 
-    /// Finish a hosted login from its callback URL.
+    /// Finish a hosted login from its callback URL. Throws `CancellationError` when a
+    /// sign-out or another sign-in completes while the code is being exchanged.
     @discardableResult
     public func completeHostedLogin(_ request: HostedLoginRequest, callbackURL: URL) async throws -> AuthSession {
+        let generation = self.generation
         let response = try await api.completeHostedLogin(request, callbackURL: callbackURL)
-        return try await signedIn(SessionToken(oauth: response, receivedAt: now()))
+        return try await signedIn(SessionToken(oauth: response, receivedAt: now()), ifCurrent: generation)
     }
 
     /// Adopt a platform token obtained elsewhere (for example from a login service).
@@ -316,7 +320,10 @@ public actor AuthClient {
         return SessionToken(oauth: response, receivedAt: now(), previous: token)
     }
 
-    private func signedIn(_ token: SessionToken) async throws -> AuthSession {
+    /// `expected` is the generation read before a sign-in request was sent; a sign-out or
+    /// sign-in since then has superseded the response.
+    private func signedIn(_ token: SessionToken, ifCurrent expected: UInt64? = nil) async throws -> AuthSession {
+        if let expected, generation != expected { throw CancellationError() }
         generation &+= 1
         let generation = self.generation
         refreshing?.cancel()
