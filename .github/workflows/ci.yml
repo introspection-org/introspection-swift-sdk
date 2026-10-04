@@ -8,6 +8,9 @@ on:
 permissions:
   contents: read
 
+env:
+  INTROSPECTION_SDK_WARNINGS_AS_ERRORS: "1"
+
 jobs:
   secrets-scan:
     name: Secrets Scan
@@ -53,7 +56,7 @@ jobs:
         with:
           path: .build
           key: linux-swift-6.4-${{ hashFiles('Package.swift', 'Package.resolved') }}
-      # Package.swift treats warnings as errors, the counterpart of clippy -D warnings.
+      # INTROSPECTION_SDK_WARNINGS_AS_ERRORS makes warnings errors, the counterpart of clippy -D warnings.
       - name: Build (all traits)
         run: swift build --build-tests --enable-all-traits
       - name: Tests with coverage floor
