@@ -31,12 +31,11 @@ It supports iOS 18, macOS 15, tvOS 18, watchOS 11, visionOS 2 and Linux.
 ## Install
 
 In Xcode, use File > Add Package Dependencies with the repository URL and the
-"Up to Next Minor Version" rule. In `Package.swift`, with `X.Y.Z` the
-[latest release](https://github.com/introspection-org/introspection-swift-sdk/releases/latest):
+"Branch" rule set to `main`. In `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/introspection-org/introspection-swift-sdk", .upToNextMinor(from: "X.Y.Z")),
+    .package(url: "https://github.com/introspection-org/introspection-swift-sdk", branch: "main"),
 ],
 targets: [
     .target(name: "App", dependencies: [

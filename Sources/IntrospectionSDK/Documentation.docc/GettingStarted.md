@@ -4,11 +4,11 @@ Add the package, create a client, and run your first task.
 
 ## Add the package
 
-Swift Package Manager installs the SDK from its git tags. Replace `X.Y.Z` with the [latest release](https://github.com/introspection-org/introspection-swift-sdk/releases/latest):
+Add the SDK from its `main` branch:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/introspection-org/introspection-swift-sdk", .upToNextMinor(from: "X.Y.Z")),
+    .package(url: "https://github.com/introspection-org/introspection-swift-sdk", branch: "main"),
 ],
 targets: [
     .target(name: "App", dependencies: [
@@ -17,7 +17,7 @@ targets: [
 ]
 ```
 
-In Xcode, use File > Add Package Dependencies with the same URL. Commit your `Package.resolved` so every build uses the same release. The SDK requires iOS 18, macOS 15, tvOS 18, watchOS 11 or visionOS 2, and a Swift 6.2 or newer toolchain.
+In Xcode, use File > Add Package Dependencies with the same URL. Commit your `Package.resolved` so every build uses the same revision. The SDK requires iOS 18, macOS 15, tvOS 18, watchOS 11 or visionOS 2, and a Swift 6.2 or newer toolchain.
 
 ## Create a client
 
