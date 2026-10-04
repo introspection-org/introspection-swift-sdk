@@ -1,13 +1,18 @@
 // swift-tools-version:6.2
 import PackageDescription
 
-let swiftSettings: [SwiftSetting] = [
-    .enableUpcomingFeature("ExistentialAny"),
-    .enableUpcomingFeature("MemberImportVisibility"),
-    .enableUpcomingFeature("NonisolatedNonsendingByDefault"),
-    .enableUpcomingFeature("InferIsolatedConformances"),
-    .treatAllWarnings(as: .error),
-]
+// Only the SDK's own CI sets this: Xcode builds a package dependency with -suppress-warnings,
+// which conflicts with -warnings-as-errors and fails every app that depends on the SDK.
+let strictWarnings: [SwiftSetting] =
+    Context.environment["INTROSPECTION_SDK_WARNINGS_AS_ERRORS"] != nil ? [.treatAllWarnings(as: .error)] : []
+
+let swiftSettings: [SwiftSetting] =
+    [
+        .enableUpcomingFeature("ExistentialAny"),
+        .enableUpcomingFeature("MemberImportVisibility"),
+        .enableUpcomingFeature("NonisolatedNonsendingByDefault"),
+        .enableUpcomingFeature("InferIsolatedConformances"),
+    ] + strictWarnings
 
 let package = Package(
     name: "IntrospectionSDK",
