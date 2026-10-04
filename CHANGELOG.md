@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.2.1...v0.2.2) (2026-10-04)
+
+
+### Bug Fixes
+
+* **auth:** drop a sign-in response superseded by sign-out or a newer sign-in ([#19](https://github.com/introspection-org/introspection-swift-sdk/issues/19)) ([ea31d5a](https://github.com/introspection-org/introspection-swift-sdk/commit/ea31d5a63dd2a557871b963caf711504ed9a539d))
+
 ## [0.2.1](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.2.0...v0.2.1) (2026-10-04)
 
 
