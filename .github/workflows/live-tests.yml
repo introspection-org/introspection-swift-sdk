@@ -1,12 +1,20 @@
 # Runs LiveIdentityTests against a real deployment: every identity mode (API
 # key, service account, federated Supabase member) creates a task, streams an
-# answer and reads it back. Triggered by hand only: it spends real agent turns
-# and checks the platform rather than this code, so it never gates a merge.
+# answer and reads it back. LiveStreamRecoveryTests severs a run stream mid-run
+# and checks the SDK recovers the answer; its past-buffer case runs only with
+# `small_replay_buffer`, against a plane that sets SANDBOX_STREAM_REPLAY_MAX_BYTES.
+# Triggered by hand only: it spends real agent turns and checks the platform
+# rather than this code, so it never gates a merge.
 # Tests whose settings are missing in `build` are skipped, not failed.
 name: Live Tests
 
 on:
   workflow_dispatch:
+    inputs:
+      small_replay_buffer:
+        description: The target plane sets SANDBOX_STREAM_REPLAY_MAX_BYTES small; run the past-buffer recovery case
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -17,13 +25,14 @@ concurrency:
 
 jobs:
   live:
-    name: Identity modes against a deployment
+    name: Identity modes and stream recovery against a deployment
     runs-on: ubuntu-latest
     environment: build
     container: swift:6.4-noble
     # Each setting may be a variable or a secret in the environment.
     env:
       INTROSPECTION_LIVE: "1"
+      INTROSPECTION_LIVE_SMALL_REPLAY_BUFFER: ${{ inputs.small_replay_buffer && '1' || vars.INTROSPECTION_LIVE_SMALL_REPLAY_BUFFER }}
       INTROSPECTION_BASE_API_URL: ${{ vars.INTROSPECTION_BASE_API_URL || vars.INTROSPECTION_BASE_URL || secrets.INTROSPECTION_BASE_URL }}
       INTROSPECTION_PROJECT: ${{ vars.INTROSPECTION_PROJECT || secrets.INTROSPECTION_PROJECT }}
       INTROSPECTION_RUNTIME: ${{ vars.INTROSPECTION_RUNTIME || secrets.INTROSPECTION_RUNTIME }}
@@ -40,11 +49,11 @@ jobs:
       FEDERATED_TEST_USER_2_PASSWORD: ${{ vars.FEDERATED_TEST_USER_2_PASSWORD || secrets.FEDERATED_TEST_USER_2_PASSWORD }}
     steps:
       - uses: actions/checkout@v7
-      - name: Live identity tests
+      - name: Live tests
         shell: bash
         run: |
           set -o pipefail
-          swift test --filter LiveIdentityTests 2>&1 | tee live.log
+          swift test --filter 'LiveIdentityTests|LiveStreamRecoveryTests' 2>&1 | tee live.log
       - name: Summary
         if: always()
         run: grep -E "^(✔|✘|➜) Test |error:" live.log | tee -a "$GITHUB_STEP_SUMMARY" || true
