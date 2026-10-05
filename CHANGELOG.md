@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.2.2...v0.3.0) (2026-10-05)
+
+
+### ⚠ BREAKING CHANGES
+
+* **automations:** AutomationMetadata no longer has runtimeGroupId. The runtime group is the top-level runtimeGroupId on AutomationCreate and AutomationUpdate; the server rejects runtime_group_id inside metadata.
+
+### Features
+
+* **automations:** task targets, one-off slots and trigger events ([#22](https://github.com/introspection-org/introspection-swift-sdk/issues/22)) ([bb3bf92](https://github.com/introspection-org/introspection-swift-sdk/commit/bb3bf92356b7e766baa614f47a714cdbd91e086a))
+* **members:** member tags and metadata ([#23](https://github.com/introspection-org/introspection-swift-sdk/issues/23)) ([2d1d637](https://github.com/introspection-org/introspection-swift-sdk/commit/2d1d6375f96773800eced503602ceaf05f472a7e))
+
 ## [0.2.2](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.2.1...v0.2.2) (2026-10-04)
 
 
