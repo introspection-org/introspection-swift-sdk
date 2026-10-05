@@ -463,8 +463,12 @@ import Testing
         try readModel(
             "AutomationTriggerResponse: POST /v1/automations/{id}/trigger response", AutomationTriggerResponse.self, dp,
             "AutomationTriggerResponse")
-        let list = AutomationListParams(limit: 1, next: "cursor", kind: .observationClustering, enabled: true, scheduled: true)
-        await filters("automation list filters: GET /v1/automations", dp, "GET", "/v1/automations", missingIsFatal: true) {
+        let list = AutomationListParams(
+            limit: 1, next: "cursor", kind: .observationClustering, enabled: true, scheduled: true, taskId: "t1")
+        // Sent before the server publishes it (introspection-cloud#3137); drop `sdkOnly` once it does.
+        await filters(
+            "automation list filters: GET /v1/automations", dp, "GET", "/v1/automations", sdkOnly: ["task_id"], missingIsFatal: true
+        ) {
             _ = try await $0.automations.list(list).firstPage()
         }
     }

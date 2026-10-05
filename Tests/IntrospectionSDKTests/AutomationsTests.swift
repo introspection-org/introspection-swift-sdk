@@ -82,6 +82,33 @@ private let automationJSON = #"""
         #expect(transport.requests[1].query["next"] == ["cur-2"])
     }
 
+    @Test func listEncodesTaskId() {
+        #expect(AutomationListParams(taskId: "task-1").query.items == [URLQueryItem(name: "task_id", value: "task-1")])
+        #expect(AutomationListParams(kind: .projectCheckIn, taskId: "task-1").query.items.map(\.name) == ["kind", "task_id"])
+    }
+
+    @Test func listKeepsTaskIdOnEveryPage() async throws {
+        let transport = MockTransport { _, index in
+            index == 0
+                ? .response(.json(#"{"records":[\#(automationJSON)],"count":1,"next":"cur-2"}"#))
+                : .response(.json(#"{"records":[{"id":"b","name":"second","trigger_type":"manual"}],"count":1,"next":null}"#))
+        }
+        let all = try await makeClient(transport).automations.list(AutomationListParams(taskId: "task-1")).collect()
+        #expect(all.map(\.name) == ["Weekly digest", "second"])
+        #expect(transport.requests.count == 2)
+        #expect(transport.requests[0].query == ["task_id": ["task-1"]])
+        #expect(transport.requests[1].query == ["task_id": ["task-1"], "next": ["cur-2"]])
+    }
+
+    @Test func decodesAnUnknownKind() throws {
+        let decoded = try JSONCoding.decoder.decode(
+            Automation.self, from: Data(#"{"id":"a","name":"n","trigger_type":"manual","kind":"project_check_in"}"#.utf8))
+        #expect(decoded.kind == .projectCheckIn)
+        let future = try JSONCoding.decoder.decode(
+            Automation.self, from: Data(#"{"id":"a","name":"n","trigger_type":"manual","kind":"not_yet_invented"}"#.utf8))
+        #expect(future.kind?.rawValue == "not_yet_invented")
+    }
+
     @Test func createEncodesOnlySetFields() async throws {
         let transport = MockTransport(status: 201, json: automationJSON)
         let metadata = try AutomationMetadata(cronSchedules: ["0 9 * * 1"], timezone: "UTC").jsonObject()

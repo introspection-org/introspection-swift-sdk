@@ -32,6 +32,8 @@ public struct AutomationKind: RawRepresentable, Codable, Sendable, Hashable, Exp
     /// Project-wide: takes no `runtimeGroupId`.
     public static let observationSynthesis: AutomationKind = "observation_synthesis"
     public static let observationClustering: AutomationKind = "observation_clustering"
+    /// Not served until introspection-cloud#3154 ships.
+    public static let projectCheckIn: AutomationKind = "project_check_in"
 }
 
 /// A built-in condition evaluated before an automation runs.
@@ -341,19 +343,23 @@ public struct AutomationListParams: Sendable, Hashable {
     public var enabled: Bool?
     /// `true`: only automations with a next slot; `false`: only those without.
     public var scheduled: Bool?
+    /// Only automations that post into this task. Not served until introspection-cloud#3137 ships.
+    public var taskId: String?
 
     public init(
         limit: Int? = nil,
         next: String? = nil,
         kind: AutomationKind? = nil,
         enabled: Bool? = nil,
-        scheduled: Bool? = nil
+        scheduled: Bool? = nil,
+        taskId: String? = nil
     ) {
         self.limit = limit
         self.next = next
         self.kind = kind
         self.enabled = enabled
         self.scheduled = scheduled
+        self.taskId = taskId
     }
 
     var query: Query {
@@ -362,6 +368,7 @@ public struct AutomationListParams: Sendable, Hashable {
         query.add("kind", kind)
         query.add("enabled", enabled)
         query.add("scheduled", scheduled)
+        query.add("task_id", taskId)
         return query
     }
 }
@@ -383,8 +390,8 @@ public struct AutomationTriggerResponse: Codable, Sendable, Hashable {
 
 // MARK: API
 
-/// Data Plane `/v1/automations`. The server currently serves these routes to administrators only
-/// (a 403 otherwise); member-owned automations are designed but not yet enabled.
+/// Data Plane `/v1/automations`. The server serves these routes to administrators only today (a 403
+/// otherwise); introspection-cloud#3137 opens them to members for their own task-targeted automations.
 public struct AutomationsAPI: Sendable {
     let http: HTTPClient
 
