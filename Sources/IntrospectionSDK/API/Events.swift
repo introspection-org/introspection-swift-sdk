@@ -322,11 +322,17 @@ public struct JudgementPayload: Codable, Sendable, Hashable {
     }
 }
 
-/// One SDK `track()` event, projected.
+/// One custom event (written with ``EventLogger/logEvent(_:attributes:eventId:timestamp:identity:severity:)`` or
+/// `track()`), projected. `properties` holds the `properties.*` attributes it was written with.
 public struct TrackPayload: Codable, Sendable, Hashable {
-    /// The name passed to `track()`.
-    public var name: String?
+    /// The name the event was logged under.
+    public var name: String
     public var properties: JSONObject?
+
+    public init(name: String, properties: JSONObject? = nil) {
+        self.name = name
+        self.properties = properties
+    }
 }
 
 /// One automation trigger that ran.
@@ -422,6 +428,9 @@ public struct EventListParams: Sendable, Hashable {
     public var automationId: String?
     /// Automation triggers and skips: the task created or posted into.
     public var taskId: String?
+    /// Custom events (``IntrospectionEventName/track``): exact logged names, sent as repeated `name` (max 20, each
+    /// at most 256 characters). The server accepts it from introspection-cloud#3172.
+    public var names: [String]?
 
     public init(
         eventName: IntrospectionEventName, limit: Int? = nil, next: String? = nil, sort: EventSortField? = nil,
@@ -431,7 +440,7 @@ public struct EventListParams: Sendable, Hashable {
         ownerKey: String? = nil, eventIds: [String]? = nil, runtimeGroupUnattributed: Bool? = nil,
         lens: String? = nil, patternId: String? = nil, includeSuperseded: Bool? = nil, status: String? = nil,
         judgeId: String? = nil, issueId: String? = nil, latestRequests: Bool? = nil, requestId: String? = nil,
-        assigneeId: String? = nil, automationId: String? = nil, taskId: String? = nil
+        assigneeId: String? = nil, automationId: String? = nil, taskId: String? = nil, names: [String]? = nil
     ) {
         self.eventName = eventName
         self.limit = limit
@@ -462,6 +471,7 @@ public struct EventListParams: Sendable, Hashable {
         self.assigneeId = assigneeId
         self.automationId = automationId
         self.taskId = taskId
+        self.names = names
     }
 
     func query(now: Date) throws -> Query {
@@ -491,6 +501,7 @@ public struct EventListParams: Sendable, Hashable {
         q.add("assignee_id", assigneeId)
         q.add("automation_id", automationId)
         q.add("task_id", taskId)
+        q.add("name", names)
         return q
     }
 }

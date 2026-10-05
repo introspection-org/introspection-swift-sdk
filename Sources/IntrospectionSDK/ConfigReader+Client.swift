@@ -13,6 +13,8 @@ extension IntrospectionClient.Configuration {
     ///   the Control Plane.
     /// - `introspection.dataplane_url` (`INTROSPECTION_DATAPLANE_URL`, string, optional): the Data Plane, when it is
     ///   not the Control Plane host.
+    /// - `introspection.base_otel_url` (`INTROSPECTION_BASE_OTEL_URL`, string, default `https://otel.introspection.dev`):
+    ///   the OTLP collector ``EventLogger`` sends custom events to.
     ///
     /// ```swift
     /// let config = ConfigReader(provider: EnvironmentVariablesProvider())
@@ -34,12 +36,19 @@ extension IntrospectionClient.Configuration {
             }
             return url
         }
+        let otelURL = try config.string(forKey: ["introspection", "base_otel_url"]).map { value in
+            guard let url = URL(string: value) else {
+                throw IntrospectionError(kind: .invalidRequest, message: "introspection.base_otel_url is not a URL: '\(value)'")
+            }
+            return url
+        }
         self.init(
             controlPlaneURL: controlPlaneURL,
             dataPlaneURL: dataPlaneURL,
             controlPlaneCredentials: BearerToken(token),
             transport: transport,
-            options: options
+            options: options,
+            otelURL: otelURL
         )
     }
 }

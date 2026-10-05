@@ -116,6 +116,27 @@ A federated token is not bound to a runtime, so each task names the runtime
 version. Resolve it on your backend with a service account, as with the
 JavaScript browser client.
 
+## Custom events
+
+Log app events under your own names and read them back by name. Events are
+batched in memory and sent over OTLP/HTTP to `<otelURL>/v1/logs` with the Data
+Plane credentials; call `flush()` before the app is suspended.
+
+```swift
+try client.eventLogger.logEvent("ark.feed.entry", attributes: ["entry_id": "e_1"], eventId: "feed-entry:e_1")
+try client.eventLogger.track("Button Clicked", properties: ["button_id": "submit"])
+await client.eventLogger.flush()
+
+let entries = try await client.events.list(EventListParams(eventName: .track, names: ["ark.feed.entry"])).collect()
+```
+
+Names under `introspection.` and `gen_ai.` are rejected. The platform keeps an
+event only when the token grants `telemetry:write`: API keys always do, and a
+signed-in member's token does when its Application's `allowed_scopes` are unset
+or list `telemetry:write`. Otherwise the events are dropped without an error.
+The `names` filter needs introspection-cloud#3172; an older deployment ignores
+it. See the `LoggingCustomEvents` DocC article.
+
 ## Environment variables
 
 With the `Configuration` trait:
@@ -123,6 +144,7 @@ With the `Configuration` trait:
 ```shell
 export INTROSPECTION_TOKEN="intro_xxx"
 export INTROSPECTION_BASE_API_URL="https://api.introspection.dev"   # optional
+export INTROSPECTION_BASE_OTEL_URL="https://otel.introspection.dev" # optional, custom events
 ```
 
 ## Documentation

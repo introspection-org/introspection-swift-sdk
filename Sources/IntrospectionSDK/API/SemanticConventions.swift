@@ -81,3 +81,17 @@ public enum CustomEventNames {
     /// Sent by a runtime older than `MESSAGES_SNAPSHOT` recovery when a disconnect outlived its replay buffer.
     public static let resumeGap = "resume_gap"
 }
+
+/// Attributes of a custom event log record, as ``EventLogger`` writes them and the platform reads them.
+public enum LogAttributes {
+    public static let eventName = "event.name"
+    /// A stable id readers dedupe on.
+    public static let eventId = "event.id"
+    public static let identityUserId = "identity.user.id"
+    public static let identityAnonymousId = "identity.anonymous.id"
+    /// The caller's attributes are written under this prefix.
+    public static let propertiesPrefix = "properties."
+    /// Owned by the platform (`introspection.`) and the OpenTelemetry GenAI conventions (`gen_ai.`): a custom
+    /// event may not be named under either.
+    public static let reservedEventNamePrefixes = ["introspection.", "gen_ai."]
+}

@@ -18,7 +18,7 @@ let config = ConfigReader(provider: EnvironmentVariablesProvider())
 let client = IntrospectionClient(configuration: try .init(config: config))
 ```
 
-With environment variables, the keys are the ones the Rust SDK reads: `INTROSPECTION_TOKEN` (secret, required), `INTROSPECTION_BASE_API_URL`, `INTROSPECTION_DATAPLANE_URL` and `INTROSPECTION_RUNTIME`. Without the trait, the package does not depend on swift-configuration at all.
+With environment variables, the keys are the ones the Rust SDK reads: `INTROSPECTION_TOKEN` (secret, required), `INTROSPECTION_BASE_API_URL`, `INTROSPECTION_DATAPLANE_URL`, `INTROSPECTION_BASE_OTEL_URL` (where custom events are sent, see <doc:LoggingCustomEvents>) and `INTROSPECTION_RUNTIME`. Without the trait, the package does not depend on swift-configuration at all.
 
 Apps rarely use this: an iOS app has no environment, and its credential comes from sign-in. See <doc:Authentication>.
 

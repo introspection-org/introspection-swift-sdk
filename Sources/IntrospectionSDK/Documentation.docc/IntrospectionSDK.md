@@ -27,6 +27,7 @@ The package is Swift 6, built on `URLSession` and Apple's own packages, and runs
 - <doc:Authentication>
 - <doc:RunsAndStreaming>
 - <doc:ConfigurationAndObservability>
+- <doc:LoggingCustomEvents>
 - ``IntrospectionClient``
 - ``Runner``
 - ``IntrospectionError``
@@ -75,6 +76,15 @@ The package is Swift 6, built on `URLSession` and Apple's own packages, and runs
 - ``EventsAPI``
 - ``MetricsAPI``
 - ``SharesAPI``
+
+### Custom events
+
+- <doc:LoggingCustomEvents>
+- ``EventLogger``
+- ``LogEventSeverity``
+- ``EventIdentity``
+- ``TrackPayload``
+- ``LogAttributes``
 
 ### Automations
 
