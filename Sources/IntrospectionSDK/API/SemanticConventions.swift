@@ -4,6 +4,8 @@ import Foundation
 /// stores them. Names mirror the JS SDK's `GenAi` constants.
 public enum GenAIAttributes {
     public static let conversationId = "gen_ai.conversation.id"
+    /// The response a follow-up or feedback refers to.
+    public static let requestPreviousResponseId = "gen_ai.request.previous_response_id"
     public static let agentId = "gen_ai.agent.id"
     public static let agentName = "gen_ai.agent.name"
     /// `chat`, `execute_tool`, `invoke_agent`, ... (see `GenAIOperationNames`).
@@ -80,4 +82,23 @@ public enum CustomEventNames {
     public static let messageIdentity = "introspection.message_identity"
     /// Sent by a runtime older than `MESSAGES_SNAPSHOT` recovery when a disconnect outlived its replay buffer.
     public static let resumeGap = "resume_gap"
+}
+
+/// Attributes of a custom event log record, as the `IntrospectionTelemetry` module writes them and the platform
+/// reads them.
+public enum LogAttributes {
+    public static let eventName = "event.name"
+    /// A stable id readers dedupe on.
+    public static let eventId = "event.id"
+    public static let identityUserId = "identity.user.id"
+    public static let identityAnonymousId = "identity.anonymous.id"
+    /// The caller's attributes are written under this prefix.
+    public static let propertiesPrefix = "properties."
+    /// An `identify` event's traits are written under this prefix.
+    public static let traitsPrefix = "context.traits."
+    /// The event name of an `identify` call.
+    public static let identifyEventName = "identify"
+    /// Owned by the platform (`introspection.`) and the OpenTelemetry GenAI conventions (`gen_ai.`): a custom
+    /// event may not be named under either.
+    public static let reservedEventNamePrefixes = ["introspection.", "gen_ai."]
 }

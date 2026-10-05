@@ -62,6 +62,19 @@ import Testing
         #expect(IntrospectionEventName.automationSkipped.rawValue == PlatformEventNames.automationSkipped)
     }
 
+    /// The attributes the processor and the `introspection.track` projection read; the same in every SDK.
+    @Test func customEventLogAttributes() {
+        #expect(LogAttributes.eventName == "event.name")
+        #expect(LogAttributes.eventId == "event.id")
+        #expect(LogAttributes.identityUserId == "identity.user.id")
+        #expect(LogAttributes.identityAnonymousId == "identity.anonymous.id")
+        #expect(LogAttributes.propertiesPrefix == "properties.")
+        #expect(LogAttributes.traitsPrefix == "context.traits.")
+        #expect(LogAttributes.identifyEventName == "identify")
+        #expect(GenAIAttributes.requestPreviousResponseId == "gen_ai.request.previous_response_id")
+        #expect(LogAttributes.reservedEventNamePrefixes == ["introspection.", "gen_ai."])
+    }
+
     @Test func genAIAttributes() {
         #expect(GenAIAttributes.conversationId == "gen_ai.conversation.id")
         #expect(GenAIAttributes.agentId == "gen_ai.agent.id")

@@ -420,8 +420,9 @@ import Testing
             conversationId: "c1", conversationIds: ["c1"], serviceName: "svc", environment: "production", runtimeGroupId: "rg",
             traceId: "tr", spanId: "sp", ownerKey: "user:1", eventIds: ["e1"], runtimeGroupUnattributed: true, lens: "l",
             patternId: "p1", includeSuperseded: true, status: "open", judgeId: "j1", issueId: "is1", latestRequests: true,
-            requestId: "r1", assigneeId: "m1", automationId: "a1", taskId: "t1")
-        await filters("event list filters: GET /v1/events", dp, "GET", "/v1/events", missingIsFatal: true) {
+            requestId: "r1", assigneeId: "m1", automationId: "a1", taskId: "t1", names: ["app.opened"])
+        // Sent before the server publishes it (introspection-cloud#3172); drop `sdkOnly` once it does.
+        await filters("event list filters: GET /v1/events", dp, "GET", "/v1/events", sdkOnly: ["name"], missingIsFatal: true) {
             _ = try await $0.events.list(events).firstPage()
         }
 

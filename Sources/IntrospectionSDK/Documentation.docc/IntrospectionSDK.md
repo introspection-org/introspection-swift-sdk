@@ -19,6 +19,12 @@ let answer = try await runner.tasks.start(prompt: "Summarize my open tickets.").
 
 The package is Swift 6, built on `URLSession` and Apple's own packages, and runs on iOS, macOS, tvOS, watchOS, visionOS and Linux.
 
+The package has two products. `IntrospectionSDK`, documented here, is the client and has no OpenTelemetry dependency. `IntrospectionTelemetry` is opt-in: enable the `Telemetry` package trait and add the product to send custom events and gen_ai traces over OpenTelemetry, as the other Introspection SDKs do. See <doc:CustomEventsAndTelemetry>.
+
+```swift
+.package(url: "https://github.com/introspection-org/introspection-swift-sdk", branch: "main", traits: ["Telemetry"])
+```
+
 ## Topics
 
 ### Essentials
@@ -27,6 +33,7 @@ The package is Swift 6, built on `URLSession` and Apple's own packages, and runs
 - <doc:Authentication>
 - <doc:RunsAndStreaming>
 - <doc:ConfigurationAndObservability>
+- <doc:CustomEventsAndTelemetry>
 - ``IntrospectionClient``
 - ``Runner``
 - ``IntrospectionError``
@@ -75,6 +82,15 @@ The package is Swift 6, built on `URLSession` and Apple's own packages, and runs
 - ``EventsAPI``
 - ``MetricsAPI``
 - ``SharesAPI``
+
+### Custom events
+
+Written by the opt-in `IntrospectionTelemetry` product; read here.
+
+- <doc:CustomEventsAndTelemetry>
+- ``TrackPayload``
+- ``EventListParams/names``
+- ``LogAttributes``
 
 ### Automations
 

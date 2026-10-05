@@ -62,8 +62,11 @@ jobs:
       # INTROSPECTION_SDK_WARNINGS_AS_ERRORS makes warnings errors, the counterpart of clippy -D warnings.
       - name: Build (all traits)
         run: swift build --build-tests --enable-all-traits
-      - name: Tests with coverage floor
-        run: scripts/coverage.sh
+      - name: Tests with coverage floor (all traits, including Telemetry)
+        run: scripts/coverage.sh --enable-all-traits
+      # The default build must not resolve or build the OpenTelemetry packages.
+      - name: Tests (default traits)
+        run: swift test
       - name: Upload coverage report
         if: always()
         uses: actions/upload-artifact@v7
@@ -85,6 +88,8 @@ jobs:
         run: swift build --build-tests --enable-all-traits
       - name: Tests
         run: swift test
+      - name: Tests (all traits, including Telemetry)
+        run: swift test --enable-all-traits
       # The Keychain storage and the hosted-login sheet compile only here.
       - name: Build for iOS
         run: |

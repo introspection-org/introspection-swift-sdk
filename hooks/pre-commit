@@ -10,6 +10,6 @@ echo "Building (warnings are errors)..."
 swift build --build-tests --enable-all-traits
 
 echo "Running tests with coverage..."
-scripts/coverage.sh
+scripts/coverage.sh --enable-all-traits
 
 echo "All checks passed."
