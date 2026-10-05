@@ -75,7 +75,26 @@ The package is Swift 6, built on `URLSession` and Apple's own packages, and runs
 - ``EventsAPI``
 - ``MetricsAPI``
 - ``SharesAPI``
+
+### Automations
+
+Scheduled prompts and platform work. A one-off reminder is a ``AutomationTriggerType/manual`` automation with a future
+``AutomationCreate/nextTriggerAt``; set ``AutomationCreate/taskId`` to post each firing into an existing task. Each
+trigger is recorded as an ``IntrospectionEventName/automationTriggered`` or ``IntrospectionEventName/automationSkipped``
+event, read through ``EventsAPI`` with the `automationId` and `taskId` filters.
+``AutomationListParams/taskId`` lists the automations that post into one task.
+
+The server serves these routes to administrators only today; introspection-cloud#3137 opens them to members for
+their own task-targeted automations.
+
 - ``AutomationsAPI``
+- ``Automation``
+- ``AutomationCreate``
+- ``AutomationUpdate``
+- ``AutomationListParams``
+- ``AutomationTriggerResponse``
+- ``AutomationTriggeredPayload``
+- ``AutomationSkippedPayload``
 
 ### Control Plane resources
 

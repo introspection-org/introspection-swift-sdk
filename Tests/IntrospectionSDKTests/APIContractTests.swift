@@ -411,6 +411,8 @@ import Testing
         try readModel("ClusteringRunPayload", ClusteringRunPayload.self, dp, "ClusteringRunPayload")
         try readModel("JudgementPayload", JudgementPayload.self, dp, "JudgementPayload")
         try readModel("TrackPayload", TrackPayload.self, dp, "TrackPayload")
+        try readModel("AutomationTriggeredPayload", AutomationTriggeredPayload.self, dp, "AutomationTriggered")
+        try readModel("AutomationSkippedPayload", AutomationSkippedPayload.self, dp, "AutomationSkipped")
 
         // `lookback` is left out for the same reason as on the conversation list.
         let events = EventListParams(
@@ -418,7 +420,7 @@ import Testing
             conversationId: "c1", conversationIds: ["c1"], serviceName: "svc", environment: "production", runtimeGroupId: "rg",
             traceId: "tr", spanId: "sp", ownerKey: "user:1", eventIds: ["e1"], runtimeGroupUnattributed: true, lens: "l",
             patternId: "p1", includeSuperseded: true, status: "open", judgeId: "j1", issueId: "is1", latestRequests: true,
-            requestId: "r1", assigneeId: "m1")
+            requestId: "r1", assigneeId: "m1", automationId: "a1", taskId: "t1")
         await filters("event list filters: GET /v1/events", dp, "GET", "/v1/events", missingIsFatal: true) {
             _ = try await $0.events.list(events).firstPage()
         }
@@ -451,18 +453,25 @@ import Testing
     // MARK: Automations
 
     private func checkAutomations(_ dp: OpenAPIReference) async throws {
-        try readModel("Automation: the automation read model", Automation.self, dp, "Automation")
+        // introspection-cloud#3154 drops `agent_member_id`; drop the exemption once the reference does.
+        try readModel("Automation: the automation read model", Automation.self, dp, "Automation", exempt: ["agent_member_id"])
         let create = AutomationCreate(
             name: "n", triggerType: .cron, description: "d", cronSchedule: "0 * * * *", kind: .observationSynthesis, prompt: "p",
-            metadata: object, enabled: true)
+            runtimeGroupId: "rg", taskId: "t1", nextTriggerAt: date, metadata: object, enabled: true)
         try body("AutomationCreate: POST /v1/automations body", create, dp, "AutomationCreate")
-        let update = AutomationUpdate(name: "n", description: "d", cronSchedule: "0 * * * *", prompt: "p", metadata: object, enabled: true)
+        let update = AutomationUpdate(
+            name: "n", description: "d", cronSchedule: "0 * * * *", prompt: "p", runtimeGroupId: "rg", taskId: "t1", nextTriggerAt: date,
+            metadata: object, enabled: true)
         try body("AutomationUpdate: PATCH /v1/automations/{id} body", update, dp, "AutomationUpdate")
         try readModel(
             "AutomationTriggerResponse: POST /v1/automations/{id}/trigger response", AutomationTriggerResponse.self, dp,
             "AutomationTriggerResponse")
-        let list = AutomationListParams(limit: 1, next: "cursor", kind: .observationClustering, enabled: true)
-        await filters("automation list filters: GET /v1/automations", dp, "GET", "/v1/automations", missingIsFatal: true) {
+        let list = AutomationListParams(
+            limit: 1, next: "cursor", kind: .observationClustering, enabled: true, scheduled: true, taskId: "t1")
+        // Sent before the server publishes it (introspection-cloud#3137); drop `sdkOnly` once it does.
+        await filters(
+            "automation list filters: GET /v1/automations", dp, "GET", "/v1/automations", sdkOnly: ["task_id"], missingIsFatal: true
+        ) {
             _ = try await $0.automations.list(list).firstPage()
         }
     }
