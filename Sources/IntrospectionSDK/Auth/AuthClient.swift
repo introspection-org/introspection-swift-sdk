@@ -284,11 +284,8 @@ public actor AuthClient {
     public nonisolated var credentials: any CredentialProvider { AuthClientCredentials(auth: self) }
 
     /// A client authenticated as the signed-in member. The Data Plane URL defaults
-    /// to the one returned with the session; `otelURL` and `eventLogging` configure custom events.
-    public func client(
-        dataPlaneURL: URL? = nil, options: HTTPClient.Options = HTTPClient.Options(), otelURL: URL? = nil,
-        eventLogging: EventLogger.Configuration = EventLogger.Configuration()
-    ) async throws -> IntrospectionClient {
+    /// to the one returned with the session.
+    public func client(dataPlaneURL: URL? = nil, options: HTTPClient.Options = HTTPClient.Options()) async throws -> IntrospectionClient {
         guard let session = try await session else {
             throw IntrospectionError(kind: .authentication, message: "Not signed in")
         }
@@ -298,9 +295,7 @@ public actor AuthClient {
                 dataPlaneURL: dataPlaneURL ?? session.dataPlaneURL ?? configuration.controlPlaneURL,
                 controlPlaneCredentials: credentials,
                 transport: configuration.transport,
-                options: options,
-                otelURL: otelURL,
-                eventLogging: eventLogging
+                options: options
             ))
     }
 

@@ -25,21 +25,6 @@ import Testing
         let configuration = try IntrospectionClient.Configuration(
             config: ConfigReader(provider: InMemoryProvider(values: ["introspection.token": "k"])))
         #expect(configuration.controlPlaneURL.absoluteString == "https://api.introspection.dev")
-        #expect(configuration.otelURL == nil)
-    }
-
-    @Test func readsTheOTelURLLikeTheJavaScriptSDK() throws {
-        let configuration = try IntrospectionClient.Configuration(
-            config: ConfigReader(
-                provider: InMemoryProvider(values: [
-                    "introspection.token": "k", "introspection.base_otel_url": "https://otel.staging.introspection.dev",
-                ])))
-        #expect(configuration.otelURL?.absoluteString == "https://otel.staging.introspection.dev")
-        #expect(IntrospectionClient(configuration: configuration).eventLogger.otelURL == configuration.otelURL)
-        #expect(throws: IntrospectionError.self) {
-            try IntrospectionClient.Configuration(
-                config: ConfigReader(provider: InMemoryProvider(values: ["introspection.token": "k", "introspection.base_otel_url": ""])))
-        }
     }
 }
 #endif

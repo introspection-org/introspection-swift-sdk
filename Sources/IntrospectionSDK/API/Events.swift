@@ -322,8 +322,8 @@ public struct JudgementPayload: Codable, Sendable, Hashable {
     }
 }
 
-/// One custom event (written with ``EventLogger/logEvent(_:attributes:eventId:timestamp:identity:severity:)`` or
-/// `track()`), projected. `properties` holds the `properties.*` attributes it was written with.
+/// One custom event (written with `logEvent` or `track` from the `IntrospectionTelemetry` module, or any other
+/// SDK), projected. `properties` holds the `properties.*` attributes it was written with.
 public struct TrackPayload: Codable, Sendable, Hashable {
     /// The name the event was logged under.
     public var name: String

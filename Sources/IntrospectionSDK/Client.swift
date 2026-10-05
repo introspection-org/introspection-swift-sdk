@@ -34,10 +34,6 @@ public final class IntrospectionClient: DataPlaneConnection {
         public var dataPlaneCredentials: (any CredentialProvider)?
         public var transport: any HTTPTransport
         public var options: HTTPClient.Options
-        /// The OTLP collector custom events are sent to. Defaults to ``EventLogger/defaultOTelURL``.
-        public var otelURL: URL?
-        /// Batching and identity for ``IntrospectionClient/eventLogger``.
-        public var eventLogging: EventLogger.Configuration
 
         public init(
             controlPlaneURL: URL,
@@ -45,9 +41,7 @@ public final class IntrospectionClient: DataPlaneConnection {
             controlPlaneCredentials: (any CredentialProvider)? = nil,
             dataPlaneCredentials: (any CredentialProvider)? = nil,
             transport: any HTTPTransport = URLSessionTransport(),
-            options: HTTPClient.Options = HTTPClient.Options(),
-            otelURL: URL? = nil,
-            eventLogging: EventLogger.Configuration = EventLogger.Configuration()
+            options: HTTPClient.Options = HTTPClient.Options()
         ) {
             self.controlPlaneURL = controlPlaneURL
             self.dataPlaneURL = dataPlaneURL
@@ -55,8 +49,6 @@ public final class IntrospectionClient: DataPlaneConnection {
             self.dataPlaneCredentials = dataPlaneCredentials
             self.transport = transport
             self.options = options
-            self.otelURL = otelURL
-            self.eventLogging = eventLogging
         }
     }
 
@@ -65,8 +57,6 @@ public final class IntrospectionClient: DataPlaneConnection {
     public let controlPlane: HTTPClient
     /// The Data Plane HTTP client.
     public let dataPlane: HTTPClient
-    /// Writes custom events with the Data Plane credentials. See <doc:LoggingCustomEvents>.
-    public let eventLogger: EventLogger
 
     public init(configuration: Configuration) {
         self.configuration = configuration
@@ -83,8 +73,6 @@ public final class IntrospectionClient: DataPlaneConnection {
             transport: configuration.transport,
             options: options
         )
-        eventLogger = EventLogger(
-            otelURL: configuration.otelURL ?? EventLogger.defaultOTelURL, http: dataPlane, configuration: configuration.eventLogging)
     }
 
     public convenience init(

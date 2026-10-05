@@ -18,13 +18,20 @@ let package = Package(
     name: "IntrospectionSDK",
     platforms: [.iOS(.v18), .macOS(.v15), .tvOS(.v18), .watchOS(.v11), .visionOS(.v2)],
     products: [
-        .library(name: "IntrospectionSDK", targets: ["IntrospectionSDK"])
+        .library(name: "IntrospectionSDK", targets: ["IntrospectionSDK"]),
+        // Empty unless the `Telemetry` trait is enabled; see the trait.
+        .library(name: "IntrospectionTelemetry", targets: ["IntrospectionTelemetry"]),
     ],
     traits: [
         .trait(
             name: "Configuration",
             description: "Reads the client configuration through swift-configuration (environment variables, files, arguments)."
-        )
+        ),
+        .trait(
+            name: "Telemetry",
+            description:
+                "Builds IntrospectionTelemetry: custom events and gen_ai traces over OTLP/HTTP on the OpenTelemetry Swift SDK. Off, the OpenTelemetry packages are not even resolved."
+        ),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-crypto.git", "3.0.0"..<"6.0.0"),
@@ -32,6 +39,9 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-distributed-tracing.git", from: "1.1.0"),
         .package(url: "https://github.com/apple/swift-service-context.git", from: "1.1.0"),
         .package(url: "https://github.com/apple/swift-configuration.git", from: "1.2.0"),
+        .package(url: "https://github.com/open-telemetry/opentelemetry-swift-core.git", from: "2.6.0"),
+        .package(url: "https://github.com/open-telemetry/opentelemetry-swift.git", from: "2.6.0"),
+        .package(url: "https://github.com/apple/swift-protobuf.git", from: "1.38.1"),
     ],
     targets: [
         .target(
@@ -48,10 +58,30 @@ let package = Package(
             resources: [.copy("PrivacyInfo.xcprivacy")],
             swiftSettings: swiftSettings
         ),
+        .target(
+            name: "IntrospectionTelemetry",
+            dependencies: [
+                "IntrospectionSDK",
+                .product(name: "Logging", package: "swift-log"),
+                .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core", condition: .when(traits: ["Telemetry"])),
+                .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core", condition: .when(traits: ["Telemetry"])),
+                .product(
+                    name: "OpenTelemetryProtocolExporterHTTP", package: "opentelemetry-swift",
+                    condition: .when(traits: ["Telemetry"])),
+            ],
+            swiftSettings: swiftSettings
+        ),
         .testTarget(
             name: "IntrospectionSDKTests",
             dependencies: [
                 "IntrospectionSDK",
+                .target(name: "IntrospectionTelemetry", condition: .when(traits: ["Telemetry"])),
+                .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core", condition: .when(traits: ["Telemetry"])),
+                .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core", condition: .when(traits: ["Telemetry"])),
+                .product(
+                    name: "OpenTelemetryProtocolExporterHTTP", package: "opentelemetry-swift",
+                    condition: .when(traits: ["Telemetry"])),
+                .product(name: "SwiftProtobuf", package: "swift-protobuf", condition: .when(traits: ["Telemetry"])),
                 .product(name: "Crypto", package: "swift-crypto"),
                 .product(
                     name: "Configuration", package: "swift-configuration",

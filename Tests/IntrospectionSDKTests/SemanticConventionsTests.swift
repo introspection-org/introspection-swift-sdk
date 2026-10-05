@@ -69,6 +69,9 @@ import Testing
         #expect(LogAttributes.identityUserId == "identity.user.id")
         #expect(LogAttributes.identityAnonymousId == "identity.anonymous.id")
         #expect(LogAttributes.propertiesPrefix == "properties.")
+        #expect(LogAttributes.traitsPrefix == "context.traits.")
+        #expect(LogAttributes.identifyEventName == "identify")
+        #expect(GenAIAttributes.requestPreviousResponseId == "gen_ai.request.previous_response_id")
         #expect(LogAttributes.reservedEventNamePrefixes == ["introspection.", "gen_ai."])
     }
 
