@@ -451,7 +451,8 @@ import Testing
     // MARK: Automations
 
     private func checkAutomations(_ dp: OpenAPIReference) async throws {
-        try readModel("Automation: the automation read model", Automation.self, dp, "Automation")
+        // introspection-cloud#3154 drops `agent_member_id`; drop the exemption once the reference does.
+        try readModel("Automation: the automation read model", Automation.self, dp, "Automation", exempt: ["agent_member_id"])
         let create = AutomationCreate(
             name: "n", triggerType: .cron, description: "d", cronSchedule: "0 * * * *", kind: .observationSynthesis, prompt: "p",
             runtimeGroupId: "rg", taskId: "t1", nextTriggerAt: date, metadata: object, enabled: true)

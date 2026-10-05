@@ -18,7 +18,8 @@ public struct AutomationTriggerType: RawRepresentable, Codable, Sendable, Hashab
     public static let manual: AutomationTriggerType = "manual"
 }
 
-/// A platform-work automation kind. A prompt automation has no kind.
+/// A platform automation kind. A prompt automation a person created has no kind. Open-ended: an
+/// unrecognised value decodes as its raw string.
 public struct AutomationKind: RawRepresentable, Codable, Sendable, Hashable, ExpressibleByStringLiteral {
     public let rawValue: String
     public init(rawValue: String) { self.rawValue = rawValue }
@@ -32,7 +33,7 @@ public struct AutomationKind: RawRepresentable, Codable, Sendable, Hashable, Exp
     /// Project-wide: takes no `runtimeGroupId`.
     public static let observationSynthesis: AutomationKind = "observation_synthesis"
     public static let observationClustering: AutomationKind = "observation_clustering"
-    /// Not served until introspection-cloud#3154 ships.
+    /// The project's default check-in; runs as an agent task, so it carries a `prompt`.
     public static let projectCheckIn: AutomationKind = "project_check_in"
 }
 
@@ -182,7 +183,6 @@ public struct Automation: Codable, Sendable, Hashable {
     /// The next slot: derived from the schedule for `cron`, client-set for a one-off `manual`
     /// automation and cleared once that slot fires.
     public let nextTriggerAt: Date?
-    public let agentMemberId: String?
     /// The runtime group it runs on (or clusters); nil for `observationSynthesis`.
     public let runtimeGroupId: String?
     /// The existing task each firing posts the prompt into; nil creates a task per firing.
@@ -192,7 +192,7 @@ public struct Automation: Codable, Sendable, Hashable {
     public let executionBlockedReason: String?
     /// Whether the caller may edit it.
     public let canManage: Bool?
-    /// `operator` for a prompt automation, nil for platform work.
+    /// `operator` for one that runs as a task (a prompt automation or `projectCheckIn`), nil otherwise.
     public let ownerRole: String?
     public let createdAt: Date?
     public let updatedAt: Date?
@@ -207,7 +207,6 @@ public struct Automation: Codable, Sendable, Hashable {
         case kind, prompt, metadata, tags
         case lastTriggeredAt = "last_triggered_at"
         case nextTriggerAt = "next_trigger_at"
-        case agentMemberId = "agent_member_id"
         case runtimeGroupId = "runtime_group_id"
         case taskId = "task_id"
         case createdByMemberId = "created_by_member_id"

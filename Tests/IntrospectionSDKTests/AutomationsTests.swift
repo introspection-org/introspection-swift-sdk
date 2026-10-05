@@ -100,13 +100,17 @@ private let automationJSON = #"""
         #expect(transport.requests[1].query == ["task_id": ["task-1"], "next": ["cur-2"]])
     }
 
-    @Test func decodesAnUnknownKind() throws {
-        let decoded = try JSONCoding.decoder.decode(
-            Automation.self, from: Data(#"{"id":"a","name":"n","trigger_type":"manual","kind":"project_check_in"}"#.utf8))
-        #expect(decoded.kind == .projectCheckIn)
-        let future = try JSONCoding.decoder.decode(
-            Automation.self, from: Data(#"{"id":"a","name":"n","trigger_type":"manual","kind":"not_yet_invented"}"#.utf8))
-        #expect(future.kind?.rawValue == "not_yet_invented")
+    @Test func listDecodesTheCheckInAndUnknownKinds() async throws {
+        let transport = MockTransport(
+            json: #"""
+                {"records":[
+                  {"id":"a","name":"Check-in","trigger_type":"cron","kind":"project_check_in","prompt":"p","owner_role":"operator"},
+                  {"id":"b","name":"Later","trigger_type":"cron","kind":"not_yet_invented"}
+                ],"count":2,"next":null}
+                """#)
+        let all = try await makeClient(transport).automations.list().collect()
+        #expect(all.compactMap(\.kind) == [.projectCheckIn, "not_yet_invented"])
+        #expect(all[0].ownerRole == "operator")
     }
 
     @Test func createEncodesOnlySetFields() async throws {
