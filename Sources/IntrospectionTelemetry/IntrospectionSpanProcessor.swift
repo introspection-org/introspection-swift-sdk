@@ -45,7 +45,8 @@ public final class IntrospectionSpanProcessor: SpanProcessor {
         let settings = resolved.spanBatch
         let exporter = OtlpHttpTraceExporter(
             endpoint: resolved.baseURL.appendingPathComponent("v1/traces"),
-            config: OtlpConfiguration(timeout: settings.exportTimeout.timeInterval),
+            config: OtlpConfiguration(
+                timeout: settings.exportTimeout.timeInterval, compression: resolved.compression == .gzip ? .gzip : .none),
             httpClient: OTLPTransport(
                 resolved: resolved, credentials: credentials, options: options, timeout: settings.exportTimeout),
             envVarHeaders: nil, requeueOnFailure: false)

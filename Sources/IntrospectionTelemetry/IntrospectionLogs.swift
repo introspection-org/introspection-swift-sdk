@@ -98,7 +98,8 @@ public final class IntrospectionLogs: Sendable {
         let batch = resolved.logBatch
         let exporter = OtlpHttpLogExporter(
             endpoint: resolved.baseURL.appendingPathComponent("v1/logs"),
-            config: OtlpConfiguration(timeout: batch.exportTimeout.timeInterval),
+            config: OtlpConfiguration(
+                timeout: batch.exportTimeout.timeInterval, compression: resolved.compression == .gzip ? .gzip : .none),
             httpClient: OTLPTransport(resolved: resolved, credentials: credentials, options: options, timeout: batch.exportTimeout),
             envVarHeaders: nil, requeueOnFailure: false)
         processor = BatchLogRecordProcessor(

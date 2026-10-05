@@ -49,6 +49,7 @@ An argument beats the environment variable, which beats the default; see ``Telem
 | Log batching | `OTEL_BLRP_*` | 5000 ms, 30000 ms, 2048 queued, 100 per request |
 | Span batching | `OTEL_BSP_*` | 5000 ms, 30000 ms, 2048 queued, 512 per request |
 | Extra export headers | `OTEL_EXPORTER_OTLP_HEADERS` | none; never replaces `Authorization` |
+| Body compression | `OTEL_EXPORTER_OTLP_COMPRESSION` (`gzip`, `none`) | `none`; gzip applies on Apple platforms only |
 
 Export is OTLP/HTTP with protobuf bodies (`application/x-protobuf`), through the OpenTelemetry Swift SDK's HTTP exporters, as in the other SDKs.
 

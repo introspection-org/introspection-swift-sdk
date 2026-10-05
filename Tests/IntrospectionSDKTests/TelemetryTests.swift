@@ -10,6 +10,10 @@ import Testing
 @testable import IntrospectionSDK
 @testable import IntrospectionTelemetry
 
+#if canImport(Compression)
+import Compression
+#endif
+
 private typealias LogsRequest = Opentelemetry_Proto_Collector_Logs_V1_ExportLogsServiceRequest
 private typealias TraceRequest = Opentelemetry_Proto_Collector_Trace_V1_ExportTraceServiceRequest
 private typealias ProtoValue = Opentelemetry_Proto_Common_V1_AnyValue.OneOf_Value
@@ -23,12 +27,37 @@ private func options(_ transport: MockTransport, env: [String: String] = [:], lo
     TelemetryOptions(logBatch: logBatch, spanBatch: .init(scheduleDelay: .seconds(3600)), transport: transport, environment: env)
 }
 
+/// The protobuf body as sent, gunzipped when the exporter compressed it.
+private func body(_ recorded: MockTransport.Recorded) throws -> Data {
+    let data = Data(recorded.request.body ?? Data())
+    guard recorded.request.headers["Content-Encoding"] == "gzip" else { return data }
+    #if canImport(Compression)
+    // RFC 1952: a 10-byte header, the deflate stream, then CRC-32 and the uncompressed size (little endian).
+    try #require(data.count > 18 && data[0] == 0x1f && data[1] == 0x8b)
+    let size = data.suffix(4).enumerated().reduce(0) { $0 | Int($1.element) << (8 * $1.offset) }
+    let deflated = Data(data[10..<(data.count - 8)])
+    var inflated = Data(count: size)
+    let written = inflated.withUnsafeMutableBytes { destination in
+        deflated.withUnsafeBytes { source in
+            compression_decode_buffer(
+                destination.bindMemory(to: UInt8.self).baseAddress!, size, source.bindMemory(to: UInt8.self).baseAddress!,
+                deflated.count, nil, COMPRESSION_ZLIB)
+        }
+    }
+    try #require(written == size)
+    return inflated
+    #else
+    Issue.record("gzip body on a platform without Compression")
+    return data
+    #endif
+}
+
 private func logRequests(_ transport: MockTransport) throws -> [LogsRequest] {
-    try transport.requests.filter { $0.path == "/v1/logs" }.map { try LogsRequest(serializedBytes: $0.request.body ?? Data()) }
+    try transport.requests.filter { $0.path == "/v1/logs" }.map { try LogsRequest(serializedBytes: try body($0)) }
 }
 
 private func traceRequests(_ transport: MockTransport) throws -> [TraceRequest] {
-    try transport.requests.filter { $0.path == "/v1/traces" }.map { try TraceRequest(serializedBytes: $0.request.body ?? Data()) }
+    try transport.requests.filter { $0.path == "/v1/traces" }.map { try TraceRequest(serializedBytes: try body($0)) }
 }
 
 private func logRecords(_ transport: MockTransport) throws -> [Opentelemetry_Proto_Logs_V1_LogRecord] {
@@ -74,6 +103,7 @@ private func spans(_ transport: MockTransport) throws -> [Opentelemetry_Proto_Tr
         #expect(request.request.url.absoluteString == "https://otel.test/v1/logs")
         #expect(request.request.headers["Authorization"] == "Bearer tok")
         #expect(request.request.headers["Content-Type"] == "application/x-protobuf")
+        #expect(request.request.headers["Content-Encoding"] == nil)
         let body = try #require(try logRequests(transport).first)
         let resource = values(try #require(body.resourceLogs.first).resource.attributes)
         #expect(resource["service.name"] == .stringValue("ark-ios"))
@@ -181,9 +211,26 @@ private func spans(_ transport: MockTransport) throws -> [Opentelemetry_Proto_Tr
         try logs.logEvent("app.second")
         await logs.flush()
         #expect(transport.requests.count == 2)
-        let second = try LogsRequest(serializedBytes: transport.requests[1].request.body ?? Data())
+        let second = try LogsRequest(serializedBytes: try body(transport.requests[1]))
         #expect(second.resourceLogs.flatMap(\.scopeLogs).flatMap(\.logRecords).map(\.eventName) == ["app.second"])
         await logs.shutdown()
+    }
+
+    @Test func gzipIsOptInAndDecodesToTheSameRecord() async throws {
+        let transport = MockTransport(json: "{}")
+        let logs = try IntrospectionLogs(
+            token: "tok", options: options(transport, env: ["OTEL_EXPORTER_OTLP_COMPRESSION": "GZIP"]))
+        try logs.logEvent("app.opened", eventId: "e1")
+        await logs.flush()
+        let request = try #require(transport.last)
+        #if canImport(Compression)
+        #expect(request.request.headers["Content-Encoding"] == "gzip")
+        #else
+        #expect(request.request.headers["Content-Encoding"] == nil)
+        #endif
+        let record = try #require(try logRecords(transport).first)
+        #expect(record.eventName == "app.opened")
+        #expect(values(record.attributes)["event.id"] == .stringValue("e1"))
     }
 
     @Test func aTokenClosureIsReadPerRequestAndA401Refreshes() async throws {
@@ -359,6 +406,14 @@ private final class RotatingCredentials: CredentialProvider {
         #expect(fromEnv.spanBatch.exportTimeout == .seconds(30))
         #expect(fromEnv.spanBatch.maxExportBatchSize == 512)
         #expect(fromEnv.headers == ["x-team": "ark", "x-note": "a b", "x-tenant": "env"])
+        #expect(fromEnv.compression == .none)
+        let gzip = try ResolvedTelemetry(
+            baseURL: nil, serviceName: nil, options: TelemetryOptions(environment: ["OTEL_EXPORTER_OTLP_COMPRESSION": "gzip"]))
+        #expect(gzip.compression == .gzip)
+        let explicitNone = try ResolvedTelemetry(
+            baseURL: nil, serviceName: nil,
+            options: TelemetryOptions(compression: TelemetryCompression.none, environment: ["OTEL_EXPORTER_OTLP_COMPRESSION": "gzip"]))
+        #expect(explicitNone.compression == .none)
 
         let explicit = try ResolvedTelemetry(
             baseURL: URL(string: "https://otel.arg.test")!, serviceName: "arg-service",

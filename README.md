@@ -231,6 +231,7 @@ Application's `allowed_scopes` are unset or list `telemetry:write`.
 | Log batching | `OTEL_BLRP_SCHEDULE_DELAY`, `OTEL_BLRP_EXPORT_TIMEOUT`, `OTEL_BLRP_MAX_QUEUE_SIZE`, `OTEL_BLRP_MAX_EXPORT_BATCH_SIZE` | 5000 ms, 30000 ms, 2048, 100 |
 | Span batching | `OTEL_BSP_SCHEDULE_DELAY`, `OTEL_BSP_EXPORT_TIMEOUT`, `OTEL_BSP_MAX_QUEUE_SIZE`, `OTEL_BSP_MAX_EXPORT_BATCH_SIZE` | 5000 ms, 30000 ms, 2048, 512 |
 | Extra export headers | `OTEL_EXPORTER_OTLP_HEADERS` | none; never replaces `Authorization` |
+| Body compression | `OTEL_EXPORTER_OTLP_COMPRESSION` (`gzip`, `none`) | `none`; gzip applies on Apple platforms only |
 
 Export is always OTLP/HTTP with protobuf bodies, as in the other SDKs;
 `OTEL_EXPORTER_OTLP_PROTOCOL` is not read.

@@ -15,6 +15,8 @@ public enum TelemetryEnvironment {
     /// Extra export headers, `key=value` pairs separated by commas (percent-encoded values allowed). An explicit
     /// ``TelemetryOptions/additionalHeaders`` entry wins, and the credentials always set `Authorization`.
     public static let otlpHeaders = "OTEL_EXPORTER_OTLP_HEADERS"
+    /// `gzip` or `none` (the default, as in the other SDKs).
+    public static let otlpCompression = "OTEL_EXPORTER_OTLP_COMPRESSION"
     /// OpenTelemetry batch log record processor settings, in milliseconds or counts.
     public static let logScheduleDelay = "OTEL_BLRP_SCHEDULE_DELAY"
     public static let logExportTimeout = "OTEL_BLRP_EXPORT_TIMEOUT"
@@ -47,6 +49,14 @@ public struct TelemetryBatchOptions: Sendable, Hashable {
     }
 }
 
+/// Export body compression.
+public enum TelemetryCompression: String, Sendable, Hashable {
+    /// Gzip the protobuf body. The OpenTelemetry Swift exporter compresses only on Apple platforms; elsewhere the
+    /// body is sent uncompressed.
+    case gzip
+    case none
+}
+
 /// Options shared by ``IntrospectionTelemetry``, ``IntrospectionLogs`` and ``IntrospectionSpanProcessor``.
 public struct TelemetryOptions: Sendable {
     /// Log batching. Defaults: 5 s delay, 30 s timeout, 2048 queued, 100 per request (as the JavaScript SDK).
@@ -57,6 +67,8 @@ public struct TelemetryOptions: Sendable {
     public var transport: any HTTPTransport
     /// Export requests and failures are logged here; silent by default.
     public var logger: Logger
+    /// Nil falls back to `OTEL_EXPORTER_OTLP_COMPRESSION`, then `none`.
+    public var compression: TelemetryCompression?
     /// Headers merged into every export request, over `OTEL_EXPORTER_OTLP_HEADERS`.
     public var additionalHeaders: [String: String]
     /// Where unset settings are looked up. Defaults to the process environment.
@@ -68,8 +80,10 @@ public struct TelemetryOptions: Sendable {
         transport: any HTTPTransport = URLSessionTransport(),
         logger: Logger = IntrospectionSDK.silentLogger,
         additionalHeaders: [String: String] = [:],
+        compression: TelemetryCompression? = nil,
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) {
+        self.compression = compression
         self.logBatch = logBatch
         self.spanBatch = spanBatch
         self.transport = transport
@@ -91,6 +105,7 @@ struct ResolvedTelemetry: Sendable, Equatable {
     var baseURL: URL
     var serviceName: String
     var headers: [String: String]
+    var compression: TelemetryCompression
     var logBatch: Batch
     var spanBatch: Batch
 
@@ -109,6 +124,9 @@ struct ResolvedTelemetry: Sendable, Equatable {
         self.serviceName =
             serviceName ?? env[TelemetryEnvironment.serviceName].flatMap { $0.isEmpty ? nil : $0 }
             ?? TelemetryEnvironment.defaultServiceName
+        compression =
+            options.compression ?? env[TelemetryEnvironment.otlpCompression].flatMap { TelemetryCompression(rawValue: $0.lowercased()) }
+            ?? .none
         headers = Self.headers(env[TelemetryEnvironment.otlpHeaders]).merging(options.additionalHeaders) { _, explicit in explicit }
         logBatch = Self.batch(
             options.logBatch, env: env,
