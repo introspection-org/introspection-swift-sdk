@@ -21,19 +21,26 @@ public struct RunnerIdentity: Codable, Sendable, Hashable {
     public var conversationId: String?
     /// Tags stamped on the `customer` member this identity mints, only when that member is new.
     public var tags: [String]?
+    /// Metadata for that member: seeds a new one, and is merged into an existing one (these keys overwrite).
+    /// Nil or empty changes nothing.
+    public var metadata: [String: String]?
 
-    public init(userId: String? = nil, anonymousId: String? = nil, conversationId: String? = nil, tags: [String]? = nil) {
+    public init(
+        userId: String? = nil, anonymousId: String? = nil, conversationId: String? = nil, tags: [String]? = nil,
+        metadata: [String: String]? = nil
+    ) {
         self.userId = userId
         self.anonymousId = anonymousId
         self.conversationId = conversationId
         self.tags = tags
+        self.metadata = metadata
     }
 
     private enum CodingKeys: String, CodingKey {
         case userId = "user_id"
         case anonymousId = "anonymous_id"
         case conversationId = "conversation_id"
-        case tags
+        case tags, metadata
     }
 }
 

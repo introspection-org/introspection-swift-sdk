@@ -527,6 +527,7 @@ private func member(_ id: String, _ email: String?, deactivated: Bool = false) -
             MemberListParams(memberType: .customer, tag: "customer:acme", ids: ["a", "b"], externalUserIds: ["user:1"])
         ).collect()
         #expect(members.first?.memberType == .business)
+        #expect(members.first?.metadata == nil, "a member read without metadata still decodes")
         #expect(transport.last?.query["id"] == ["a", "b"])
         #expect(transport.last?.query["external_user_id"] == ["user:1"])
         #expect(transport.last?.query["member_type"] == ["customer"])
@@ -535,6 +536,42 @@ private func member(_ id: String, _ email: String?, deactivated: Bool = false) -
         let me = try await client.members.me()
         #expect(me.memberId == "m-1")
         #expect(me.featureFlags?["beta"]?.boolValue == true)
+    }
+
+    @Test func memberTagsAndMetadata() async throws {
+        let memberJSON =
+            #"{"id": "m/1", "org_id": "o", "email": "ana@example.com", "name": "Ana Lopez", "role": "member", "member_type": "business", "is_deactivated": false, "tags": ["team:acme"], "metadata": {"plan": "enterprise", "region": "eu"}, "is_external_credential_agent": false, "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z"}"#
+        let transport = MockTransport { request, _ in
+            request.method == "GET" && request.url.path == "/v1/members"
+                ? .response(.json(#"{"records": [\#(memberJSON)], "count": 1}"#)) : .response(.json(memberJSON))
+        }
+        let api = makeClient(transport).members
+
+        let members = try await api.list(MemberListParams(tag: "team:acme", metadata: ["region": "eu", "deal": "q4:2026"])).collect()
+        #expect(members.first?.tags == ["team:acme"])
+        #expect(members.first?.metadata == ["plan": "enterprise", "region": "eu"])
+        #expect(transport.last?.query["tag"] == ["team:acme"])
+        #expect(transport.last?.query["metadata"] == ["deal:q4:2026", "region:eu"], "repeated pairs, sorted by key")
+
+        _ = try await api.list(MemberListParams(metadata: [:])).firstPage()
+        #expect(transport.last?.query["metadata"] == nil)
+
+        let created = try await api.create(
+            MemberCreate(email: "ana@example.com", name: "Ana Lopez", tags: ["team:acme"], metadata: ["plan": "enterprise"]))
+        #expect(created.metadata?["plan"] == "enterprise")
+        #expect(transport.last?.request.method == "POST")
+        #expect(transport.last?.path == "/v1/members")
+        #expect(
+            transport.last?.json
+                == ["email": "ana@example.com", "name": "Ana Lopez", "tags": ["team:acme"], "metadata": ["plan": "enterprise"]])
+
+        _ = try await api.update("m/1", MemberUpdate(metadata: [:]))
+        #expect(transport.last?.request.method == "PATCH")
+        #expect(transport.last?.request.url.absoluteString.hasSuffix("/v1/members/m%2F1") == true)
+        #expect(transport.last?.json == ["metadata": [:]], "an empty map clears; nil fields are omitted")
+
+        _ = try await api.update("m/1", MemberUpdate(imageUrl: "https://x.test/a.png", tags: []))
+        #expect(transport.last?.json == ["image_url": "https://x.test/a.png", "tags": []])
     }
 
     @Test func annotationEventIdIsUUIDv7() {

@@ -138,7 +138,10 @@ public struct Member: Codable, Sendable, Hashable {
     public var role: String?
     public var memberType: MemberType?
     public var isDeactivated: Bool?
+    /// Access-bearing: the member can read and write files and tasks whose tags intersect these.
     public var tags: [String]?
+    /// Customer-defined `key: value` labels; filterable, and grants nothing.
+    public var metadata: [String: String]?
     public var applicationIdpId: String?
     public var connectorId: String?
     public var integrationId: String?
@@ -149,7 +152,7 @@ public struct Member: Codable, Sendable, Hashable {
     public init(
         id: String, orgId: String? = nil, email: String? = nil, name: String? = nil, externalUserId: String? = nil,
         imageUrl: String? = nil, role: String? = nil, memberType: MemberType? = nil, isDeactivated: Bool? = nil,
-        tags: [String]? = nil, applicationIdpId: String? = nil, connectorId: String? = nil,
+        tags: [String]? = nil, metadata: [String: String]? = nil, applicationIdpId: String? = nil, connectorId: String? = nil,
         integrationId: String? = nil, isExternalCredentialAgent: Bool? = nil, createdAt: Date? = nil, updatedAt: Date? = nil
     ) {
         self.id = id
@@ -162,6 +165,7 @@ public struct Member: Codable, Sendable, Hashable {
         self.memberType = memberType
         self.isDeactivated = isDeactivated
         self.tags = tags
+        self.metadata = metadata
         self.applicationIdpId = applicationIdpId
         self.connectorId = connectorId
         self.integrationId = integrationId
@@ -171,7 +175,7 @@ public struct Member: Codable, Sendable, Hashable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, email, name, role, tags
+        case id, email, name, role, tags, metadata
         case orgId = "org_id"
         case externalUserId = "external_user_id"
         case imageUrl = "image_url"
@@ -195,6 +199,9 @@ public struct MemberListParams: Sendable, Hashable {
     public var applicationIdpId: String?
     /// A `key:value` grouping tag, for example `customer:acme`.
     public var tag: String?
+    /// Members whose metadata holds every pair as an exact value (at most 16 keys). Sent as repeated
+    /// `metadata=key:value`.
+    public var metadata: [String: String]?
     /// Resolve these member ids (unions with `externalUserIds`).
     public var ids: [String]?
     /// Resolve these tier-prefixed external keys, for example `user:abc`.
@@ -206,17 +213,66 @@ public struct MemberListParams: Sendable, Hashable {
 
     public init(
         memberType: MemberType? = nil, connectorId: String? = nil, applicationIdpId: String? = nil, tag: String? = nil,
-        ids: [String]? = nil, externalUserIds: [String]? = nil, project: String? = nil, limit: Int? = nil, next: String? = nil
+        metadata: [String: String]? = nil, ids: [String]? = nil, externalUserIds: [String]? = nil, project: String? = nil,
+        limit: Int? = nil, next: String? = nil
     ) {
         self.memberType = memberType
         self.connectorId = connectorId
         self.applicationIdpId = applicationIdpId
         self.tag = tag
+        self.metadata = metadata
         self.ids = ids
         self.externalUserIds = externalUserIds
         self.project = project
         self.limit = limit
         self.next = next
+    }
+}
+
+/// The body of `POST /v1/members`: invites a business member by email.
+public struct MemberCreate: Encodable, Sendable, Hashable {
+    public var email: String
+    /// First and last name; the server rejects a single word.
+    public var name: String
+    /// `member` (server default), `admin` or `owner`.
+    public var role: String?
+    /// Access-bearing; setting any needs `members:manage`.
+    public var tags: [String]?
+    /// Keys are letters, digits, `_` and `-`; values non-empty strings; at most 64 entries.
+    public var metadata: [String: String]?
+
+    public init(email: String, name: String, role: String? = nil, tags: [String]? = nil, metadata: [String: String]? = nil) {
+        self.email = email
+        self.name = name
+        self.role = role
+        self.tags = tags
+        self.metadata = metadata
+    }
+}
+
+/// The body of `PATCH /v1/members/{id}` (needs `members:manage`). A nil field is left untouched.
+public struct MemberUpdate: Encodable, Sendable, Hashable {
+    public var name: String?
+    public var imageUrl: String?
+    public var role: String?
+    /// Replaces the tag list wholesale; `[]` clears it.
+    public var tags: [String]?
+    /// Replaces the metadata map wholesale; `[:]` clears it.
+    public var metadata: [String: String]?
+
+    public init(
+        name: String? = nil, imageUrl: String? = nil, role: String? = nil, tags: [String]? = nil, metadata: [String: String]? = nil
+    ) {
+        self.name = name
+        self.imageUrl = imageUrl
+        self.role = role
+        self.tags = tags
+        self.metadata = metadata
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case name, role, tags, metadata
+        case imageUrl = "image_url"
     }
 }
 
@@ -260,7 +316,7 @@ public struct CurrentMember: Codable, Sendable, Hashable {
     }
 }
 
-/// Read access to `/v1/members`.
+/// `/v1/members`.
 public struct MembersAPI: Sendable {
     let http: HTTPClient
 
@@ -274,6 +330,7 @@ public struct MembersAPI: Sendable {
         query.add("connector_id", params.connectorId)
         query.add("application_idp_id", params.applicationIdpId)
         query.add("tag", params.tag)
+        query.add("metadata", params.metadata.map { pairs in pairs.keys.sorted().compactMap { key in pairs[key].map { "\(key):\($0)" } } })
         query.add("id", params.ids)
         query.add("external_user_id", params.externalUserIds)
         query.add("limit", params.limit)
@@ -283,6 +340,16 @@ public struct MembersAPI: Sendable {
     /// Fetch one member.
     public func get(_ memberId: String, project: String? = nil) async throws -> Member {
         try await http.json("GET", "/v1/members/\(pathSegment(memberId))", query: cpProjectQuery(project))
+    }
+
+    /// Invite a business member (admin or owner only).
+    public func create(_ body: MemberCreate) async throws -> Member {
+        try await http.json("POST", "/v1/members", body: try .encode(body), as: Member.self)
+    }
+
+    /// Update a member.
+    public func update(_ memberId: String, _ body: MemberUpdate) async throws -> Member {
+        try await http.json("PATCH", "/v1/members/\(pathSegment(memberId))", body: try .encode(body), as: Member.self)
     }
 
     /// The signed-in principal (`GET /v1/oidc/me`).

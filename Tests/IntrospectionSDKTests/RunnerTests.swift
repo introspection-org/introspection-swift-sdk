@@ -126,7 +126,7 @@ private func specJSON(endpoint: String = "https://dp-gcp01.test", token: String 
         }
         let client = makeClient(transport)
         let request = RunRequest(
-            identity: RunnerIdentity(userId: "u_42", tags: ["tier:gold"]),
+            identity: RunnerIdentity(userId: "u_42", tags: ["tier:gold"], metadata: ["plan": "enterprise"]),
             caller: RunCaller(ip: "1.2.3.4", library: RunCallerLibrary(name: "introspection-swift"), extra: ["app": ["name": "ios"]]),
             agentName: "support",
             ttlSeconds: 600,
@@ -145,6 +145,7 @@ private func specJSON(endpoint: String = "https://dp-gcp01.test", token: String 
         let body = try #require(post.json)
         #expect(body["identity"]?["user_id"]?.stringValue == "u_42")
         #expect(body["identity"]?["tags"]?[0]?.stringValue == "tier:gold")
+        #expect(body["identity"]?["metadata"] == ["plan": "enterprise"])
         #expect(body["identity"]?["anonymous_id"] == nil, "nil fields are omitted")
         #expect(body["caller"]?["ip"]?.stringValue == "1.2.3.4")
         #expect(body["caller"]?["app"]?["name"]?.stringValue == "ios")
