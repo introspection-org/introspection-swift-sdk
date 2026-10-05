@@ -92,7 +92,7 @@ public final class IntrospectionClient: DataPlaneConnection {
 }
 
 public enum IntrospectionSDK {
-    public static let version = "0.2.2"  // x-release-please-version
+    public static let version = "0.3.0"  // x-release-please-version
     /// The same `User-Agent` the Rust and TypeScript SDKs send.
     public static let userAgent = "introspection-sdk/\(version)"
     /// The default logger: discards everything until the app passes its own.
