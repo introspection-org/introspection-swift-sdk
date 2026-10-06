@@ -136,11 +136,11 @@ let run = try await client.tasks.start(prompt: "Hello", TaskCreate(runtimeId: ru
 ```
 
 A federated token is not bound to a runtime, so each task names one: the
-runtime group's slug, which the Data Plane resolves to the group's current
+runtime group (slug or id, `.group`), which the Data Plane resolves to the group's current
 version, or a version id resolved on your backend with a service account.
 
 ```swift
-let run = try await client.tasks.start(prompt: "Hello", TaskCreate(runtimeGroup: "my-agent"))
+let run = try await client.tasks.start(prompt: "Hello", TaskCreate(runtime: .group("my-agent")))
 ```
 
 ## Hosted login and push notifications

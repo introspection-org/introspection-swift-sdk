@@ -316,6 +316,18 @@ public struct TaskRecipePatch: Codable, Sendable, Hashable {
     }
 }
 
+/// The runtime a task or run binds: a runtime version, or a runtime group whose
+/// current version the Data Plane resolves. The server refuses both at once (`422`).
+public enum TaskRuntime: Sendable, Hashable {
+    /// A runtime version id, sent as `runtime_id`.
+    case id(String)
+    /// A runtime group's slug or UUID (1-255 characters), sent as `runtime_group`.
+    case group(String)
+
+    var versionId: String? { if case let .id(value) = self { value } else { nil } }
+    var groupName: String? { if case let .group(value) = self { value } else { nil } }
+}
+
 /// The body of `POST /v1/tasks`. The server rejects unknown fields.
 public struct TaskCreate: Encodable, Sendable, Hashable {
     /// Derived from the prompt by the server when omitted.
@@ -325,9 +337,17 @@ public struct TaskCreate: Encodable, Sendable, Hashable {
     /// Recipe agent to run; omit for the recipe default (`agents/agent.yaml`).
     public var agentName: String?
     /// Runtime to bind; ignored for a runner credential, whose claim wins.
-    public var runtimeId: String?
-    /// Runtime group slug: the server binds the group's current version. Exclusive with `runtimeId`.
-    public var runtimeGroup: String?
+    public var runtime: TaskRuntime?
+    /// The runtime version id, when `runtime` is `.id`; setting it replaces `runtime`.
+    public var runtimeId: String? {
+        get { runtime?.versionId }
+        set { runtime = newValue.map(TaskRuntime.id) ?? (runtime?.versionId == nil ? runtime : nil) }
+    }
+    /// The runtime group, when `runtime` is `.group`; setting it replaces `runtime`.
+    public var runtimeGroup: String? {
+        get { runtime?.groupName }
+        set { runtime = newValue.map(TaskRuntime.group) ?? (runtime?.groupName == nil ? runtime : nil) }
+    }
     /// `false` starts the agent without application-identity MCP bindings instead of failing.
     public var bindingsRequired: Bool?
     /// Exact pushed Recipe commit for an `eval` task.
@@ -355,8 +375,7 @@ public struct TaskCreate: Encodable, Sendable, Hashable {
         title: String? = nil,
         kind: TaskKind? = nil,
         agentName: String? = nil,
-        runtimeId: String? = nil,
-        runtimeGroup: String? = nil,
+        runtime: TaskRuntime? = nil,
         bindingsRequired: Bool? = nil,
         recipeGitCommitSha: String? = nil,
         recipePatch: TaskRecipePatch? = nil,
@@ -375,8 +394,7 @@ public struct TaskCreate: Encodable, Sendable, Hashable {
         self.title = title
         self.kind = kind
         self.agentName = agentName
-        self.runtimeId = runtimeId
-        self.runtimeGroup = runtimeGroup
+        self.runtime = runtime
         self.bindingsRequired = bindingsRequired
         self.recipeGitCommitSha = recipeGitCommitSha
         self.recipePatch = recipePatch
@@ -390,6 +408,58 @@ public struct TaskCreate: Encodable, Sendable, Hashable {
         self.commands = commands
         self.compose = compose
         self.forkShareId = forkShareId
+    }
+
+    /// A task bound to a runtime version id.
+    public init(
+        prompt: String? = nil,
+        title: String? = nil,
+        kind: TaskKind? = nil,
+        agentName: String? = nil,
+        runtimeId: String?,
+        bindingsRequired: Bool? = nil,
+        recipeGitCommitSha: String? = nil,
+        recipePatch: TaskRecipePatch? = nil,
+        repositories: [TaskRepoRequest]? = nil,
+        idleTimeoutSeconds: Int? = nil,
+        collectSandboxLogs: Bool? = nil,
+        metadata: JSONObject? = nil,
+        conversationMetadata: [String: String]? = nil,
+        tags: [String]? = nil,
+        files: [TaskFileRef]? = nil,
+        commands: Bool? = nil,
+        compose: JSONObject? = nil,
+        forkShareId: String? = nil
+    ) {
+        self.init(
+            prompt: prompt, title: title, kind: kind, agentName: agentName, runtime: runtimeId.map(TaskRuntime.id),
+            bindingsRequired: bindingsRequired, recipeGitCommitSha: recipeGitCommitSha, recipePatch: recipePatch,
+            repositories: repositories, idleTimeoutSeconds: idleTimeoutSeconds, collectSandboxLogs: collectSandboxLogs,
+            metadata: metadata, conversationMetadata: conversationMetadata, tags: tags, files: files, commands: commands,
+            compose: compose, forkShareId: forkShareId)
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(title, forKey: .title)
+        try c.encodeIfPresent(prompt, forKey: .prompt)
+        try c.encodeIfPresent(kind, forKey: .kind)
+        try c.encodeIfPresent(agentName, forKey: .agentName)
+        try c.encodeIfPresent(runtimeId, forKey: .runtimeId)
+        try c.encodeIfPresent(runtimeGroup, forKey: .runtimeGroup)
+        try c.encodeIfPresent(bindingsRequired, forKey: .bindingsRequired)
+        try c.encodeIfPresent(recipeGitCommitSha, forKey: .recipeGitCommitSha)
+        try c.encodeIfPresent(recipePatch, forKey: .recipePatch)
+        try c.encodeIfPresent(repositories, forKey: .repositories)
+        try c.encodeIfPresent(idleTimeoutSeconds, forKey: .idleTimeoutSeconds)
+        try c.encodeIfPresent(collectSandboxLogs, forKey: .collectSandboxLogs)
+        try c.encodeIfPresent(metadata, forKey: .metadata)
+        try c.encodeIfPresent(conversationMetadata, forKey: .conversationMetadata)
+        try c.encodeIfPresent(tags, forKey: .tags)
+        try c.encodeIfPresent(files, forKey: .files)
+        try c.encodeIfPresent(commands, forKey: .commands)
+        try c.encodeIfPresent(compose, forKey: .compose)
+        try c.encodeIfPresent(forkShareId, forKey: .forkShareId)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -554,10 +624,19 @@ public struct TaskRunCreate: Encodable, Sendable, Hashable {
     public var files: [TaskFileRef]?
     /// Stable identity of this message across HTTP retries.
     public var deliveryId: String?
-    /// Runtime to rebind to if this run has to provision a new sandbox.
-    public var runtimeId: String?
-    /// Runtime group slug: moves the task onto the group's current version. Exclusive with `runtimeId`.
-    public var runtimeGroup: String?
+    /// Runtime to rebind to if this run has to provision a new sandbox. A group
+    /// moves the task onto the group's current version.
+    public var runtime: TaskRuntime?
+    /// The runtime version id, when `runtime` is `.id`; setting it replaces `runtime`.
+    public var runtimeId: String? {
+        get { runtime?.versionId }
+        set { runtime = newValue.map(TaskRuntime.id) ?? (runtime?.versionId == nil ? runtime : nil) }
+    }
+    /// The runtime group, when `runtime` is `.group`; setting it replaces `runtime`.
+    public var runtimeGroup: String? {
+        get { runtime?.groupName }
+        set { runtime = newValue.map(TaskRuntime.group) ?? (runtime?.groupName == nil ? runtime : nil) }
+    }
 
     public init(
         prompt: TaskPrompt? = nil,
@@ -565,16 +644,27 @@ public struct TaskRunCreate: Encodable, Sendable, Hashable {
         metadata: JSONObject? = nil,
         files: [TaskFileRef]? = nil,
         deliveryId: String? = nil,
-        runtimeId: String? = nil,
-        runtimeGroup: String? = nil
+        runtime: TaskRuntime? = nil
     ) {
         self.prompt = prompt
         self.kind = kind
         self.metadata = metadata
         self.files = files
         self.deliveryId = deliveryId
-        self.runtimeId = runtimeId
-        self.runtimeGroup = runtimeGroup
+        self.runtime = runtime
+    }
+
+    /// A turn that rebinds to a runtime version id.
+    public init(
+        prompt: TaskPrompt? = nil,
+        kind: TaskRunKind? = nil,
+        metadata: JSONObject? = nil,
+        files: [TaskFileRef]? = nil,
+        deliveryId: String? = nil,
+        runtimeId: String?
+    ) {
+        self.init(
+            prompt: prompt, kind: kind, metadata: metadata, files: files, deliveryId: deliveryId, runtime: runtimeId.map(TaskRuntime.id))
     }
 
     /// A turn with prompt text.
@@ -584,12 +674,32 @@ public struct TaskRunCreate: Encodable, Sendable, Hashable {
         metadata: JSONObject? = nil,
         files: [TaskFileRef]? = nil,
         deliveryId: String? = nil,
-        runtimeId: String? = nil,
-        runtimeGroup: String? = nil
+        runtime: TaskRuntime? = nil
     ) {
-        self.init(
-            prompt: TaskPrompt(text: text), kind: kind, metadata: metadata, files: files, deliveryId: deliveryId,
-            runtimeId: runtimeId, runtimeGroup: runtimeGroup)
+        self.init(prompt: TaskPrompt(text: text), kind: kind, metadata: metadata, files: files, deliveryId: deliveryId, runtime: runtime)
+    }
+
+    /// A turn with prompt text that rebinds to a runtime version id.
+    public init(
+        text: String,
+        kind: TaskRunKind? = nil,
+        metadata: JSONObject? = nil,
+        files: [TaskFileRef]? = nil,
+        deliveryId: String? = nil,
+        runtimeId: String?
+    ) {
+        self.init(text: text, kind: kind, metadata: metadata, files: files, deliveryId: deliveryId, runtime: runtimeId.map(TaskRuntime.id))
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(prompt, forKey: .prompt)
+        try c.encodeIfPresent(kind, forKey: .kind)
+        try c.encodeIfPresent(metadata, forKey: .metadata)
+        try c.encodeIfPresent(files, forKey: .files)
+        try c.encodeIfPresent(deliveryId, forKey: .deliveryId)
+        try c.encodeIfPresent(runtimeId, forKey: .runtimeId)
+        try c.encodeIfPresent(runtimeGroup, forKey: .runtimeGroup)
     }
 
     private enum CodingKeys: String, CodingKey {
