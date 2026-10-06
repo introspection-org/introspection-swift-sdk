@@ -214,6 +214,8 @@ import Testing
             "GET /v1/repositories/{repository_id}/commits", "GET /v1/repositories/{repository_id}/commits/{sha}",
             "GET /v1/repositories/{repository_id}/contents", "GET /v1/repositories/{repository_id}/contents/{path}",
             "POST /v1/repositories/{repository_id}/merges",
+            "GET /v1/connections", "POST /v1/connections", "GET /v1/connections/{connection_id}",
+            "DELETE /v1/connections/{connection_id}",
         ]
         let controlPlane = [
             "GET /v1/runtimes", "GET /v1/runtimes/{runtime_id}", "POST /v1/runtimes/{runtime_id}/run",
@@ -235,8 +237,12 @@ import Testing
             "POST /v1/oauth/token", "POST /v1/oauth/device/code", "GET /v1/oauth/authorize", "POST /v1/oauth/revoke",
             "POST /v1/tokens", "POST /v1/oauth/email/code",
         ]
-        // Email-code sign-in is proposed for the Control Plane but not served yet.
-        let unpublished: Set<String> = ["POST /v1/oauth/email/code"]
+        // Email-code sign-in is proposed for the Control Plane but not served yet, nor is the Data Plane's
+        // `/v1/connections` resource; add its read model and body checks once the reference declares them.
+        let unpublished: Set<String> = [
+            "POST /v1/oauth/email/code", "GET /v1/connections", "POST /v1/connections", "GET /v1/connections/{connection_id}",
+            "DELETE /v1/connections/{connection_id}",
+        ]
         func missing(_ routes: [String], _ reference: OpenAPIReference) -> Set<String> {
             Set(
                 routes.filter { route in
