@@ -94,13 +94,12 @@ public actor InMemorySessionStorage: SessionStorage {
 
 /// How sessions are obtained and renewed.
 ///
-/// With a federated identity provider (a `jwks` Application, for example
-/// Supabase), the provider's own SDK owns sign-in and the session; use
+/// With a federated identity provider (a `jwks` Application), the provider's
+/// own SDK owns sign-in and the session; use
 /// `SessionCredentials.tokenExchange` instead of `AuthClient`.
 public enum AuthMethod: Sendable {
-    /// The platform's native email-code sign-in (`signInWithOTP` / `verifyOTP`),
-    /// refreshed with the platform refresh grant. Requires a Control Plane with
-    /// native email sign-in (proposed in `docs/design/native-email-auth.md`).
+    /// The platform's native email-code sign-in (`signInWithOTP` / `verifyOTP`)
+    /// through a `native` Application, refreshed with the platform refresh grant.
     case emailCode
     /// The platform's hosted login, refreshed with the platform refresh grant: a
     /// customer `spa` Application, or a first-party client registered on the

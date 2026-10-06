@@ -120,23 +120,49 @@ let enterprise = try await client.members.list(MemberListParams(metadata: ["plan
 _ = try await client.members.update(memberId, MemberUpdate(metadata: ["plan": "team"]))
 ```
 
+## End users signed in with Introspection
+
+An app whose users sign in with the platform's own email code needs no identity
+provider and no app backend. Create a `native` Application in the project (it
+takes the `email_code` and `refresh_token` grants), then:
+
+```swift
+let auth = AuthClient(configuration: .init(
+    controlPlaneURL: URL(string: "https://api.introspection.dev")!,
+    clientID: "intro_app_...",
+    project: "my-project",
+    method: .emailCode,
+    storage: KeychainSessionStorage()
+))
+try await auth.signInWithOTP(email: email)
+let session = try await auth.verifyOTP(email: email, token: code)
+let client = try await auth.client()
+```
+
+A returning user's code is six digits; a new user's first code is six letters
+and digits, so accept both. The session is a `customer` member whose scopes are
+the Application's `allowed_scopes`. `AuthClient` persists it, refreshes it
+before expiry and after a `401`, and drops a sign-in response that a newer
+request has superseded. Follow `authStateChanges()` to react to sign-in,
+refresh and sign-out.
+
 ## End users signed in with your identity provider
 
-An app that signs users in with Supabase, Auth0 or another OpenID provider
-exchanges the provider's token for an Introspection token through a Direct
-JWKS Application, with no app backend:
+An app that already signs users in with Auth0, Okta or another OpenID provider
+exchanges the provider's token for an Introspection token through a `jwks`
+Application, with no app backend:
 
 ```swift
 let client = try await IntrospectionClient.federated(
-    subjectToken: { try await supabase.auth.session.accessToken },
+    subjectToken: { try await provider.accessToken() },
     clientID: "intro_app_...",
     project: "my-project"
 )
 let run = try await client.tasks.start(prompt: "Hello", TaskCreate(runtimeId: runtimeId))
 ```
 
-A federated token is not bound to a runtime, so each task names its runtime
-version (`runtimeId`): a version id your backend resolves with a service
+Neither a native nor a federated token is bound to a runtime, so each task
+names its runtime version (`runtimeId`): a version id your backend resolves with a service
 account and hands to the app, as with the JavaScript browser client. Or open a
 `Runner` from the runtime, whose session is bound to it, and run tasks on that.
 
@@ -278,45 +304,6 @@ export INTROSPECTION_BASE_API_URL="https://api.introspection.dev"   # optional
 - Runnable examples: `swift run RuntimesExample`, `swift run FederatedExample`
 - [Authentication](https://docs.introspection.dev/sdk/authentication)
 - [AGENTS.md](AGENTS.md) for contributors
-
-## Stream recovery
-
-Run streams request replay from cursor `0`, including output produced before the
-first connection. Only a settling `RUN_FINISHED` or `RUN_ERROR` confirms completion;
-`RUN_FINISHED` with `result.reason = "stream_close"` is suppressed. A nonterminal
-EOF checks the specific run's status and reconnects within the recovery budget.
-Each new content cursor renews both the timeout window and the reconnect budget.
-Lifecycle events, heartbeats and duplicate content renew neither. The timeout is
-checked when recovery is needed; it does not interrupt an open connection.
-
-Every reconnect resumes from the last content cursor (`Last-Event-ID`). When
-that cursor is older than the server's replay buffer, the stream continues with
-one AG-UI `MESSAGES_SNAPSHOT` holding the run's messages so far; its id becomes
-the new cursor, and the text helper takes its assistant text in place of what it
-had read. When the server holds neither the frames nor a snapshot, it answers
-`410` and the stream ends with an incomplete-output error. Runtime images that
-predate the snapshot send `CUSTOM resume_gap` instead; raw streams pass it
-through. The text helper raises an incomplete-output error instead of returning
-partial text, including on `resume_gap`; it also raises on run failure or
-cancellation. If the status read
-says the run settled but the stream never confirmed completion, it raises an
-incomplete-output error. Recover final output from the conversation transcript
-when needed; the SDK does not automatically hydrate it or require an additional
-`conversations:read` scope just to stream. A long stream can therefore
-reconnect after its original timeout as long as content has continued to advance.
-
-Use a concrete run ID when consuming one turn. `runs/current` is a moving alias: a
-reconnect or status read may resolve to the next turn if another run has started.
-
-The in-process fake sandbox (`mock://`) supplies replies through the conversation
-transcript, not SSE. Its attach-only `stream_close` cannot satisfy `.text()`; use
-transcript reads for fake-sandbox tests, or a real runtime for `.text()` tests.
-
-The shared `run-stream-contract.json` fixtures pin these behaviors across Swift,
-JavaScript, Rust and Python. Each test suite pins the fixture SHA-256; intentional
-contract changes must update all four copies and their expected hashes together.
-
-Swift exposes `.streamIncomplete` and `.runFailed` on `IntrospectionError.kind`.
 
 ## License
 
