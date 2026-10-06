@@ -49,7 +49,7 @@ let next = try await client.tasks.runs.create(run.run.taskId, TaskRunCreate(text
 
 The member is the same on every sign-in, because it is derived from the federation and the provider's `sub`. The SDK exchanges again before the platform token expires and after a `401`, asking `subjectToken` for a current provider token each time. Sign out with the provider's SDK.
 
-A federated token is not a runner token, so a task runs on your agent only when its create and runs name the runtime group (`.group`, see Tasks on a runtime group below) or the runtime version (`.id`, or `runtimeId:`). Customer tokens are refused on Control Plane routes, so resolve a version id on your backend with a service account (`GET /v1/runtimes`, through ``RuntimesAPI``) and hand it to the app with the session, the same way the JavaScript browser client receives it. A runtime gets a new version id on every deploy, so fetch it per session rather than hard-coding it.
+A federated token is not a runner token, so a task runs on your agent only when its create and runs name the runtime version (`runtimeId`), or when the app runs it through a ``Runner`` opened from the runtime. Customer tokens are refused on Control Plane routes, so resolve a version id on your backend with a service account (`GET /v1/runtimes`, through ``RuntimesAPI``) and hand it to the app with the session, the same way the JavaScript browser client receives it. A runtime gets a new version id on every deploy, so fetch it per session rather than hard-coding it.
 
 The provider must sign with asymmetric keys (ES256 or RS256), and the Application's federation must name its issuer, for Supabase `https://<ref>.supabase.co/auth/v1`.
 
@@ -98,17 +98,6 @@ try await auth.registerPush(push)
 ``AuthClient/registerPush(_:)`` refreshes at once, because iOS hands over the token after sign-in. ``AuthClient/setPushRegistration(_:)`` only stores it; either way the registration is then sent on every sign-in and refresh, which covers APNs rotating the token. To sign in with a token already in hand, pass it as `push:` to ``HostedLoginPresenter`` or ``AuthClient/completeHostedLogin(_:callbackURL:push:)``.
 
 Pass ``PushRegistration/cleared`` when the user turns notifications off: it sends an empty `push_token`, which clears the session's registration. The environment is the one that issued the token (`sandbox` for a Debug build, `production` for TestFlight and the App Store). ``PushRegistration``'s description never includes the token, and the SDK never logs it.
-
-## Tasks on a runtime group
-
-A member token cannot look up a runtime version on the Control Plane. Name the runtime group instead, by slug or id, and the Data Plane binds the group's current version:
-
-```swift
-let run = try await client.tasks.start(prompt: "Hello", TaskCreate(runtime: .group("ark")))
-let next = try await client.tasks.runs.create(run.run.taskId, TaskRunCreate(text: "And then?", runtime: .group("ark")))
-```
-
-``TaskRuntime`` is either a version id (`runtime_id`) or a group (`runtime_group`), never both: the server refuses a body with both (`422`), so the SDK cannot build one. A runner credential's own runtime still wins. A run that names the group moves the task onto the group's current version.
 
 ## Every grant
 

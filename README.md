@@ -135,13 +135,10 @@ let client = try await IntrospectionClient.federated(
 let run = try await client.tasks.start(prompt: "Hello", TaskCreate(runtimeId: runtimeId))
 ```
 
-A federated token is not bound to a runtime, so each task names one: the
-runtime group (slug or id, `.group`), which the Data Plane resolves to the group's current
-version, or a version id resolved on your backend with a service account.
-
-```swift
-let run = try await client.tasks.start(prompt: "Hello", TaskCreate(runtime: .group("my-agent")))
-```
+A federated token is not bound to a runtime, so each task names its runtime
+version (`runtimeId`): a version id your backend resolves with a service
+account and hands to the app, as with the JavaScript browser client. Or open a
+`Runner` from the runtime, whose session is bound to it, and run tasks on that.
 
 ## Hosted login and push notifications
 

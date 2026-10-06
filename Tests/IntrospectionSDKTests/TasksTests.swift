@@ -292,41 +292,4 @@ import Testing
         #expect(error.message == "Sandbox failed to start")
         #expect(error.code == "sandbox_failed")
     }
-
-    @Test func createAndRunByRuntimeGroup() async throws {
-        let transport = MockTransport { request, _ in
-            request.url.path == "/v1/tasks"
-                ? .response(.json(#"{"task":\#(TasksTests.taskJSON),"run":\#(TasksTests.runJSON)}"#, status: 201))
-                : .response(.json(#"{"run":\#(TasksTests.runJSON)}"#, status: 201))
-        }
-        let client = makeClient(transport)
-
-        _ = try await client.tasks.start(prompt: "Hello", TaskCreate(runtime: .group("ark")))
-        let created = try #require(transport.last?.json)
-        #expect(created == ["prompt": "Hello", "runtime_group": "ark"])
-        #expect(created["runtime_id"] == nil)
-
-        _ = try await client.tasks.runs.create("t1", TaskRunCreate(text: "Next", runtime: .group("ark")))
-        #expect(transport.last?.path == "/v1/tasks/t1/runs")
-        #expect(transport.last?.json == ["prompt": ["text": "Next"], "runtime_group": "ark"])
-    }
-
-    @Test func runtimeIsOneOrTheOther() throws {
-        var body = TaskCreate(runtimeId: "rt-1")
-        #expect(body.runtime == .id("rt-1"))
-        body.runtimeGroup = "0199a1b2-0000-7000-8000-0000000000dd"
-        #expect(body.runtimeId == nil)
-        let json = try JSONCoding.decoder.decode(JSONValue.self, from: JSONCoding.encoder.encode(body))
-        #expect(json == ["runtime_group": "0199a1b2-0000-7000-8000-0000000000dd"])
-
-        body.runtimeId = nil
-        #expect(body.runtime == .group("0199a1b2-0000-7000-8000-0000000000dd"))
-        body.runtimeGroup = nil
-        #expect(body.runtime == nil)
-
-        var run = TaskRunCreate(text: "Next", runtime: .group("ark"))
-        run.runtimeId = "rt-2"
-        #expect(run.runtime == .id("rt-2"))
-        #expect(run.runtimeGroup == nil)
-    }
 }

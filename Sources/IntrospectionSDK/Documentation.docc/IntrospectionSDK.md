@@ -69,7 +69,6 @@ The package has two products. `IntrospectionSDK`, documented here, is the client
 - ``IntrospectionTask``
 - ``TaskRun``
 - ``TaskCreate``
-- ``TaskRuntime``
 
 ### Streaming events and transcripts
 
