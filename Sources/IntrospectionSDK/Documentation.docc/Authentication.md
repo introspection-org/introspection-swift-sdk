@@ -67,19 +67,19 @@ let auth = AuthClient(configuration: .init(
 ))
 
 let presenter = HostedLoginPresenter(anchor: window)
-let result = try await presenter.signIn(
+let session = try await presenter.signIn(
     with: auth,
     redirectURI: "https://app.example.com/auth/callback",
     scope: "tasks:write events:read"
 )
-print(result.memberName ?? result.user.email ?? "")
+print(session.user.name ?? session.user.email ?? "")
 
 let client = try await auth.client()
 ```
 
 `HostedLoginPresenter` uses `ASWebAuthenticationSession`, and `KeychainSessionStorage` keeps the session in the Keychain, readable only after first unlock and never synced off the device. Both are available on Apple platforms.
 
-`scope` defaults to `*`, everything the client's ceiling allows. ``HostedLoginResult`` carries the session and the full token response, including `member_name`, which the session itself does not keep.
+`scope` defaults to `*`, everything the client's ceiling allows. ``AuthUser/name`` is the member's display name from the token response's `member_name`. It is stored with the session, so it is there after a restart, and a refresh that omits it keeps the last one.
 
 The client id is either a customer `spa` Application (`intro_app_...`) or a first-party client registered on the Control Plane, such as ``OAuthClientID/ark``, which signs in `business` members under the client's own scope ceiling.
 

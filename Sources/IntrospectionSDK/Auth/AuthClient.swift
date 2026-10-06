@@ -5,9 +5,11 @@ public struct AuthSession: Codable, Sendable, Hashable {
     public var token: SessionToken
     public var user: AuthUser
 
-    public init(token: SessionToken) {
+    /// `name` is the member's display name from the token response, which the token's claims do not carry.
+    public init(token: SessionToken, name: String? = nil) {
         self.token = token
         user = AuthUser(claims: token.claims)
+        user.name = name
     }
 
     public var accessToken: String { token.accessToken }
@@ -26,13 +28,19 @@ public struct AuthUser: Codable, Sendable, Hashable {
     /// `business`, `customer` or `agent`.
     public var memberType: String?
     public var email: String?
+    /// The member's display name, from the token response's `member_name`; kept from the last response that had one.
+    public var name: String?
 
-    public init(memberId: String? = nil, orgId: String? = nil, projectId: String? = nil, memberType: String? = nil, email: String? = nil) {
+    public init(
+        memberId: String? = nil, orgId: String? = nil, projectId: String? = nil, memberType: String? = nil, email: String? = nil,
+        name: String? = nil
+    ) {
         self.memberId = memberId
         self.orgId = orgId
         self.projectId = projectId
         self.memberType = memberType
         self.email = email
+        self.name = name
     }
 
     init(claims: JWTClaims?) {
@@ -50,29 +58,7 @@ public struct AuthUser: Codable, Sendable, Hashable {
         case orgId = "org_id"
         case projectId = "project_id"
         case memberType = "member_type"
-        case email
-    }
-}
-
-/// A completed hosted login: the session plus the token response it came from,
-/// which also carries `member_name`. Session properties read through, so
-/// `result.accessToken` and `result.user` work as on `AuthSession`.
-@dynamicMemberLookup
-public struct HostedLoginResult: Sendable, Hashable {
-    public var session: AuthSession
-    /// The full `/v1/oauth/token` response.
-    public var response: OAuthToken
-
-    public init(session: AuthSession, response: OAuthToken) {
-        self.session = session
-        self.response = response
-    }
-
-    /// The member's display name from the token response.
-    public var memberName: String? { response.memberName }
-
-    public subscript<Value>(dynamicMember keyPath: KeyPath<AuthSession, Value>) -> Value {
-        session[keyPath: keyPath]
+        case email, name
     }
 }
 
@@ -210,7 +196,7 @@ public actor AuthClient {
             parameters: [
                 ("email", email), ("code", code), ("project", configuration.project),
             ] + PushRegistration.parameters(push))
-        return try await signedIn(SessionToken(oauth: response, receivedAt: now()), ifCurrent: generation)
+        return try await signedIn(response, ifCurrent: generation)
     }
 
     /// Start a hosted login: open `request.url` in a browser session and pass the
@@ -228,20 +214,10 @@ public actor AuthClient {
         callbackURL: URL,
         push: PushRegistration? = nil
     ) async throws -> AuthSession {
-        try await finishHostedLogin(request, callbackURL: callbackURL, push: push).session
-    }
-
-    /// `completeHostedLogin` keeping the token response, whose `member_name` the session does not carry.
-    func finishHostedLogin(
-        _ request: HostedLoginRequest,
-        callbackURL: URL,
-        push: PushRegistration? = nil
-    ) async throws -> HostedLoginResult {
         if let push { self.push = push }
         let generation = self.generation
         let response = try await api.completeHostedLogin(request, callbackURL: callbackURL, push: self.push)
-        let session = try await signedIn(SessionToken(oauth: response, receivedAt: now()), ifCurrent: generation)
-        return HostedLoginResult(session: session, response: response)
+        return try await signedIn(response, ifCurrent: generation)
     }
 
     /// Marks the session state, so a token fetched elsewhere can be adopted only if
@@ -253,7 +229,7 @@ public actor AuthClient {
     /// `CancellationError` when a sign-in or sign-out has completed since.
     @discardableResult
     public func setSession(_ token: OAuthToken, ifUnchangedSince generation: SessionGeneration? = nil) async throws -> AuthSession {
-        try await signedIn(SessionToken(oauth: token, receivedAt: now()), ifCurrent: generation?.value)
+        try await signedIn(token, ifCurrent: generation?.value)
     }
 
     // MARK: Push
@@ -308,7 +284,10 @@ public actor AuthClient {
         let task = Task<AuthSession, any Error> {
             defer { if self.generation == generation { self.refreshing = nil } }
             do {
-                let next = AuthSession(token: try await self.renew(session.token, push: push))
+                let response = try await self.renew(session.token, push: push)
+                let next = AuthSession(
+                    token: SessionToken(oauth: response, receivedAt: self.now(), previous: session.token),
+                    name: response.memberName ?? session.user.name)
                 try Task.checkCancellation()
                 guard self.generation == generation else { throw CancellationError() }
                 try await self.store(next)
@@ -384,22 +363,21 @@ public actor AuthClient {
         }
     }
 
-    private func renew(_ token: SessionToken, push: PushRegistration?) async throws -> SessionToken {
+    private func renew(_ token: SessionToken, push: PushRegistration?) async throws -> OAuthToken {
         guard let refreshToken = token.refreshToken,
             let sessionId = token.sessionId ?? token.claims?.jti,
             let orgId = token.orgId ?? token.claims?.orgId
         else {
             throw IntrospectionError(kind: .authentication, message: "The session has no refresh token")
         }
-        let response = try await api.refresh(
+        return try await api.refresh(
             refreshToken: refreshToken, clientId: configuration.clientID, sessionId: sessionId, orgId: orgId, push: push
         )
-        return SessionToken(oauth: response, receivedAt: now(), previous: token)
     }
 
     /// `expected` is the generation read before a sign-in request was sent; a sign-out or
     /// sign-in since then has superseded the response.
-    private func signedIn(_ token: SessionToken, ifCurrent expected: UInt64? = nil) async throws -> AuthSession {
+    private func signedIn(_ response: OAuthToken, ifCurrent expected: UInt64? = nil) async throws -> AuthSession {
         if let expected, generation != expected { throw CancellationError() }
         generation &+= 1
         let generation = self.generation
@@ -407,7 +385,7 @@ public actor AuthClient {
         refreshing = nil
         restored = true
         current = nil
-        let session = AuthSession(token: token)
+        let session = AuthSession(token: SessionToken(oauth: response, receivedAt: now()), name: response.memberName)
         try await store(session)
         guard self.generation == generation else { throw CancellationError() }
         current = session

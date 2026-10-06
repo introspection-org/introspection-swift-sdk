@@ -145,13 +145,13 @@ account and hands to the app, as with the JavaScript browser client. Or open a
 `AuthClient` with `.hostedLogin` signs a member in through the platform's
 hosted login, either a customer `spa` Application or a first-party client such
 as `OAuthClientID.ark`. `HostedLoginPresenter.signIn` takes the scopes to ask
-for and returns the session together with the token response (`memberName`).
+for and returns the session; `session.user.name` is the member's display name.
 
 A phone registers for push on its session: the token rides on the sign-in and
 refresh grants, and ending the session ends push.
 
 ```swift
-let result = try await presenter.signIn(with: auth, redirectURI: redirectURI, scope: "tasks:write events:read")
+let session = try await presenter.signIn(with: auth, redirectURI: redirectURI, scope: "tasks:write events:read")
 
 // Once iOS hands over the device token:
 try await auth.registerPush(PushRegistration(deviceToken: deviceToken, environment: .production))

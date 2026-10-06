@@ -189,16 +189,52 @@ import Testing
         #expect(await auth.pushRegistration == Self.registration)
     }
 
-    @Test func hostedLoginResultKeepsTheTokenResponse() async throws {
+    // MARK: Member name
+
+    @Test func hostedLoginPutsTheMemberNameOnTheSession() async throws {
         let transport = MockTransport(json: tokenJSON("x", memberName: "Ada"))
         let auth = auth(transport)
         let request = auth.hostedLoginRequest(redirectURI: "dev.introspection.ark://oauth/callback")
-        let result = try await auth.finishHostedLogin(request, callbackURL: hostedCallback(request))
-        #expect(result.memberName == "Ada")
-        #expect(result.response.refreshToken == "r2")
-        #expect(result.accessToken == "x")
-        #expect(result.session.dataPlaneURL == URL(string: "https://dp.test"))
+        let session = try await auth.completeHostedLogin(request, callbackURL: hostedCallback(request))
+        #expect(session.user.name == "Ada")
+        #expect(session.accessToken == "x")
+        #expect(session.dataPlaneURL == URL(string: "https://dp.test"))
         #expect(form(try #require(transport.last))["push_token"] == nil)
+    }
+
+    @Test func theMemberNameSurvivesARestart() async throws {
+        let storage = InMemorySessionStorage()
+        let configuration = AuthClient.Configuration(
+            controlPlaneURL: URL(string: "https://cp.test")!, clientID: OAuthClientID.ark, project: "ark", method: .hostedLogin,
+            storage: storage, transport: MockTransport(json: tokenJSON("x", memberName: "Ada")))
+        let first = AuthClient(configuration: configuration)
+        let request = first.hostedLoginRequest(redirectURI: "dev.introspection.ark://oauth/callback")
+        try await first.completeHostedLogin(request, callbackURL: hostedCallback(request))
+
+        let restarted = AuthClient(configuration: configuration)
+        #expect(try await restarted.session?.user.name == "Ada")
+    }
+
+    @Test func aRefreshKeepsTheNameUnlessTheResponseNamesAnother() async throws {
+        let transport = MockTransport { _, index in
+            .response(
+                .json(
+                    index == 0
+                        ? self.tokenJSON("a", memberName: "Ada")
+                        : index == 1 ? self.tokenJSON("b") : self.tokenJSON("c", memberName: "Ada L.")))
+        }
+        let auth = auth(transport)
+        let request = auth.hostedLoginRequest(redirectURI: "dev.introspection.ark://oauth/callback")
+        try await auth.completeHostedLogin(request, callbackURL: hostedCallback(request))
+        #expect(try await auth.refreshSession().user.name == "Ada")
+        #expect(try await auth.refreshSession().user.name == "Ada L.")
+    }
+
+    @Test func aSessionStoredBeforeTheNameDecodes() throws {
+        let stored = #"{"member_id": "m", "org_id": "o", "email": "a@b.co"}"#
+        let user = try JSONCoding.decoder.decode(AuthUser.self, from: Data(stored.utf8))
+        #expect(user.name == nil)
+        #expect(user.email == "a@b.co")
     }
 
     // MARK: setSession generation guard
@@ -224,7 +260,7 @@ import Testing
 
     // MARK: Hosted-login scope
 
-    @Test(arguments: ["*", "tasks:write events:read connections:self"])
+    @Test(arguments: ["*", "tasks:write events:read connections:read"])
     func hostedLoginRequestCarriesScope(scope: String) throws {
         let auth = auth(MockTransport(json: "{}"))
         let request = auth.hostedLoginRequest(redirectURI: "dev.introspection.ark://oauth/callback", scope: scope)

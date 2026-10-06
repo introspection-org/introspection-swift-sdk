@@ -92,7 +92,7 @@ public final class HostedLoginPresenter: NSObject, ASWebAuthenticationPresentati
         scope: String = "*",
         push: PushRegistration? = nil,
         prefersEphemeralWebBrowserSession: Bool = false
-    ) async throws -> HostedLoginResult {
+    ) async throws -> AuthSession {
         let request = Self.request(with: auth, redirectURI: redirectURI, scope: scope)
         guard let redirect = URL(string: redirectURI) else {
             throw IntrospectionError(kind: .invalidRequest, message: "Invalid redirect URI: \(redirectURI)")
@@ -130,7 +130,7 @@ public final class HostedLoginPresenter: NSObject, ASWebAuthenticationPresentati
                 continuation.resume(throwing: IntrospectionError(kind: .authentication, message: "Could not start the sign-in session"))
             }
         }
-        return try await auth.finishHostedLogin(request, callbackURL: callbackURL, push: push)
+        return try await auth.completeHostedLogin(request, callbackURL: callbackURL, push: push)
     }
 
     nonisolated static func request(with auth: AuthClient, redirectURI: String, scope: String) -> HostedLoginRequest {
