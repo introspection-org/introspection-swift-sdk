@@ -8,8 +8,9 @@ Choose a credential for each kind of caller: servers, service accounts, the end 
 | --- | --- | --- |
 | Server or script | API key | `IntrospectionClient(controlPlaneURL:credentials:)` with ``BearerToken`` |
 | Backend acting for your users | Service account | `IntrospectionClient.fromServiceAccount(clientId:clientSecret:project:controlPlaneURL:)` |
-| End users signed in with your identity provider | Federated token exchange | `IntrospectionClient.federated(subjectToken:clientID:project:controlPlaneURL:)` |
-| End users signed in with Introspection | Hosted login | ``AuthClient`` |
+| End users signed in with Introspection | Native email code (`native` Application) | ``AuthClient`` with ``AuthMethod/emailCode`` |
+| End users signed in with Introspection in a browser | Hosted login (`spa` Application) | ``AuthClient`` with ``AuthMethod/hostedLogin`` |
+| End users signed in with your identity provider | Federated token exchange (`jwks` Application) | `IntrospectionClient.federated(subjectToken:clientID:project:controlPlaneURL:)` |
 
 ## API keys and service accounts
 
@@ -29,9 +30,28 @@ The identity names a `customer` member, created on first use. ``RunnerIdentity/t
 
 The runner's own token drives the Data Plane and pins the runtime; it never needs refreshing during its lifetime. Call ``Runner/refresh()`` to mint a new session, and ``Runner/close()`` to refuse further requests locally.
 
+## Native email-code sign-in
+
+With a `native` Application (grants `email_code` and `refresh_token`), the platform signs your users in itself: it emails a code, and ``AuthClient`` exchanges it for a session. No identity provider or app backend is involved.
+
+```swift
+let auth = AuthClient(configuration: .init(
+    controlPlaneURL: URL(string: "https://api.introspection.dev")!,
+    clientID: "intro_app_...",
+    project: "my-project",
+    method: .emailCode,
+    storage: KeychainSessionStorage()
+))
+try await auth.signInWithOTP(email: email)
+let session = try await auth.verifyOTP(email: email, token: code)
+let client = try await auth.client()
+```
+
+A returning user's code is six digits; a new user's first code is six letters and digits, so a code field must accept both. The session is a `customer` member whose scopes are the Application's `allowed_scopes`. ``AuthClient`` persists it, refreshes it before expiry and after a `401`, and discards a sign-in response that a newer request has superseded. The token is accepted on Data Plane routes, so, as with a federated token, each task names its runtime version (`runtimeId`).
+
 ## Federated identity providers
 
-When your app already signs users in with Supabase, Auth0, Okta or another OpenID provider, keep that provider and its SDK. An Introspection Application of type Direct JWKS, federated to the provider's issuer, exchanges the provider's token for a platform token for a `customer` member. No app backend is involved.
+When your app already signs users in with Supabase, Auth0, Okta or another OpenID provider, keep that provider and its SDK. An Introspection Application of type `jwks`, federated to the provider's issuer, exchanges the provider's token for a platform token for a `customer` member. No app backend is involved.
 
 ```swift
 import IntrospectionSDK

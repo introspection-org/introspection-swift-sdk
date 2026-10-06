@@ -26,6 +26,8 @@ Each ``AGUIEvent`` keeps the full event as `raw` ``JSONValue`` and exposes the c
 
 ``RunStreamOptions`` controls how long to wait for the run to become ready, the overall timeout and the reconnect budget.
 
+The stream attaches with `Last-Event-ID: 0` and reattaches from the last content cursor whenever the connection ends before a settling `RUN_FINISHED` or `RUN_ERROR`. A cursor older than the server's replay buffer is answered with one `MESSAGES_SNAPSHOT` of the run so far; a `410` (history gone) throws ``IntrospectionError/Kind/streamIncomplete``, as does a run that settled without a confirmed end, and a failed or cancelled run throws ``IntrospectionError/Kind/runFailed``. `maxReconnects` counts reattaches without progress and is reset by each new content cursor; `timeout` is renewed by each new content cursor; a `429` readiness wait is bounded by `timeout` alone. ``RunHandle/text(options:)`` replaces what it read with a snapshot's assistant text and throws rather than return partial output. The README's Stream recovery section has the full contract.
+
 ## Continue a task
 
 ```swift
