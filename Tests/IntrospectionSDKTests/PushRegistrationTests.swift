@@ -47,8 +47,17 @@ import Testing
     @Test func deviceTokenBytesBecomeLowercaseHex() {
         let push = PushRegistration(deviceToken: Data([0x00, 0xFF, 0x10, 0xAB, 0xCD, 0xEF]), environment: .production)
         #expect(push.token == Self.hexToken)
-        #expect(push.platform == .apns)
+        #expect(push.platform == .applePush)
         #expect(push.environment == .production)
+    }
+
+    @Test func platformsAreTheServersWireNames() {
+        #expect(PushRegistration.Platform.applePush.rawValue == "apple_push")
+        #expect(PushRegistration.Platform.firebasePush.rawValue == "firebase_push")
+        #expect(PushRegistration.Platform.webPush.rawValue == "web_push")
+        let web = PushRegistration(token: "abc", environment: .production, platform: .webPush)
+        #expect(web.parameters.map(\.1) == ["abc", "web_push", "production"])
+        #expect(PushRegistration.Platform(rawValue: "future_push") == "future_push")
     }
 
     @Test func descriptionAndMirrorNeverShowTheToken() {
@@ -63,7 +72,7 @@ import Testing
 
     @Test func formFields() {
         #expect(Self.registration.parameters.map(\.0) == ["push_token", "push_platform", "push_environment"])
-        #expect(Self.registration.parameters.map(\.1) == [Self.hexToken, "apns", "sandbox"])
+        #expect(Self.registration.parameters.map(\.1) == [Self.hexToken, "apple_push", "sandbox"])
         #expect(PushRegistration.cleared.isCleared)
         #expect(PushRegistration.cleared.parameters.map(\.0) == ["push_token"])
         #expect(PushRegistration.cleared.parameters.map(\.1) == [""])
@@ -79,7 +88,7 @@ import Testing
         let fields = form(try #require(transport.last))
         #expect(fields["grant_type"] == OAuthGrantType.refreshToken)
         #expect(fields["push_token"] == Self.hexToken)
-        #expect(fields["push_platform"] == "apns")
+        #expect(fields["push_platform"] == "apple_push")
         #expect(fields["push_environment"] == "sandbox")
     }
 

@@ -87,7 +87,7 @@ If you exchange the callback yourself with ``AuthAPI/completeHostedLogin(_:callb
 
 ## Push notifications
 
-A device registers for push on its session, not as a separate resource: `/v1/oauth/token` takes `push_token`, `push_platform` and `push_environment` on the authorization-code, email-code and refresh grants, and writes them onto the session it creates or rotates. Ending the session (sign-out, revocation, member removal) ends push to that device.
+A device registers for push on its session, not as a separate resource: `/v1/oauth/token` takes `push_token`, `push_platform` and `push_environment` on the authorization-code, email-code and refresh grants, and writes them onto the session it creates or rotates. Ending the session (sign-out, revocation, member removal) ends push to that device. An APNs device token is sent with `push_platform` ``PushRegistration/Platform/applePush`` (`apple_push`); `firebase_push` and `web_push` are reserved.
 
 ```swift
 // application(_:didRegisterForRemoteNotificationsWithDeviceToken:)

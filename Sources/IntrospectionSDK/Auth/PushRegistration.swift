@@ -8,14 +8,19 @@ import Foundation
 /// rotate, a later refresh overwrites it, and ending the session clears it.
 /// `description` and `dump` never show the token.
 public struct PushRegistration: Sendable, Hashable {
-    /// The push service a token belongs to.
+    /// The push service a token belongs to, sent as `push_platform`. Open-ended: a value the server adds
+    /// later can be built from its raw string.
     public struct Platform: RawRepresentable, Sendable, Hashable, ExpressibleByStringLiteral {
         public let rawValue: String
         public init(rawValue: String) { self.rawValue = rawValue }
         public init(stringLiteral value: String) { rawValue = value }
 
-        /// Apple Push Notification service.
-        public static let apns: Platform = "apns"
+        /// Apple Push Notification service: an APNs device token.
+        public static let applePush: Platform = "apple_push"
+        /// Firebase Cloud Messaging. Reserved by the platform; not delivered yet.
+        public static let firebasePush: Platform = "firebase_push"
+        /// Web Push. Reserved by the platform; not delivered yet.
+        public static let webPush: Platform = "web_push"
     }
 
     /// The APNs environment that issued the token: a Debug build's token is
@@ -34,7 +39,7 @@ public struct PushRegistration: Sendable, Hashable {
     public var platform: Platform
     public var environment: Environment
 
-    public init(token: String, environment: Environment, platform: Platform = .apns) {
+    public init(token: String, environment: Environment, platform: Platform = .applePush) {
         self.token = token
         self.environment = environment
         self.platform = platform
@@ -42,7 +47,7 @@ public struct PushRegistration: Sendable, Hashable {
 
     /// A registration from the `deviceToken` APNs hands to
     /// `application(_:didRegisterForRemoteNotificationsWithDeviceToken:)`.
-    public init(deviceToken: Data, environment: Environment, platform: Platform = .apns) {
+    public init(deviceToken: Data, environment: Environment, platform: Platform = .applePush) {
         self.init(token: Self.hex(deviceToken), environment: environment, platform: platform)
     }
 
