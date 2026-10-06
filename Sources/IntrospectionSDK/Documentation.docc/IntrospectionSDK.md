@@ -84,18 +84,6 @@ The package has two products. `IntrospectionSDK`, documented here, is the client
 - ``MetricsAPI``
 - ``SharesAPI``
 
-### Issues
-
-Project pursuits with a living brief and a fixed worker task. Edit the brief with ``IssueUpdate`` at the issue's
-current ``Issue/revision``, and open or close a human request with ``IssueRequestMutation``.
-
-- ``IssuesAPI``
-- ``Issue``
-- ``IssueCreate``
-- ``IssueUpdate``
-- ``IssueRequestMutation``
-- ``IssueListParams``
-
 ### App connections
 
 The apps members connected for themselves, at `/v1/connections` on `client.connections` or `runner.connections`.

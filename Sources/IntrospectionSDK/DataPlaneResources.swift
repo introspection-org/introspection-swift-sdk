@@ -18,8 +18,6 @@ public protocol DataPlaneResources: DataPlaneConnection {
     var shares: SharesAPI { get }
     /// Scheduled prompts and platform work (`/v1/automations`).
     var automations: AutomationsAPI { get }
-    /// Project issues (`/v1/issues`).
-    var issues: IssuesAPI { get }
     /// The apps members connected for themselves (`/v1/connections`).
     var connections: AppConnectionsAPI { get }
 }
