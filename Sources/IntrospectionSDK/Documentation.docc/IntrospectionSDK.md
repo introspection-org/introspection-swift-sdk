@@ -4,7 +4,7 @@ A Swift client for the Introspection platform: run agents on your runtimes, stre
 
 ## Overview
 
-Introspection splits into a Control Plane (organizations, projects, runtimes, recipes, connectors, experiments) and a Data Plane (tasks, runs, files, conversations, events, metrics). ``IntrospectionClient`` talks to both, and a ``Runner`` is a Data Plane connection bound to one runtime and one end user.
+Introspection splits into a Control Plane (organizations, projects, runtimes, recipes, connectors, experiments) and a Data Plane (tasks, runs, files, conversations, events, metrics). ``IntrospectionClient`` talks to both, and a ``Runner`` is a Data Plane connection bound to one runtime and one end user. Both expose the same Data Plane resources, declared by ``DataPlaneResources``.
 
 ```swift
 import IntrospectionSDK
@@ -57,6 +57,7 @@ The package has two products. `IntrospectionSDK`, documented here, is the client
 - ``ExperimentsAPI``
 - ``ExperimentHandle``
 - ``DataPlaneConnection``
+- ``DataPlaneResources``
 
 ### Tasks and runs
 
@@ -82,6 +83,30 @@ The package has two products. `IntrospectionSDK`, documented here, is the client
 - ``EventsAPI``
 - ``MetricsAPI``
 - ``SharesAPI``
+
+### Issues
+
+Project pursuits with a living brief and a fixed worker task. Edit the brief with ``IssueUpdate`` at the issue's
+current ``Issue/revision``, and open or close a human request with ``IssueRequestMutation``.
+
+- ``IssuesAPI``
+- ``Issue``
+- ``IssueCreate``
+- ``IssueUpdate``
+- ``IssueRequestMutation``
+- ``IssueListParams``
+
+### App connections
+
+The apps members connected for themselves, at `/v1/connections` on `client.connections` or `runner.connections`.
+A member who is not an administrator only ever sees and changes their own. On a runner,
+``AppConnectionsAPI/create(app:runtime:)`` connects the app for the runner's runtime group; on the client, pass
+`runtime`. A connector's connections, which a business manages for its customers, are ``ConnectorsAPI/connections`` on
+the Control Plane.
+
+- ``AppConnectionsAPI``
+- ``AppConnection``
+- ``ConnectPage``
 
 ### Custom events
 

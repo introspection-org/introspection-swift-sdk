@@ -96,7 +96,9 @@ let followUp = try await runner.tasks.runs.create(handle.run.taskId, text: "Now 
 print(try await followUp.text())
 ```
 
-The runner also exposes `files`, `conversations`, `events`, `metrics` and `shares`.
+The runner and the client expose the same Data Plane resources (`DataPlaneResources`):
+`tasks`, `files`, `conversations`, `events`, `metrics`, `shares`, `automations`,
+`issues` and `connections`.
 
 ### Member tags and metadata
 
@@ -118,6 +120,19 @@ replaces the whole map; `[:]` clears it:
 ```swift
 let enterprise = try await client.members.list(MemberListParams(metadata: ["plan": "enterprise"])).collect()
 _ = try await client.members.update(memberId, MemberUpdate(metadata: ["plan": "team"]))
+```
+
+### App connections
+
+A member connects apps for themself through `connections`. On a runner,
+`create` connects the app for the runner's runtime group; on the client, pass
+`runtime:`. A member who is not an administrator only ever sees their own.
+
+```swift
+let page = try await runner.connections.create(app: "gmail")
+// Open page.authorizeUrl in a browser; it ends on a page saying the app is connected.
+for try await connection in runner.connections.list(app: "gmail") { print(connection.healthy) }
+try await runner.connections.delete(connectionId)
 ```
 
 ## End users signed in with your identity provider

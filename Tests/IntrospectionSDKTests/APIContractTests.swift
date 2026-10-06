@@ -48,6 +48,7 @@ import Testing
         checkRoutes(dp: dp, cp: cp)
         try await checkTasks(dp)
         try await checkFilesAndShares(dp)
+        try await checkIssues(dp)
         try await checkConversations(dp)
         try await checkEventsAndMetrics(dp)
         try await checkAutomations(dp)
@@ -214,6 +215,10 @@ import Testing
             "GET /v1/repositories/{repository_id}/commits", "GET /v1/repositories/{repository_id}/commits/{sha}",
             "GET /v1/repositories/{repository_id}/contents", "GET /v1/repositories/{repository_id}/contents/{path}",
             "POST /v1/repositories/{repository_id}/merges",
+            "GET /v1/issues", "POST /v1/issues", "GET /v1/issues/{issue_id}", "PATCH /v1/issues/{issue_id}",
+            "DELETE /v1/issues/{issue_id}",
+            "GET /v1/connections", "POST /v1/connections", "GET /v1/connections/{connection_id}",
+            "DELETE /v1/connections/{connection_id}",
         ]
         let controlPlane = [
             "GET /v1/runtimes", "GET /v1/runtimes/{runtime_id}", "POST /v1/runtimes/{runtime_id}/run",
@@ -235,8 +240,12 @@ import Testing
             "POST /v1/oauth/token", "POST /v1/oauth/device/code", "GET /v1/oauth/authorize", "POST /v1/oauth/revoke",
             "POST /v1/tokens", "POST /v1/oauth/email/code",
         ]
-        // Email-code sign-in is proposed for the Control Plane but not served yet.
-        let unpublished: Set<String> = ["POST /v1/oauth/email/code"]
+        // Email-code sign-in is proposed for the Control Plane but not served yet, nor is the Data Plane's
+        // `/v1/connections` resource; add its read model and body checks once the reference declares them.
+        let unpublished: Set<String> = [
+            "POST /v1/oauth/email/code", "GET /v1/connections", "POST /v1/connections", "GET /v1/connections/{connection_id}",
+            "DELETE /v1/connections/{connection_id}",
+        ]
         func missing(_ routes: [String], _ reference: OpenAPIReference) -> Set<String> {
             Set(
                 routes.filter { route in
@@ -343,6 +352,38 @@ import Testing
         let shares = ShareListParams(
             limit: 1, next: "cursor", resourceType: .file, resourceId: "f1", grantedMemberId: "m1", createdByMe: true, grantedToMe: true)
         await filters("share list filters: GET /v1/shares", dp, "GET", "/v1/shares") { _ = try await $0.shares.list(shares).firstPage() }
+    }
+
+    // MARK: Issues
+
+    private func checkIssues(_ dp: OpenAPIReference) async throws {
+        try readModel("Issue: the issue read model", Issue.self, dp, "Issue")
+        let file = IssueFile(fileId: "f1", name: "n", checksum: "c", sourceEventIds: ["e1"])
+        let link = IssueLink(url: "https://example.com", title: "t")
+        let event = IssueEventReference(eventId: "e1")
+        let span = IssueSpanReference(traceId: String(repeating: "a", count: 32), spanId: String(repeating: "b", count: 16))
+        try body(
+            "IssueCreate: POST /v1/issues body",
+            IssueCreate(
+                title: "t", description: "d", taskId: "t1", priority: .high, tags: ["a:b"], metadata: object, files: [file],
+                links: [link], events: [event], spans: [span]), dp, "IssueCreate")
+        try body(
+            "IssueUpdate: PATCH /v1/issues/{id} body",
+            IssueUpdate(
+                expectedRevision: 1, title: "t", description: "d", priority: .low, status: .closed, tags: [], metadata: object,
+                files: [file], links: [link], events: [event], spans: [span]), dp, "IssueUpdate")
+        try body(
+            "IssueRequestMutation: PATCH /v1/issues/{id} request body",
+            IssueRequestMutation(
+                id: "r1", expectedRevision: 0, question: "q", assigneeId: "m1", status: .open, resolution: "r"), dp,
+            "IssueRequestMutation")
+        let list = IssueListParams(
+            limit: 1, next: "cursor", status: [.open], owner: [.me], assignedToMe: true, hasOpenRequests: true,
+            taskStatus: [.running], excludeTaskStatus: [.failed], displayIndex: 1, tag: "a:b", metadata: ["k": "v"],
+            search: "s", includeTotal: true)
+        await filters("issue list filters: GET /v1/issues", dp, "GET", "/v1/issues", missingIsFatal: true) {
+            _ = try await $0.issues.list(list).firstPage()
+        }
     }
 
     // MARK: Conversations
