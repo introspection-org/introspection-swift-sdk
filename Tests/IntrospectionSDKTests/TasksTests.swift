@@ -292,4 +292,22 @@ import Testing
         #expect(error.message == "Sandbox failed to start")
         #expect(error.code == "sandbox_failed")
     }
+
+    @Test func createAndRunByRuntimeGroup() async throws {
+        let transport = MockTransport { request, _ in
+            request.url.path == "/v1/tasks"
+                ? .response(.json(#"{"task":\#(TasksTests.taskJSON),"run":\#(TasksTests.runJSON)}"#, status: 201))
+                : .response(.json(#"{"run":\#(TasksTests.runJSON)}"#, status: 201))
+        }
+        let client = makeClient(transport)
+
+        _ = try await client.tasks.start(prompt: "Hello", TaskCreate(runtimeGroup: "ark"))
+        let created = try #require(transport.last?.json)
+        #expect(created == ["prompt": "Hello", "runtime_group": "ark"])
+        #expect(created["runtime_id"] == nil)
+
+        _ = try await client.tasks.runs.create("t1", TaskRunCreate(text: "Next", runtimeGroup: "ark"))
+        #expect(transport.last?.path == "/v1/tasks/t1/runs")
+        #expect(transport.last?.json == ["prompt": ["text": "Next"], "runtime_group": "ark"])
+    }
 }

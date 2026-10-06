@@ -26,6 +26,8 @@ public enum OAuthClientID {
     public static let dataPlane = "dataplane"
     /// The CLI: the only client allowed to drive the device flow.
     public static let cli = "cli"
+    /// Ark, the first-party iOS assistant: hosted login for `business` members.
+    public static let ark = "ark"
 }
 
 extension IntrospectionError {
@@ -365,32 +367,36 @@ public struct AuthAPI: Sendable {
     }
 
     /// `authorization_code` for a code issued by the CP's own `/v1/oauth/authorize` (PKCE verifier when one was used).
+    /// `push` registers the device on the session the code creates.
     public func authorizationCode(
         code: String,
         clientId: String,
         redirectURI: String,
-        codeVerifier: String? = nil
+        codeVerifier: String? = nil,
+        push: PushRegistration? = nil
     ) async throws -> OAuthToken {
         try await token(
             grantType: OAuthGrantType.authorizationCode, clientId: clientId,
             parameters: [
                 ("code", code), ("redirect_uri", redirectURI), ("code_verifier", codeVerifier),
-            ])
+            ] + PushRegistration.parameters(push))
     }
 
     /// `refresh_token`. The server keys refresh on (refresh_token, session_id, org_id) and rotates the
     /// refresh token on every call. Use `OAuthClientID.dataPlane` for a session from `POST /v1/tokens`.
+    /// `push` overwrites the session's push registration; `PushRegistration.cleared` removes it.
     public func refresh(
         refreshToken: String,
         clientId: String,
         sessionId: String,
-        orgId: String
+        orgId: String,
+        push: PushRegistration? = nil
     ) async throws -> OAuthToken {
         try await token(
             grantType: OAuthGrantType.refreshToken, clientId: clientId,
             parameters: [
                 ("refresh_token", refreshToken), ("session_id", sessionId), ("org_id", orgId),
-            ])
+            ] + PushRegistration.parameters(push))
     }
 
     /// Start the RFC 8628 device flow: `POST /v1/oauth/device/code`. Only the `cli` client may.
@@ -499,16 +505,24 @@ public struct AuthAPI: Sendable {
         code: String,
         clientID: String,
         redirectURI: String,
-        codeVerifier: String
+        codeVerifier: String,
+        push: PushRegistration? = nil
     ) async throws -> OAuthToken {
-        try await authorizationCode(code: code, clientId: clientID, redirectURI: redirectURI, codeVerifier: codeVerifier)
+        try await authorizationCode(
+            code: code, clientId: clientID, redirectURI: redirectURI, codeVerifier: codeVerifier, push: push)
     }
 
     /// Finish a hosted login: check the callback's `state` and `error`, then exchange its code.
-    public func completeHostedLogin(_ request: HostedLoginRequest, callbackURL: URL) async throws -> OAuthToken {
+    /// `push` registers the device on the new session.
+    public func completeHostedLogin(
+        _ request: HostedLoginRequest,
+        callbackURL: URL,
+        push: PushRegistration? = nil
+    ) async throws -> OAuthToken {
         let code = try Self.parseCallback(callbackURL).authorizationCode(expectedState: request.state)
         return try await exchangeCode(
-            code: code, clientID: request.clientID, redirectURI: request.redirectURI, codeVerifier: request.pkce.verifier
+            code: code, clientID: request.clientID, redirectURI: request.redirectURI, codeVerifier: request.pkce.verifier,
+            push: push
         )
     }
 

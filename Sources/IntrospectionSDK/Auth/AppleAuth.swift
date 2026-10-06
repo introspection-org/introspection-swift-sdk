@@ -81,15 +81,19 @@ public final class HostedLoginPresenter: NSObject, ASWebAuthenticationPresentati
         MainActor.assumeIsolated { anchor }
     }
 
-    /// Sign in. `redirectURI` must be registered on the `spa` Application; an
-    /// `https` universal link needs iOS 17.4 / macOS 14.4, a custom scheme works earlier.
+    /// Sign in. `redirectURI` must be registered on the client; an `https`
+    /// universal link needs iOS 17.4 / macOS 14.4, a custom scheme works earlier.
+    /// `scope` is space-separated and capped by the client's ceiling; `push`
+    /// registers the device on the new session.
     @discardableResult
     public func signIn(
         with auth: AuthClient,
         redirectURI: String,
+        scope: String = "*",
+        push: PushRegistration? = nil,
         prefersEphemeralWebBrowserSession: Bool = false
-    ) async throws -> AuthSession {
-        let request = auth.hostedLoginRequest(redirectURI: redirectURI)
+    ) async throws -> HostedLoginResult {
+        let request = Self.request(with: auth, redirectURI: redirectURI, scope: scope)
         guard let redirect = URL(string: redirectURI) else {
             throw IntrospectionError(kind: .invalidRequest, message: "Invalid redirect URI: \(redirectURI)")
         }
@@ -126,7 +130,11 @@ public final class HostedLoginPresenter: NSObject, ASWebAuthenticationPresentati
                 continuation.resume(throwing: IntrospectionError(kind: .authentication, message: "Could not start the sign-in session"))
             }
         }
-        return try await auth.completeHostedLogin(request, callbackURL: callbackURL)
+        return try await auth.finishHostedLogin(request, callbackURL: callbackURL, push: push)
+    }
+
+    nonisolated static func request(with auth: AuthClient, redirectURI: String, scope: String) -> HostedLoginRequest {
+        auth.hostedLoginRequest(redirectURI: redirectURI, scope: scope)
     }
 }
 #endif

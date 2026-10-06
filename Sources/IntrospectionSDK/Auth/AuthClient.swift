@@ -54,6 +54,33 @@ public struct AuthUser: Codable, Sendable, Hashable {
     }
 }
 
+/// A completed hosted login: the session plus the token response it came from,
+/// which also carries `member_name`. Session properties read through, so
+/// `result.accessToken` and `result.user` work as on `AuthSession`.
+@dynamicMemberLookup
+public struct HostedLoginResult: Sendable, Hashable {
+    public var session: AuthSession
+    /// The full `/v1/oauth/token` response.
+    public var response: OAuthToken
+
+    public init(session: AuthSession, response: OAuthToken) {
+        self.session = session
+        self.response = response
+    }
+
+    /// The member's display name from the token response.
+    public var memberName: String? { response.memberName }
+
+    public subscript<Value>(dynamicMember keyPath: KeyPath<AuthSession, Value>) -> Value {
+        session[keyPath: keyPath]
+    }
+}
+
+/// An opaque marker of an `AuthClient`'s session state, read with `sessionGeneration`.
+public struct SessionGeneration: Sendable, Hashable {
+    let value: UInt64
+}
+
 /// What changed, mirroring Supabase's `AuthChangeEvent`.
 public enum AuthChangeEvent: String, Sendable, Hashable {
     /// Emitted once to each new listener with the session restored from storage (or nil).
@@ -89,9 +116,12 @@ public enum AuthMethod: Sendable {
     /// refreshed with the platform refresh grant. Requires a Control Plane with
     /// native email sign-in (proposed in `docs/design/native-email-auth.md`).
     case emailCode
-    /// The platform's hosted login (an `spa` Application), refreshed with the
-    /// platform refresh grant. Sign in with `HostedLoginPresenter`, or complete a
-    /// callback yourself with `completeHostedLogin(_:callbackURL:)`.
+    /// The platform's hosted login, refreshed with the platform refresh grant: a
+    /// customer `spa` Application, or a first-party client registered on the
+    /// Control Plane (such as `OAuthClientID.ark`), which signs in `business`
+    /// members under the client's own scope ceiling. Sign in with
+    /// `HostedLoginPresenter`, or complete a callback yourself with
+    /// `completeHostedLogin(_:callbackURL:push:)`.
     case hostedLogin
 }
 
@@ -141,6 +171,7 @@ public actor AuthClient {
     private let now: @Sendable () -> Date
 
     private var current: AuthSession?
+    private var push: PushRegistration?
     private var generation: UInt64 = 0
     private var storageWrite: Task<Void, any Error>?
     private var restored = false
@@ -178,7 +209,7 @@ public actor AuthClient {
             grantType: OAuthGrantType.emailCode, clientId: configuration.clientID,
             parameters: [
                 ("email", email), ("code", code), ("project", configuration.project),
-            ])
+            ] + PushRegistration.parameters(push))
         return try await signedIn(SessionToken(oauth: response, receivedAt: now()), ifCurrent: generation)
     }
 
@@ -190,17 +221,62 @@ public actor AuthClient {
 
     /// Finish a hosted login from its callback URL. Throws `CancellationError` when a
     /// sign-out or another sign-in completes while the code is being exchanged.
+    /// A `push` registration replaces the one set with `setPushRegistration(_:)`.
     @discardableResult
-    public func completeHostedLogin(_ request: HostedLoginRequest, callbackURL: URL) async throws -> AuthSession {
-        let generation = self.generation
-        let response = try await api.completeHostedLogin(request, callbackURL: callbackURL)
-        return try await signedIn(SessionToken(oauth: response, receivedAt: now()), ifCurrent: generation)
+    public func completeHostedLogin(
+        _ request: HostedLoginRequest,
+        callbackURL: URL,
+        push: PushRegistration? = nil
+    ) async throws -> AuthSession {
+        try await finishHostedLogin(request, callbackURL: callbackURL, push: push).session
     }
 
+    /// `completeHostedLogin` keeping the token response, whose `member_name` the session does not carry.
+    func finishHostedLogin(
+        _ request: HostedLoginRequest,
+        callbackURL: URL,
+        push: PushRegistration? = nil
+    ) async throws -> HostedLoginResult {
+        if let push { self.push = push }
+        let generation = self.generation
+        let response = try await api.completeHostedLogin(request, callbackURL: callbackURL, push: self.push)
+        let session = try await signedIn(SessionToken(oauth: response, receivedAt: now()), ifCurrent: generation)
+        return HostedLoginResult(session: session, response: response)
+    }
+
+    /// Marks the session state, so a token fetched elsewhere can be adopted only if
+    /// no sign-in or sign-out happened meanwhile (see `setSession(_:ifUnchangedSince:)`).
+    public var sessionGeneration: SessionGeneration { SessionGeneration(value: generation) }
+
     /// Adopt a platform token obtained elsewhere (for example from a login service).
+    /// With `generation`, read before the token was requested, throws
+    /// `CancellationError` when a sign-in or sign-out has completed since.
     @discardableResult
-    public func setSession(_ token: OAuthToken) async throws -> AuthSession {
-        try await signedIn(SessionToken(oauth: token, receivedAt: now()))
+    public func setSession(_ token: OAuthToken, ifUnchangedSince generation: SessionGeneration? = nil) async throws -> AuthSession {
+        try await signedIn(SessionToken(oauth: token, receivedAt: now()), ifCurrent: generation?.value)
+    }
+
+    // MARK: Push
+
+    /// The push registration sent on every sign-in and refresh; nil sends none.
+    public var pushRegistration: PushRegistration? { push }
+
+    /// Send `registration` with the next sign-in or refresh, and every one after.
+    /// `PushRegistration.cleared` stops push to this session; nil stops sending
+    /// push fields and leaves the session's registration as it is.
+    public func setPushRegistration(_ registration: PushRegistration?) {
+        push = registration
+    }
+
+    /// Set `registration` and refresh now, so it reaches the session without waiting
+    /// for the next scheduled refresh: iOS hands over the token after sign-in.
+    /// When signed out it throws `.authentication` and the registration waits for the next sign-in.
+    @discardableResult
+    public func registerPush(_ registration: PushRegistration) async throws -> AuthSession {
+        push = registration
+        // A refresh already in flight was sent without this registration.
+        if let refreshing { _ = try? await refreshing.value }
+        return try await refreshSession()
     }
 
     // MARK: Session
@@ -228,10 +304,11 @@ public actor AuthClient {
             throw IntrospectionError(kind: .authentication, message: "Not signed in")
         }
         let generation = self.generation
+        let push = self.push
         let task = Task<AuthSession, any Error> {
             defer { if self.generation == generation { self.refreshing = nil } }
             do {
-                let next = AuthSession(token: try await self.renew(session.token))
+                let next = AuthSession(token: try await self.renew(session.token, push: push))
                 try Task.checkCancellation()
                 guard self.generation == generation else { throw CancellationError() }
                 try await self.store(next)
@@ -307,7 +384,7 @@ public actor AuthClient {
         }
     }
 
-    private func renew(_ token: SessionToken) async throws -> SessionToken {
+    private func renew(_ token: SessionToken, push: PushRegistration?) async throws -> SessionToken {
         guard let refreshToken = token.refreshToken,
             let sessionId = token.sessionId ?? token.claims?.jti,
             let orgId = token.orgId ?? token.claims?.orgId
@@ -315,7 +392,7 @@ public actor AuthClient {
             throw IntrospectionError(kind: .authentication, message: "The session has no refresh token")
         }
         let response = try await api.refresh(
-            refreshToken: refreshToken, clientId: configuration.clientID, sessionId: sessionId, orgId: orgId
+            refreshToken: refreshToken, clientId: configuration.clientID, sessionId: sessionId, orgId: orgId, push: push
         )
         return SessionToken(oauth: response, receivedAt: now(), previous: token)
     }

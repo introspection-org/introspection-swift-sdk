@@ -135,9 +135,36 @@ let client = try await IntrospectionClient.federated(
 let run = try await client.tasks.start(prompt: "Hello", TaskCreate(runtimeId: runtimeId))
 ```
 
-A federated token is not bound to a runtime, so each task names the runtime
-version. Resolve it on your backend with a service account, as with the
-JavaScript browser client.
+A federated token is not bound to a runtime, so each task names one: the
+runtime group's slug, which the Data Plane resolves to the group's current
+version, or a version id resolved on your backend with a service account.
+
+```swift
+let run = try await client.tasks.start(prompt: "Hello", TaskCreate(runtimeGroup: "my-agent"))
+```
+
+## Hosted login and push notifications
+
+`AuthClient` with `.hostedLogin` signs a member in through the platform's
+hosted login, either a customer `spa` Application or a first-party client such
+as `OAuthClientID.ark`. `HostedLoginPresenter.signIn` takes the scopes to ask
+for and returns the session together with the token response (`memberName`).
+
+A phone registers for push on its session: the token rides on the sign-in and
+refresh grants, and ending the session ends push.
+
+```swift
+let result = try await presenter.signIn(with: auth, redirectURI: redirectURI, scope: "tasks:write events:read")
+
+// Once iOS hands over the device token:
+try await auth.registerPush(PushRegistration(deviceToken: deviceToken, environment: .production))
+
+// When the user turns notifications off:
+try await auth.registerPush(.cleared)
+```
+
+The SDK never logs the token. See the Authentication article in the DocC
+documentation for the details.
 
 ## Telemetry (opt-in)
 

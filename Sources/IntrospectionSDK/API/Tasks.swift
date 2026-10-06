@@ -326,6 +326,8 @@ public struct TaskCreate: Encodable, Sendable, Hashable {
     public var agentName: String?
     /// Runtime to bind; ignored for a runner credential, whose claim wins.
     public var runtimeId: String?
+    /// Runtime group slug: the server binds the group's current version. Exclusive with `runtimeId`.
+    public var runtimeGroup: String?
     /// `false` starts the agent without application-identity MCP bindings instead of failing.
     public var bindingsRequired: Bool?
     /// Exact pushed Recipe commit for an `eval` task.
@@ -354,6 +356,7 @@ public struct TaskCreate: Encodable, Sendable, Hashable {
         kind: TaskKind? = nil,
         agentName: String? = nil,
         runtimeId: String? = nil,
+        runtimeGroup: String? = nil,
         bindingsRequired: Bool? = nil,
         recipeGitCommitSha: String? = nil,
         recipePatch: TaskRecipePatch? = nil,
@@ -373,6 +376,7 @@ public struct TaskCreate: Encodable, Sendable, Hashable {
         self.kind = kind
         self.agentName = agentName
         self.runtimeId = runtimeId
+        self.runtimeGroup = runtimeGroup
         self.bindingsRequired = bindingsRequired
         self.recipeGitCommitSha = recipeGitCommitSha
         self.recipePatch = recipePatch
@@ -392,6 +396,7 @@ public struct TaskCreate: Encodable, Sendable, Hashable {
         case title, prompt, kind, repositories, metadata, tags, files, commands, compose
         case agentName = "agent_name"
         case runtimeId = "runtime_id"
+        case runtimeGroup = "runtime_group"
         case bindingsRequired = "bindings_required"
         case recipeGitCommitSha = "recipe_git_commit_sha"
         case recipePatch = "recipe_patch"
@@ -551,6 +556,8 @@ public struct TaskRunCreate: Encodable, Sendable, Hashable {
     public var deliveryId: String?
     /// Runtime to rebind to if this run has to provision a new sandbox.
     public var runtimeId: String?
+    /// Runtime group slug: moves the task onto the group's current version. Exclusive with `runtimeId`.
+    public var runtimeGroup: String?
 
     public init(
         prompt: TaskPrompt? = nil,
@@ -558,7 +565,8 @@ public struct TaskRunCreate: Encodable, Sendable, Hashable {
         metadata: JSONObject? = nil,
         files: [TaskFileRef]? = nil,
         deliveryId: String? = nil,
-        runtimeId: String? = nil
+        runtimeId: String? = nil,
+        runtimeGroup: String? = nil
     ) {
         self.prompt = prompt
         self.kind = kind
@@ -566,6 +574,7 @@ public struct TaskRunCreate: Encodable, Sendable, Hashable {
         self.files = files
         self.deliveryId = deliveryId
         self.runtimeId = runtimeId
+        self.runtimeGroup = runtimeGroup
     }
 
     /// A turn with prompt text.
@@ -575,16 +584,19 @@ public struct TaskRunCreate: Encodable, Sendable, Hashable {
         metadata: JSONObject? = nil,
         files: [TaskFileRef]? = nil,
         deliveryId: String? = nil,
-        runtimeId: String? = nil
+        runtimeId: String? = nil,
+        runtimeGroup: String? = nil
     ) {
         self.init(
-            prompt: TaskPrompt(text: text), kind: kind, metadata: metadata, files: files, deliveryId: deliveryId, runtimeId: runtimeId)
+            prompt: TaskPrompt(text: text), kind: kind, metadata: metadata, files: files, deliveryId: deliveryId,
+            runtimeId: runtimeId, runtimeGroup: runtimeGroup)
     }
 
     private enum CodingKeys: String, CodingKey {
         case prompt, kind, metadata, files
         case deliveryId = "delivery_id"
         case runtimeId = "runtime_id"
+        case runtimeGroup = "runtime_group"
     }
 }
 

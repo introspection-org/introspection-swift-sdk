@@ -41,6 +41,8 @@ The package has two products. `IntrospectionSDK`, documented here, is the client
 ### Signing in
 
 - ``AuthClient``
+- ``HostedLoginResult``
+- ``PushRegistration``
 - ``AuthAPI``
 - ``SessionCredentials``
 - ``BearerToken``
