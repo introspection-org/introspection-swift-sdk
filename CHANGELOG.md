@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.4.0...v0.5.0) (2026-10-07)
+
+
+### Features
+
+* open a runner by Runtime slug without listing; library-specific User-Agent ([#29](https://github.com/introspection-org/introspection-swift-sdk/issues/29)) ([bc47166](https://github.com/introspection-org/introspection-swift-sdk/commit/bc47166b5c697a5536ec5cd7858d2de7e3f49003))
+
 ## [0.4.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.3.0...v0.4.0) (2026-10-06)
 
 
