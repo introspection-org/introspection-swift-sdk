@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.3.0...v0.4.0) (2026-10-06)
+
+
+### ⚠ BREAKING CHANGES
+
+* **telemetry:** TrackPayload.name is a non-optional String, as the server guarantees it.
+
+### Features
+
+* one Data Plane surface on the client and the runner, with app connections ([#28](https://github.com/introspection-org/introspection-swift-sdk/issues/28)) ([e608fd3](https://github.com/introspection-org/introspection-swift-sdk/commit/e608fd3f653c9555bf032f3d1a5efec06ac64f1c))
+* **telemetry:** opt-in telemetry product for custom events and traces; read custom events by name ([#25](https://github.com/introspection-org/introspection-swift-sdk/issues/25)) ([72c309b](https://github.com/introspection-org/introspection-swift-sdk/commit/72c309b30cd5a454f84786ea290f5a9b326d3e82))
+
 ## [0.3.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.2.2...v0.3.0) (2026-10-05)
 
 
