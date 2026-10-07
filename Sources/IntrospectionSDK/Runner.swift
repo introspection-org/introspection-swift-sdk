@@ -297,6 +297,7 @@ public struct RunnerSpec: Codable, Sendable, Hashable {
 
 /// Where a runner came from, so `refresh()` can ask the Control Plane again.
 public enum RunnerSource: Sendable, Hashable {
+    /// `id` is the runtime version id, or the Runtime slug the run was opened with.
     case runtime(id: String, request: RunRequest, project: String?)
     case experiment(id: String, request: RunRequest, project: String?)
 

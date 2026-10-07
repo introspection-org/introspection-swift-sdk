@@ -113,7 +113,8 @@ private func specJSON(endpoint: String = "https://dp-gcp01.test", token: String 
         #expect(transport.last?.query["limit"] == ["1"])
     }
 
-    @Test func runtimeHandleResolvesOnEveryRunAndBuildsRunner() async throws {
+    @Test func runtimeHandleResolvesAGroupIdOnEveryRunAndBuildsRunner() async throws {
+        let groupId = "0195c0de-0000-7000-8000-0000000000c1"
         let transport = MockTransport { request, _ in
             switch (request.method, request.url.path) {
             case ("GET", "/v1/runtimes"):
@@ -134,12 +135,13 @@ private func specJSON(endpoint: String = "https://dp-gcp01.test", token: String 
             environment: .staging,
             bindingsRequired: false
         )
-        let handle = client.runtimes("customer-agent")
+        let handle = client.runtimes(groupId)
         let runner = try await handle.run(request)
-        _ = try await client.runtime("customer-agent").run(request)
+        _ = try await client.runtime(groupId).run(request)
 
         let lists = transport.requests.filter { $0.path == "/v1/runtimes" }
-        #expect(lists.count == 2, "the selector is resolved on every run")
+        #expect(lists.count == 2, "a runtime group id is resolved on every run")
+        #expect(lists.allSatisfy { $0.query["runtime"] == [groupId] })
 
         let post = try #require(transport.requests.first { $0.request.method == "POST" })
         let body = try #require(post.json)
@@ -168,6 +170,24 @@ private func specJSON(endpoint: String = "https://dp-gcp01.test", token: String 
         #expect(runner.context.caller?.extra["app"]?["name"]?.stringValue == "ios")
         #expect(runner.expiresAt == ISO8601.parse("2026-10-03T13:00:00Z"))
         #expect(runner.source == .runtime(id: "0195c0de-0000-7000-8000-000000000001", request: request, project: nil))
+    }
+
+    @Test func runtimeHandleOpensAndRefreshesASlugWithoutListing() async throws {
+        // `GET /v1/runtimes` refuses a customer credential, so a slug goes straight to `/run`.
+        let transport = MockTransport { _, _ in .response(.json(specJSON())) }
+        let client = makeClient(transport)
+        let runner = try await client.runtimes("customer-agent", project: "acme").run(identity: .init(userId: "u_42"))
+        #expect(transport.requests.map { "\($0.request.method) \($0.path)" } == ["POST /v1/runtimes/customer-agent/run"])
+        #expect(transport.last?.query["project"] == ["acme"])
+        #expect(runner.runtimeId == "0195c0de-0000-7000-8000-000000000001")
+        #expect(runner.source == .runtime(id: "customer-agent", request: RunRequest(identity: .init(userId: "u_42")), project: "acme"))
+
+        try await runner.refresh()
+        #expect(
+            transport.requests.map { "\($0.request.method) \($0.path)" } == [
+                "POST /v1/runtimes/customer-agent/run", "POST /v1/runtimes/customer-agent/run",
+            ])
+        #expect(transport.last?.query["project"] == ["acme"])
     }
 
     @Test func runnerTalksToDeploymentWithSessionToken() async throws {

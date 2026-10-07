@@ -93,8 +93,8 @@ public final class IntrospectionClient: DataPlaneConnection {
 
 public enum IntrospectionSDK {
     public static let version = "0.4.0"  // x-release-please-version
-    /// The same `User-Agent` the Rust and TypeScript SDKs send.
-    public static let userAgent = "introspection-sdk/\(version)"
+    /// `User-Agent` on every request: this library and its release.
+    public static let userAgent = "introspection-swift-sdk/\(version)"
     /// The default logger: discards everything until the app passes its own.
     public static let silentLogger = Logger(label: "dev.introspection.sdk", factory: { _ in SwiftLogNoOpLogHandler() })
 }

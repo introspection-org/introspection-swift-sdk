@@ -303,14 +303,14 @@ public struct RuntimesAPI: Sendable {
         throw IntrospectionError(kind: .notFound, message: "Runtime '\(runtime)' not found\(scope)", status: 404, code: "not_found")
     }
 
-    /// `POST /v1/runtimes/{id}/run`: mint a runner session spec without wrapping it.
+    /// `POST /v1/runtimes/{id}/run`: mint a runner session spec without wrapping it. `id` may be a Runtime slug.
     public func openRunner(_ id: String, _ request: RunRequest = RunRequest(), project: String? = nil) async throws -> RunnerSpec {
         var query = Query()
         query.add("project", project)
         return try await http.json("POST", "/v1/runtimes/\(pathSegment(id))/run", query: query, body: .encode(request))
     }
 
-    /// Open a runner on a runtime version id.
+    /// Open a runner on a runtime version id, or on a Runtime slug the server resolves in the caller's project.
     public func run(_ id: String, _ request: RunRequest = RunRequest(), project: String? = nil) async throws -> Runner {
         let spec = try await openRunner(id, request, project: project)
         return try Runner(
@@ -330,6 +330,11 @@ public struct RuntimesAPI: Sendable {
 /// A runtime group selector (slug or id). Each `run()` resolves it again, so a
 /// long-lived handle always reaches the version the group serves now rather
 /// than one that has since been yanked.
+///
+/// A slug is posted straight to `POST /v1/runtimes/{slug}/run`, which resolves it
+/// in the caller's project: a customer credential is refused `GET /v1/runtimes`
+/// but may open its own runner. A runtime group id has no such route and is
+/// resolved through the list first.
 public struct RuntimeHandle: Sendable {
     let api: RuntimesAPI
     /// The runtime group slug or id.
@@ -342,13 +347,16 @@ public struct RuntimeHandle: Sendable {
         self.project = project
     }
 
-    /// Resolve the runtime and open a runner on it.
+    /// Open a runner on the runtime: a slug in one request, a runtime group id after resolving it.
     public func run(_ request: RunRequest) async throws -> Runner {
+        guard UUID(uuidString: runtime) != nil else {
+            return try await api.run(runtime, request, project: project)
+        }
         let resolved = try await api.resolve(runtime, project: project)
         return try await api.run(resolved.id, request, project: project)
     }
 
-    /// Resolve the runtime and open a runner, with the request's fields inline
+    /// Open a runner on the runtime, with the request's fields inline
     /// (`run(identity: .init(userId: "u_42"))`), as the JS SDK takes them.
     public func run(
         identity: RunnerIdentity? = nil,

@@ -42,4 +42,4 @@ It logs each request's method, path, status and request id at `debug`, retries a
 
 Every request carries the W3C trace context (`traceparent`, `tracestate`, `baggage`) of the current task when your app bootstraps an instrument through [swift-distributed-tracing](https://github.com/apple/swift-distributed-tracing). The platform's APIs continue that trace, so their spans join yours. Without an instrument, nothing is added.
 
-Every request also sends `User-Agent: introspection-sdk/<version>`, the same value the Rust and TypeScript SDKs send. Override it with ``HTTPClient/Options/userAgent``.
+Every request also sends `User-Agent: introspection-swift-sdk/<version>`, naming this library and its release. Override it with ``HTTPClient/Options/userAgent``.
