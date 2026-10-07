@@ -76,10 +76,18 @@ import Testing
         #expect(transport.requests.count == 2)
     }
 
+    @Test func userAgentNamesThisLibraryAndTheReleasePleaseVersion() throws {
+        let versionFile = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("version.txt")
+        let release = try String(contentsOf: versionFile, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(IntrospectionSDK.userAgent == "introspection-swift-sdk/\(release)")
+    }
+
     @Test func everyRequestCarriesTheSDKUserAgentUnlessOverridden() async throws {
         let transport = MockTransport { _, _ in .response(.json("{}")) }
         _ = try await HTTPClient(baseURL: URL(string: "https://dp.test")!, transport: transport).json("GET", "/v1/x", as: JSONValue.self)
-        #expect(transport.last?.request.headers["User-Agent"] == "introspection-sdk/\(IntrospectionSDK.version)")
+        #expect(transport.last?.request.headers["User-Agent"] == "introspection-swift-sdk/\(IntrospectionSDK.version)")
 
         let custom = HTTPClient(
             baseURL: URL(string: "https://dp.test")!, transport: transport,

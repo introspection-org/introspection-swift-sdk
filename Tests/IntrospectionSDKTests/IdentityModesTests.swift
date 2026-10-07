@@ -31,9 +31,7 @@ import Testing
                 let n = exchanges
                 lock.unlock()
                 return .response(.json(#"{"access_token":"customer-\#(n)","expires_in":3600,"dp_url":"https://dp.test"}"#))
-            case ("GET", "/v1/runtimes"):
-                return .response(.json(#"{"records":[{"id":"\#(IdentityModesTests.runtimeId)","name":"ark"}],"count":1}"#))
-            case ("POST", "/v1/runtimes/\(IdentityModesTests.runtimeId)/run"):
+            case ("POST", "/v1/runtimes/ark/run"):
                 return .response(
                     .json(
                         #"{"session_id":"sess-1","session_token":"runner-token","expires_at":"2099-01-01T00:00:00Z","deployment":{"endpoint":"https://dp.test"}}"#
@@ -98,7 +96,7 @@ import Testing
         #expect(create.json?["runtime_id"] == nil)
         #expect(
             Set(requests.map(\.path)) == [
-                "/v1/oauth/token", "/v1/runtimes", "/v1/runtimes/\(Self.runtimeId)/run", "/v1/tasks", turnPath,
+                "/v1/oauth/token", "/v1/runtimes/ark/run", "/v1/tasks", turnPath,
             ])
     }
 

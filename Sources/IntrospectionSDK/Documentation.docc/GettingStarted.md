@@ -48,6 +48,8 @@ print(try await followUp.text())
 runner.close()
 ```
 
+`runtimes("customer-agent").run(...)` is one request, `POST /v1/runtimes/customer-agent/run`: the server resolves the slug in the credential's project (or the `project` you pass), so a credential that may not list runtimes, such as a customer signed in by email code, can still open a runner. ``Runner/refresh()`` posts the same path. A UUID selector is a runtime group id; it is resolved with `GET /v1/runtimes` first.
+
 ``RunHandle/text(options:)`` throws ``IntrospectionError`` with kind `.runFailed` when the run ends with an error, so a failed run never reads as an empty answer. To show the answer as it is written, stream it instead; see <doc:RunsAndStreaming>.
 
 ## Handle errors
