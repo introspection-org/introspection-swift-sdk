@@ -221,7 +221,8 @@ public func foldSpans(_ spans: [GenAISpan]) -> [TranscriptEntry] {
             if let arguments = patch.arguments { existing.arguments = arguments }
             if let result = patch.result {
                 existing.result = result
-                existing.status = patch.status ?? .complete
+                // A failed execution stays failed: the next model call's input carries the refusal as plain text.
+                existing.status = existing.status == .error ? .error : patch.status ?? .complete
             } else if let status = patch.status, status != .running {
                 // Execution outcomes overwrite; a later `running` sighting never downgrades.
                 existing.status = status
