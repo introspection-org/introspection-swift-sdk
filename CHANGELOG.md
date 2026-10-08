@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.5.0...v0.5.1) (2026-10-08)
+
+
+### Bug Fixes
+
+* a tool call that failed stays failed when its response is read back ([#31](https://github.com/introspection-org/introspection-swift-sdk/issues/31)) ([5712e4c](https://github.com/introspection-org/introspection-swift-sdk/commit/5712e4c8d69e24c62f19bddc36e17413a6adea16))
+
 ## [0.5.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.4.0...v0.5.0) (2026-10-07)
 
 
