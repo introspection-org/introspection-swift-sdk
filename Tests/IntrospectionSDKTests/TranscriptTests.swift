@@ -86,6 +86,28 @@ private func event(_ value: JSONValue) -> AGUIEvent { AGUIEvent(raw: value) }
         #expect(foldSpans([chat, failed]).first?.tool?.status == .error)
     }
 
+    @Test func failedExecutionStaysErrorWhenItsResponseIsRead() throws {
+        let chat = try span(
+            #"""
+            {"trace_id":"t","span_id":"s1","start_time":"2026-10-01T12:00:01Z","end_time":"2026-10-01T12:00:02Z",
+             "attributes":{"gen_ai":{"output":{"messages":[{"role":"assistant","parts":[{"type":"tool_call","id":"c1","name":"message_user"}]}]}}}}
+            """#)
+        let refused = try span(
+            #"""
+            {"trace_id":"t","span_id":"s2","start_time":"2026-10-01T12:00:03Z","duration_ns":5,"status":{"code":"Error"},
+             "attributes":{"gen_ai":{"operation":{"name":"execute_tool"},"tool":{"name":"message_user","call":{"id":"c1"}}}}}
+            """#)
+        // The next model call reads the refusal back as plain text, which says nothing of its outcome.
+        let next = try span(
+            #"""
+            {"trace_id":"t","span_id":"s3","start_time":"2026-10-01T12:00:04Z",
+             "attributes":{"gen_ai":{"input":{"messages":[{"role":"tool","parts":[{"type":"tool_call_response","id":"c1","response":"Validation failed for tool"}]}]}}}}
+            """#)
+        let tool = foldSpans([chat, refused, next]).first?.tool
+        #expect(tool?.status == .error)
+        #expect(tool?.result == .string("Validation failed for tool"))
+    }
+
     @Test func accumulatorFoldsLiveStream() {
         var activity = 0
         var control: [String] = []
