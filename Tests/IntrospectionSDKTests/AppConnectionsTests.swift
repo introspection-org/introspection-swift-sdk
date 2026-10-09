@@ -79,6 +79,13 @@ private func runner(_ transport: MockTransport, runtimeGroupId: String? = "rg-1"
         #expect(transport.last?.json == ["app": "gmail", "runtime": "ark"])
     }
 
+    @Test func createSendsTheAppsReturnLink() async throws {
+        let transport = MockTransport(json: #"{"authorize_url": "https://connect.test/p", "expires_in": 600}"#)
+        _ = try await makeClient(transport).connections.create(
+            app: "gmail", runtime: "ark", returnURL: URL(string: "ark://connected"))
+        #expect(transport.last?.json == ["app": "gmail", "runtime": "ark", "return_url": "ark://connected"])
+    }
+
     @Test(arguments: [false, true])
     func createWithoutAnyRuntimeFailsBeforeSending(onRunner: Bool) async throws {
         let transport = MockTransport(json: "{}")

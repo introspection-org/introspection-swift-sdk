@@ -31,8 +31,8 @@ public struct AppConnection: Codable, Sendable, Hashable {
     }
 }
 
-/// A single-use connect page for one app. Open it in a browser and never cache it; it ends on a page saying
-/// the app is connected.
+/// A single-use connect page for one app. Open it in a browser and never cache it; it ends on the `returnURL`
+/// it was created with, or on a page saying the app is connected.
 public struct ConnectPage: Codable, Sendable, Hashable {
     public var authorizeUrl: String
     /// Seconds until the page stops working.
@@ -56,6 +56,12 @@ public struct ConnectPage: Codable, Sendable, Hashable {
 struct AppConnectionCreate: Encodable, Sendable, Hashable {
     var app: String
     var runtime: String
+    var returnUrl: String?
+
+    enum CodingKeys: String, CodingKey {
+        case app, runtime
+        case returnUrl = "return_url"
+    }
 }
 
 /// The apps members connected for themselves (`/v1/connections`), as `client.connections` or
@@ -63,7 +69,7 @@ struct AppConnectionCreate: Encodable, Sendable, Hashable {
 /// not an administrator only ever sees and changes their own.
 public struct AppConnectionsAPI: Sendable {
     let http: HTTPClient
-    /// The runtime ``create(app:runtime:)`` connects for when none is passed: a runner's runtime group.
+    /// The runtime ``create(app:runtime:returnURL:)`` connects for when none is passed: a runner's runtime group.
     public let defaultRuntime: String?
 
     public init(http: HTTPClient, defaultRuntime: String? = nil) {
@@ -87,14 +93,18 @@ public struct AppConnectionsAPI: Sendable {
     ///   - app: Provider application slug, such as `gmail`.
     ///   - runtime: Runtime slug or runtime group id whose sessions use the connection. Defaults to
     ///     ``defaultRuntime``, which a runner sets to its runtime group; required on the client.
-    public func create(app: String, runtime: String? = nil) async throws -> ConnectPage {
+    ///   - returnURL: The app's own link the page ends on, such as `ark://connected`, so a web authentication
+    ///     session listening for that scheme closes itself; it arrives with `status`, `connector_id` and
+    ///     `connection_id`. Web URLs are refused.
+    public func create(app: String, runtime: String? = nil, returnURL: URL? = nil) async throws -> ConnectPage {
         guard let runtime = runtime ?? defaultRuntime else {
             throw IntrospectionError(
                 kind: .invalidRequest,
                 message: "connections.create needs a runtime: pass `runtime`, or call it on a runner whose context names its runtime group"
             )
         }
-        return try await http.json("POST", "/v1/connections", body: .encode(AppConnectionCreate(app: app, runtime: runtime)))
+        return try await http.json(
+            "POST", "/v1/connections", body: .encode(AppConnectionCreate(app: app, runtime: runtime, returnUrl: returnURL?.absoluteString)))
     }
 
     /// Read one connection.

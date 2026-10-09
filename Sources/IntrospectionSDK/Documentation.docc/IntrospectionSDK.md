@@ -88,7 +88,7 @@ The package has two products. `IntrospectionSDK`, documented here, is the client
 
 The apps members connected for themselves, at `/v1/connections` on `client.connections` or `runner.connections`.
 A member who is not an administrator only ever sees and changes their own. On a runner,
-``AppConnectionsAPI/create(app:runtime:)`` connects the app for the runner's runtime group; on the client, pass
+``AppConnectionsAPI/create(app:runtime:returnURL:)`` connects the app for the runner's runtime group; on the client, pass
 `runtime`. A connector's connections, which a business manages for its customers, are ``ConnectorsAPI/connections`` on
 the Control Plane.
 
