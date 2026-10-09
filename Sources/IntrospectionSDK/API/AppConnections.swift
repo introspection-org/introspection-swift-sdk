@@ -69,7 +69,7 @@ struct AppConnectionCreate: Encodable, Sendable, Hashable {
 /// not an administrator only ever sees and changes their own.
 public struct AppConnectionsAPI: Sendable {
     let http: HTTPClient
-    /// The runtime ``create(app:runtime:)`` connects for when none is passed: a runner's runtime group.
+    /// The runtime ``create(app:runtime:returnURL:)`` connects for when none is passed: a runner's runtime group.
     public let defaultRuntime: String?
 
     public init(http: HTTPClient, defaultRuntime: String? = nil) {

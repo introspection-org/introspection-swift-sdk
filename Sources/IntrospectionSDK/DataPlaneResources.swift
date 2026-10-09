@@ -23,11 +23,11 @@ public protocol DataPlaneResources: DataPlaneConnection {
 }
 
 extension IntrospectionClient: DataPlaneResources {
-    /// App connections. ``AppConnectionsAPI/create(app:runtime:)`` needs `runtime` here.
+    /// App connections. ``AppConnectionsAPI/create(app:runtime:returnURL:)`` needs `runtime` here.
     public var connections: AppConnectionsAPI { AppConnectionsAPI(http: dataPlane) }
 }
 
 extension Runner: DataPlaneResources {
-    /// App connections; ``AppConnectionsAPI/create(app:runtime:)`` defaults to this runner's runtime group.
+    /// App connections; ``AppConnectionsAPI/create(app:runtime:returnURL:)`` defaults to this runner's runtime group.
     public var connections: AppConnectionsAPI { AppConnectionsAPI(http: dataPlane, defaultRuntime: runtimeGroupId) }
 }
