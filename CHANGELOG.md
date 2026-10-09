@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.5.1...v0.6.0) (2026-10-09)
+
+
+### Features
+
+* **connections:** create takes a returnURL the connect page ends on ([#33](https://github.com/introspection-org/introspection-swift-sdk/issues/33)) ([1308048](https://github.com/introspection-org/introspection-swift-sdk/commit/13080482f0560d0a260faa74c4e473e2220ea0dd))
+
 ## [0.5.1](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.5.0...v0.5.1) (2026-10-08)
 
 
