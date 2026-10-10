@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.6.0...v0.7.0) (2026-10-10)
+
+
+### Features
+
+* **shares:** tag grantees, visible_from, issue shares and update ([#35](https://github.com/introspection-org/introspection-swift-sdk/issues/35)) ([d647604](https://github.com/introspection-org/introspection-swift-sdk/commit/d6476046686cb23372dbf609abca21f8fd8c628d))
+
 ## [0.6.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.5.1...v0.6.0) (2026-10-09)
 
 
