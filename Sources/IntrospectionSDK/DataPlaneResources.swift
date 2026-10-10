@@ -14,7 +14,7 @@ public protocol DataPlaneResources: DataPlaneConnection {
     var events: EventsAPI { get }
     /// Telemetry aggregation (`/v1/metrics`).
     var metrics: MetricsAPI { get }
-    /// Read-sharing grants for files and conversations (`/v1/shares`).
+    /// Sharing grants for files, conversations and issues (`/v1/shares`).
     var shares: SharesAPI { get }
     /// Scheduled prompts and platform work (`/v1/automations`).
     var automations: AutomationsAPI { get }
