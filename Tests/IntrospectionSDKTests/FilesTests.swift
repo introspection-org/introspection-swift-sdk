@@ -25,7 +25,7 @@ private let fileJSON = #"""
         let created = Date(timeIntervalSince1970: 1_790_000_000)
         let files = try await client.files.list(
             FileListParams(
-                limit: 1, includeTotal: true, includeVersions: true, shareIds: ["s1", "s2"], name: "a.md",
+                limit: 1, includeTotal: true, includeVersions: true, name: "a.md",
                 nameContains: "not", fileType: .upload, category: .memory, contentFormat: .markdown, versioned: false,
                 storagePath: "p", taskId: "t1", conversationId: "c1", memberId: "m1", tag: "customer:acme",
                 createdAfter: created, createdBefore: created, updatedAfter: created, updatedBefore: created
@@ -41,7 +41,6 @@ private let fileJSON = #"""
         #expect(q["limit"] == ["1"])
         #expect(q["include_total"] == ["true"])
         #expect(q["include_versions"] == ["true"])
-        #expect(q["share_id"] == ["s1", "s2"])
         #expect(q["name_contains"] == ["not"])
         #expect(q["file_type"] == ["upload"])
         #expect(q["category"] == ["memory"])
@@ -162,9 +161,8 @@ private let fileJSON = #"""
             }
         }
         let client = makeClient(transport)
-        _ = try await client.files.get("f1", shareId: "s1")
+        _ = try await client.files.get("f1")
         #expect(transport.last?.path == "/v1/files/f1")
-        #expect(transport.last?.query["share_id"] == ["s1"])
 
         _ = try await client.files.update("f1", FileUpdate(name: "b.md", tags: []))
         #expect(transport.last?.request.method == "PATCH")

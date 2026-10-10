@@ -130,8 +130,6 @@ public struct FileListParams: Sendable, Hashable {
     public var includeTotal: Bool?
     /// Include superseded versions (default: latest versions only).
     public var includeVersions: Bool?
-    /// Also include files granted by these `/v1/shares` ids.
-    public var shareIds: [String]?
     public var name: String?
     /// Case-insensitive name search.
     public var nameContains: String?
@@ -158,7 +156,7 @@ public struct FileListParams: Sendable, Hashable {
 
     public init(
         limit: Int? = nil, next: String? = nil, includeTotal: Bool? = nil, includeVersions: Bool? = nil,
-        shareIds: [String]? = nil, name: String? = nil, nameContains: String? = nil, fileType: FileType? = nil,
+        name: String? = nil, nameContains: String? = nil, fileType: FileType? = nil,
         category: FileCategory? = nil, contentFormat: FileContentFormat? = nil, versioned: Bool? = nil,
         storagePath: String? = nil, taskId: String? = nil, conversationId: String? = nil, memberId: String? = nil,
         tag: String? = nil, createdAfter: Date? = nil, createdBefore: Date? = nil, updatedAfter: Date? = nil,
@@ -168,7 +166,6 @@ public struct FileListParams: Sendable, Hashable {
         self.next = next
         self.includeTotal = includeTotal
         self.includeVersions = includeVersions
-        self.shareIds = shareIds
         self.name = name
         self.nameContains = nameContains
         self.fileType = fileType
@@ -192,7 +189,6 @@ public struct FileListParams: Sendable, Hashable {
         q.add("limit", limit)
         q.add("include_total", includeTotal)
         q.add("include_versions", includeVersions)
-        q.add("share_id", shareIds)
         q.add("name", name)
         q.add("name_contains", nameContains)
         q.add("file_type", fileType)
@@ -357,11 +353,9 @@ public struct FilesAPI: Sendable {
         return try await http.json("POST", "/v1/files", body: .encode(body))
     }
 
-    /// Read a file's metadata, optionally through a share grant.
-    public func get(_ fileId: String, shareId: String? = nil) async throws -> File {
-        var query = Query()
-        query.add("share_id", shareId)
-        return try await http.json("GET", "/v1/files/\(pathSegment(fileId))", query: query)
+    /// Read a file's metadata.
+    public func get(_ fileId: String) async throws -> File {
+        try await http.json("GET", "/v1/files/\(pathSegment(fileId))")
     }
 
     /// Update a file's name, metadata or tags.
@@ -375,17 +369,13 @@ public struct FilesAPI: Sendable {
     }
 
     /// Download a file's content into memory.
-    public func download(_ fileId: String, shareId: String? = nil) async throws -> Data {
-        var query = Query()
-        query.add("share_id", shareId)
-        return try await http.data("GET", "/v1/files/\(pathSegment(fileId))/content", query: query, headers: ["Accept": "*/*"])
+    public func download(_ fileId: String) async throws -> Data {
+        try await http.data("GET", "/v1/files/\(pathSegment(fileId))/content", headers: ["Accept": "*/*"])
     }
 
     /// Stream a file's content. Headers carry `x-version` and, when versioned, `x-storage-version-id`.
-    public func downloadStream(_ fileId: String, shareId: String? = nil) async throws -> HTTPStreamResponse {
-        var query = Query()
-        query.add("share_id", shareId)
-        return try await http.stream("GET", "/v1/files/\(pathSegment(fileId))/content", query: query, headers: ["Accept": "*/*"])
+    public func downloadStream(_ fileId: String) async throws -> HTTPStreamResponse {
+        try await http.stream("GET", "/v1/files/\(pathSegment(fileId))/content", headers: ["Accept": "*/*"])
     }
 }
 
