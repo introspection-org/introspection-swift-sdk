@@ -137,8 +137,9 @@ import Testing
     @Test func sharesRoutes() async throws {
         let share = #"""
             {"id":"sh1","org_id":"o","project_id":"p","created_at":"2026-10-01T12:00:00Z","updated_at":"2026-10-01T12:00:00Z",
-             "resource_type":"file","resource_id":"f1","granted_member_id":null,"created_by_member_id":"m1",
-             "url":"https://dp.test/v1/files/f1?share_id=sh1"}
+             "deleted_at":null,"resource_type":"conversation","resource_id":"c1","granted_member_id":null,
+             "granted_tag":"team:support","visible_from":"2026-09-30T08:00:00Z","created_by_member_id":"m1",
+             "url":"https://dp.test/v1/conversations/c1/items"}
             """#
         let transport = MockTransport { request, _ in
             switch request.method {
@@ -149,15 +150,39 @@ import Testing
             }
         }
         let client = makeClient(transport)
-        let shares = try await client.shares.list(ShareListParams(resourceType: .file, createdByMe: true)).collect()
-        #expect(shares.first?.url == "https://dp.test/v1/files/f1?share_id=sh1")
-        #expect(shares.first?.grantedMemberId == nil)
-        #expect(transport.last?.query["resource_type"] == ["file"])
+        let shares = try await client.shares.list(
+            ShareListParams(resourceType: .conversation, createdByMe: true, grantedTag: "team:support")
+        ).collect()
+        let first = try #require(shares.first)
+        #expect(first.url == "https://dp.test/v1/conversations/c1/items")
+        #expect(first.grantedMemberId == nil)
+        #expect(first.grantedTag == "team:support")
+        #expect(first.visibleFrom == ISO8601.parse("2026-09-30T08:00:00Z"))
+        #expect(first.deletedAt == nil)
+        #expect(transport.last?.query["resource_type"] == ["conversation"])
         #expect(transport.last?.query["created_by_me"] == ["true"])
+        #expect(transport.last?.query["granted_tag"] == ["team:support"])
 
-        let created = try await client.shares.create(ShareCreate(resourceType: .conversation, resourceId: "c1", grantedMemberId: "m2"))
+        let from = try #require(ISO8601.parse("2026-09-30T08:00:00Z"))
+        let created = try await client.shares.create(
+            ShareCreate(resourceType: .conversation, resourceId: "c1", grantedMemberId: "m2", grantedTag: "team:support", visibleFrom: from)
+        )
         #expect(created.id == "sh1")
-        #expect(transport.last?.json == ["resource_type": "conversation", "resource_id": "c1", "granted_member_id": "m2"])
+        #expect(
+            transport.last?.json == [
+                "resource_type": "conversation", "resource_id": "c1", "granted_member_id": "m2", "granted_tag": "team:support",
+                "visible_from": .string(ISO8601.format(from)),
+            ])
+
+        _ = try await client.shares.create(ShareCreate(resourceType: .issue, resourceId: "i1"))
+        #expect(transport.last?.json == ["resource_type": "issue", "resource_id": "i1"])
+
+        _ = try await client.shares.update("sh1", ShareUpdate(visibleFrom: from))
+        #expect(transport.last?.request.method == "PATCH")
+        #expect(transport.last?.path == "/v1/shares/sh1")
+        #expect(transport.last?.json == ["visible_from": .string(ISO8601.format(from))])
+        _ = try await client.shares.update("sh1", ShareUpdate(visibleFrom: nil))
+        #expect(transport.last?.bodyString == #"{"visible_from":null}"#)
 
         _ = try await client.shares.get("sh1")
         #expect(transport.last?.path == "/v1/shares/sh1")
