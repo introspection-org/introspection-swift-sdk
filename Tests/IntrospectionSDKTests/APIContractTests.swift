@@ -322,7 +322,7 @@ import Testing
         try readModel("File: the file read model", File.self, dp, "File")
         try body("FileUpdate: PATCH /v1/files/{id} body", FileUpdate(name: "n", metadata: object, tags: []), dp, "FileUpdate")
         let list = FileListParams(
-            limit: 1, next: "cursor", includeTotal: true, includeVersions: true, shareIds: ["s1"], name: "n",
+            limit: 1, next: "cursor", includeTotal: true, includeVersions: true, name: "n",
             nameContains: "n", fileType: .upload, category: .memory, contentFormat: .markdown, versioned: true,
             storagePath: "p", taskId: "t1", conversationId: "c1", memberId: "m1", tag: "a:b", createdAfter: date,
             createdBefore: date, updatedAfter: date, updatedBefore: date, metadata: ["status": "open"])
@@ -336,10 +336,10 @@ import Testing
             _ = try await $0.files.versions.list("f1", FileVersionListParams(limit: 1, next: "cursor", includeTotal: true)).firstPage()
         }
         await filters("file read options: GET /v1/files/{id}", dp, "GET", "/v1/files/{file_id}", missingIsFatal: true) {
-            _ = try await $0.files.get("f1", shareId: "s1")
+            _ = try await $0.files.get("f1")
         }
         await filters("file content options: GET /v1/files/{id}/content", dp, "GET", "/v1/files/{file_id}/content", missingIsFatal: true) {
-            _ = try await $0.files.download("f1", shareId: "s1")
+            _ = try await $0.files.download("f1")
         }
 
         try readModel("ResourceShare: the share read model", ResourceShare.self, dp, "ResourceShare")
@@ -363,7 +363,7 @@ import Testing
 
         // `lookback` is left out: it conflicts with `start`/`end`, and all three lower into `start_date`/`end_date`.
         let list = ConversationListParams(
-            limit: 1, next: "cursor", order: .asc, start: date, end: date, sort: .cost, shareIds: ["s1"],
+            limit: 1, next: "cursor", order: .asc, start: date, end: date, sort: .cost,
             conversationId: "c1", conversationIds: ["c1"], traceId: "tr", annotationId: "an", model: "m", agentName: "a",
             status: .ok, serviceName: "svc", serviceNames: ["svc"], environment: "production", runtimeId: "rt",
             runtimeGroupId: "rg", experimentId: "ex", recipeGitCommitSha: "abc", resolution: "resolved",
@@ -374,10 +374,10 @@ import Testing
         await filters(
             "conversation read options: GET /v1/conversations/{id}", dp, "GET", "/v1/conversations/{conversation_id}",
             missingIsFatal: true
-        ) { _ = try await $0.conversations.get("c1", shareId: "s1", annotationId: "an") }
+        ) { _ = try await $0.conversations.get("c1", annotationId: "an") }
         let items = ConversationItemListParams(
             limit: 1, next: "cursor", include: [.events], agent: "a", serviceName: "svc", operationName: "chat", traceId: "tr",
-            spanId: "sp", startDate: date, endDate: date, lookbackDays: 7, shareId: "s1", annotationId: "an", fromCompaction: true)
+            spanId: "sp", startDate: date, endDate: date, lookbackDays: 7, annotationId: "an", fromCompaction: true)
         await filters(
             "conversation item filters: GET /v1/conversations/{id}/items", dp, "GET", "/v1/conversations/{conversation_id}/items",
             missingIsFatal: true
@@ -385,16 +385,16 @@ import Testing
         await filters(
             "conversation item read options: GET /v1/conversations/{id}/items/{item_id}", dp, "GET",
             "/v1/conversations/{conversation_id}/items/{item_id}", missingIsFatal: true
-        ) { _ = try await $0.conversations.items.get("c1", "i1", include: [.events], shareId: "s1", annotationId: "an") }
+        ) { _ = try await $0.conversations.items.get("c1", "i1", include: [.events], annotationId: "an") }
         let export = ConversationExportParams(
-            agent: "a", serviceName: "svc", operationName: "chat", lookbackDays: 7, shareId: "s1", annotationId: "an",
+            agent: "a", serviceName: "svc", operationName: "chat", lookbackDays: 7, annotationId: "an",
             startDate: date, endDate: date, fromCompaction: true)
         await filters(
             "conversation export filters: GET /v1/conversations/{id}/export", dp, "GET", "/v1/conversations/{conversation_id}/export",
             missingIsFatal: true
         ) { _ = try await $0.conversations.exportJSON("c1", export) }
         let turns = ConversationTurnListParams(
-            limit: 1, next: "cursor", agent: "a", beforeTraceId: "tr0", traceId: "tr", lookbackDays: 7, shareId: "s1", annotationId: "an")
+            limit: 1, next: "cursor", agent: "a", beforeTraceId: "tr0", traceId: "tr", lookbackDays: 7, annotationId: "an")
         await filters(
             "conversation turn filters: GET /v1/conversations/{id}/turns", dp, "GET", "/v1/conversations/{conversation_id}/turns",
             missingIsFatal: true

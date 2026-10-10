@@ -38,7 +38,7 @@ private let toolSpanJSON = #"""
         let now = Date(timeIntervalSince1970: 1_790_000_000)
         let paginator = try client.conversations.list(
             ConversationListParams(
-                limit: 10, order: .asc, lookback: "24h", sort: .cost, shareIds: ["sh1"], conversationIds: ["a", "b"],
+                limit: 10, order: .asc, lookback: "24h", sort: .cost, conversationIds: ["a", "b"],
                 status: .error, serviceNames: ["x", "y"], resolution: "resolved",
                 metadata: ["tenant": "acme", "flow": "company:x"]
             ), now: now)
@@ -207,9 +207,8 @@ private let toolSpanJSON = #"""
         }
         let client = makeClient(transport)
 
-        let conversation = try await client.conversations.get("conv-1", shareId: "sh")
+        let conversation = try await client.conversations.get("conv-1")
         #expect(conversation.taskTitle == "Hello")
-        #expect(transport.last?.query["share_id"] == ["sh"])
 
         let turns = try await client.conversations.turns("conv-1", ConversationTurnListParams(limit: 5, agent: "root", lookbackDays: 7))
             .collect()

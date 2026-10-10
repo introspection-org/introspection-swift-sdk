@@ -814,7 +814,6 @@ public struct ConversationListParams: Sendable, Hashable {
     /// Computed into `start_date = now - lookback`.
     public var lookback: ReadLookback?
     public var sort: ConversationSortField?
-    public var shareIds: [String]?
     public var conversationId: String?
     public var conversationIds: [String]?
     public var traceId: String?
@@ -839,7 +838,7 @@ public struct ConversationListParams: Sendable, Hashable {
 
     public init(
         limit: Int? = nil, next: String? = nil, order: ReadOrder? = nil, start: Date? = nil, end: Date? = nil,
-        lookback: ReadLookback? = nil, sort: ConversationSortField? = nil, shareIds: [String]? = nil,
+        lookback: ReadLookback? = nil, sort: ConversationSortField? = nil,
         conversationId: String? = nil, conversationIds: [String]? = nil, traceId: String? = nil,
         annotationId: String? = nil, model: String? = nil, agentName: String? = nil,
         status: GenAISpanStatusCode? = nil, serviceName: String? = nil, serviceNames: [String]? = nil,
@@ -854,7 +853,6 @@ public struct ConversationListParams: Sendable, Hashable {
         self.end = end
         self.lookback = lookback
         self.sort = sort
-        self.shareIds = shareIds
         self.conversationId = conversationId
         self.conversationIds = conversationIds
         self.traceId = traceId
@@ -880,7 +878,6 @@ public struct ConversationListParams: Sendable, Hashable {
         q.add("limit", limit)
         q.add("sort", sort)
         try applyReadWindow(to: &q, order: order, start: start, end: end, lookback: lookback, now: now)
-        q.add("share_id", shareIds)
         q.add("conversation_id", conversationId)
         q.add("conversation_ids", conversationIds)
         q.add("trace_id", traceId)
@@ -918,7 +915,6 @@ public struct ConversationItemListParams: Sendable, Hashable {
     public var endDate: Date?
     /// Partition lookback in days (1-365).
     public var lookbackDays: Int?
-    public var shareId: String?
     public var annotationId: String?
     /// Resume from the latest compaction boundary (ascending).
     public var fromCompaction: Bool?
@@ -926,8 +922,8 @@ public struct ConversationItemListParams: Sendable, Hashable {
     public init(
         limit: Int? = nil, next: String? = nil, include: [ConversationItemInclude]? = nil, agent: String? = nil,
         serviceName: String? = nil, operationName: String? = nil, traceId: String? = nil, spanId: String? = nil,
-        startDate: Date? = nil, endDate: Date? = nil, lookbackDays: Int? = nil, shareId: String? = nil,
-        annotationId: String? = nil, fromCompaction: Bool? = nil
+        startDate: Date? = nil, endDate: Date? = nil, lookbackDays: Int? = nil, annotationId: String? = nil,
+        fromCompaction: Bool? = nil
     ) {
         self.limit = limit
         self.next = next
@@ -940,7 +936,6 @@ public struct ConversationItemListParams: Sendable, Hashable {
         self.startDate = startDate
         self.endDate = endDate
         self.lookbackDays = lookbackDays
-        self.shareId = shareId
         self.annotationId = annotationId
         self.fromCompaction = fromCompaction
     }
@@ -957,7 +952,6 @@ public struct ConversationItemListParams: Sendable, Hashable {
         q.add("start_date", startDate)
         q.add("end_date", endDate)
         q.add("lookback_days", lookbackDays)
-        q.add("share_id", shareId)
         q.add("annotation_id", annotationId)
         q.add("from_compaction", fromCompaction)
         return q
@@ -970,7 +964,6 @@ public struct ConversationExportParams: Sendable, Hashable {
     public var serviceName: String?
     public var operationName: String?
     public var lookbackDays: Int?
-    public var shareId: String?
     public var annotationId: String?
     public var startDate: Date?
     public var endDate: Date?
@@ -978,14 +971,13 @@ public struct ConversationExportParams: Sendable, Hashable {
 
     public init(
         agent: String? = nil, serviceName: String? = nil, operationName: String? = nil, lookbackDays: Int? = nil,
-        shareId: String? = nil, annotationId: String? = nil, startDate: Date? = nil, endDate: Date? = nil,
+        annotationId: String? = nil, startDate: Date? = nil, endDate: Date? = nil,
         fromCompaction: Bool? = nil
     ) {
         self.agent = agent
         self.serviceName = serviceName
         self.operationName = operationName
         self.lookbackDays = lookbackDays
-        self.shareId = shareId
         self.annotationId = annotationId
         self.startDate = startDate
         self.endDate = endDate
@@ -998,7 +990,6 @@ public struct ConversationExportParams: Sendable, Hashable {
         q.add("service_name", serviceName)
         q.add("operation_name", operationName)
         q.add("lookback_days", lookbackDays)
-        q.add("share_id", shareId)
         q.add("annotation_id", annotationId)
         q.add("start_date", startDate)
         q.add("end_date", endDate)
@@ -1138,12 +1129,11 @@ public struct ConversationTurnListParams: Sendable, Hashable {
     public var beforeTraceId: String?
     public var traceId: String?
     public var lookbackDays: Int?
-    public var shareId: String?
     public var annotationId: String?
 
     public init(
         limit: Int? = nil, next: String? = nil, agent: String? = nil, beforeTraceId: String? = nil,
-        traceId: String? = nil, lookbackDays: Int? = nil, shareId: String? = nil, annotationId: String? = nil
+        traceId: String? = nil, lookbackDays: Int? = nil, annotationId: String? = nil
     ) {
         self.limit = limit
         self.next = next
@@ -1151,7 +1141,6 @@ public struct ConversationTurnListParams: Sendable, Hashable {
         self.beforeTraceId = beforeTraceId
         self.traceId = traceId
         self.lookbackDays = lookbackDays
-        self.shareId = shareId
         self.annotationId = annotationId
     }
 }
@@ -1212,9 +1201,8 @@ public struct ConversationsAPI: Sendable {
     }
 
     /// Read one conversation summary with its complete agent index.
-    public func get(_ conversationId: String, shareId: String? = nil, annotationId: String? = nil) async throws -> Conversation {
+    public func get(_ conversationId: String, annotationId: String? = nil) async throws -> Conversation {
         var query = Query()
-        query.add("share_id", shareId)
         query.add("annotation_id", annotationId)
         return try await http.json("GET", "/v1/conversations/\(pathSegment(conversationId))", query: query)
     }
@@ -1229,7 +1217,6 @@ public struct ConversationsAPI: Sendable {
         query.add("before_trace_id", params.beforeTraceId)
         query.add("trace_id", params.traceId)
         query.add("lookback_days", params.lookbackDays)
-        query.add("share_id", params.shareId)
         query.add("annotation_id", params.annotationId)
         return http.paginate("/v1/conversations/\(pathSegment(conversationId))/turns", query: query, start: params.next)
     }
@@ -1317,11 +1304,10 @@ public struct ConversationItemsAPI: Sendable {
     /// Read one item with the full input history as of that span.
     public func get(
         _ conversationId: String, _ itemId: String, include: [ConversationItemInclude]? = nil,
-        shareId: String? = nil, annotationId: String? = nil
+        annotationId: String? = nil
     ) async throws -> GenAISpan {
         var query = Query()
         query.add("include", include)
-        query.add("share_id", shareId)
         query.add("annotation_id", annotationId)
         let span = try await http.json(
             "GET", "/v1/conversations/\(pathSegment(conversationId))/items/\(pathSegment(itemId))",
