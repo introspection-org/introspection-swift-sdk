@@ -1,7 +1,6 @@
 import Foundation
 import Instrumentation
 import Logging
-import ServiceContextModule
 
 /// The HTTP core every resource client uses: URL building, auth headers,
 /// error mapping, `429` and idempotent `502/503/504` retries with
@@ -178,7 +177,7 @@ public final class HTTPClient: Sendable {
         if !headers.keys.contains(where: { $0.caseInsensitiveCompare("User-Agent") == .orderedSame }) {
             headers["User-Agent"] = options.userAgent
         }
-        InstrumentationSystem.instrument.inject(ServiceContext.current ?? .topLevel, into: &headers, using: HeaderInjector())
+        InstrumentationSystem.instrument.inject(InstrumentationContext.current ?? .topLevel, into: &headers, using: HeaderInjector())
         if authenticated, let authorization = try await credentials?.authorization() {
             headers["Authorization"] = authorization
         }
