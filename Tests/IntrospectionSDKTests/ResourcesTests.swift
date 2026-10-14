@@ -599,13 +599,17 @@ private func member(_ id: String, _ email: String?, deactivated: Bool = false) -
         #expect(transport.last?.query["metadata"] == nil)
 
         let created = try await api.create(
-            MemberCreate(email: "ana@example.com", name: "Ana Lopez", tags: ["team:acme"], metadata: ["plan": "enterprise"]))
+            .business(
+                BusinessMemberCreate(email: "ana@example.com", name: "Ana Lopez", tags: ["team:acme"], metadata: ["plan": "enterprise"])))
         #expect(created.metadata?["plan"] == "enterprise")
         #expect(transport.last?.request.method == "POST")
         #expect(transport.last?.path == "/v1/members")
         #expect(
             transport.last?.json
-                == ["email": "ana@example.com", "name": "Ana Lopez", "tags": ["team:acme"], "metadata": ["plan": "enterprise"]])
+                == [
+                    "member_type": "business", "email": "ana@example.com", "name": "Ana Lopez", "tags": ["team:acme"],
+                    "metadata": ["plan": "enterprise"],
+                ])
 
         _ = try await api.update("m/1", MemberUpdate(metadata: [:]))
         #expect(transport.last?.request.method == "PATCH")
@@ -618,8 +622,26 @@ private func member(_ id: String, _ email: String?, deactivated: Bool = false) -
         _ = try await api.update("m/1", MemberUpdate(policyAttributes: ["level": 9]))
         #expect(transport.last?.json == ["policy_attributes": ["level": 9]])
 
-        _ = try await api.create(MemberCreate(email: "bo@example.com", name: "Bo Diaz", policyAttributes: ["level": 3]))
-        #expect(transport.last?.json == ["email": "bo@example.com", "name": "Bo Diaz", "policy_attributes": ["level": 3]])
+        _ = try await api.create(.business(BusinessMemberCreate(email: "bo@example.com", name: "Bo Diaz", policyAttributes: ["level": 3])))
+        #expect(
+            transport.last?.json
+                == ["member_type": "business", "email": "bo@example.com", "name": "Bo Diaz", "policy_attributes": ["level": 3]])
+
+        _ = try await api.create(.customer(CustomerMemberCreate(externalUserId: "user:42", policyAttributes: ["level": 5])))
+        #expect(transport.last?.json == ["member_type": "customer", "external_user_id": "user:42", "policy_attributes": ["level": 5]])
+    }
+
+    @Test func memberCreateDecodesItsVariant() throws {
+        let business = try JSONDecoder().decode(MemberCreate.self, from: Data(#"{"email": "a@example.com", "name": "Ana Lopez"}"#.utf8))
+        #expect(business == .business(BusinessMemberCreate(email: "a@example.com", name: "Ana Lopez")), "missing member_type is business")
+        let customer = try JSONDecoder().decode(
+            MemberCreate.self, from: Data(#"{"member_type": "customer", "external_user_id": "anon:7", "name": "Guest"}"#.utf8))
+        #expect(customer == .customer(CustomerMemberCreate(externalUserId: "anon:7", name: "Guest")))
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(MemberCreate.self, from: Data(#"{"member_type": "agent", "external_user_id": "x"}"#.utf8))
+        }
+        let roundTrip = MemberCreate.customer(CustomerMemberCreate(externalUserId: "user:1", tags: ["a:b"], policyAttributes: ["k": 1]))
+        #expect(try JSONDecoder().decode(MemberCreate.self, from: JSONEncoder().encode(roundTrip)) == roundTrip)
     }
 
     @Test func annotationEventIdIsUUIDv7() {

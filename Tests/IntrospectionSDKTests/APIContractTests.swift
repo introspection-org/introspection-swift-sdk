@@ -702,17 +702,20 @@ import Testing
         await filters("member list filters: GET /v1/members", cp, "GET", "/v1/members", sdkOnly: ["metadata"], missingIsFatal: true) {
             _ = try await $0.members.list(members).firstPage()
         }
-        // The invite route reads only these; the rest of the shared member schema is ignored on create.
+        // The create route reads only these; the rest of the shared member schema is ignored on create.
         // `policy_attributes` on create is sent before the server publishes it (introspection-cloud#3391).
-        try body(
-            "MemberCreate: POST /v1/members body",
-            MemberCreate(
+        let business = MemberCreate.business(
+            BusinessMemberCreate(
                 email: "a@example.com", name: "Ana Lopez", role: "member", tags: ["a:b"], metadata: ["plan": "enterprise"],
-                policyAttributes: object),
-            cp, "MemberCreate",
-            exempt: [
-                "external_user_id", "image_url", "member_type", "is_deactivated", "application_idp_id", "connector_id", "integration_id",
-            ],
+                policyAttributes: object))
+        let customer = MemberCreate.customer(
+            CustomerMemberCreate(
+                externalUserId: "user:u1", name: "Ana Lopez", email: "a@example.com", tags: ["a:b"], metadata: ["plan": "enterprise"],
+                policyAttributes: object))
+        compare(
+            "MemberCreate: POST /v1/members body (business and customer)", .body,
+            sdk: try wireKeys(business).union(wireKeys(customer)), reference: cp.properties("MemberCreate"),
+            exempt: ["image_url", "is_deactivated", "application_idp_id", "connector_id", "integration_id"],
             sdkOnly: ["metadata", "policy_attributes"])
         try body(
             "MemberUpdate: PATCH /v1/members/{id} body",

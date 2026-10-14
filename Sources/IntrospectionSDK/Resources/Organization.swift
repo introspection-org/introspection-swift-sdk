@@ -234,8 +234,8 @@ public struct MemberListParams: Sendable, Hashable {
     }
 }
 
-/// The body of `POST /v1/members`: invites a business member by email.
-public struct MemberCreate: Encodable, Sendable, Hashable {
+/// A business member invited by email.
+public struct BusinessMemberCreate: Codable, Sendable, Hashable {
     public var email: String
     /// First and last name; the server rejects a single word.
     public var name: String
@@ -263,6 +263,70 @@ public struct MemberCreate: Encodable, Sendable, Hashable {
     private enum CodingKeys: String, CodingKey {
         case email, name, role, tags, metadata
         case policyAttributes = "policy_attributes"
+    }
+}
+
+/// A customer member keyed by its external identity, so its attributes are ready before its first session.
+public struct CustomerMemberCreate: Codable, Sendable, Hashable {
+    /// `user:{id}` or `anon:{id}`.
+    public var externalUserId: String
+    public var name: String?
+    public var email: String?
+    public var tags: [String]?
+    public var metadata: [String: String]?
+    /// Attributes the recipe's Cedar policies read for this member.
+    public var policyAttributes: JSONObject?
+
+    public init(
+        externalUserId: String, name: String? = nil, email: String? = nil, tags: [String]? = nil,
+        metadata: [String: String]? = nil, policyAttributes: JSONObject? = nil
+    ) {
+        self.externalUserId = externalUserId
+        self.name = name
+        self.email = email
+        self.tags = tags
+        self.metadata = metadata
+        self.policyAttributes = policyAttributes
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case name, email, tags, metadata
+        case externalUserId = "external_user_id"
+        case policyAttributes = "policy_attributes"
+    }
+}
+
+/// The body of `POST /v1/members`. Customers, tags and policy attributes need `members:manage`.
+public enum MemberCreate: Codable, Sendable, Hashable {
+    case business(BusinessMemberCreate)
+    case customer(CustomerMemberCreate)
+
+    private enum CodingKeys: String, CodingKey {
+        case memberType = "member_type"
+    }
+
+    /// The server reads a missing `member_type` as `business`.
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        switch try container.decodeIfPresent(MemberType.self, forKey: .memberType) ?? .business {
+        case .business: self = .business(try BusinessMemberCreate(from: decoder))
+        case .customer: self = .customer(try CustomerMemberCreate(from: decoder))
+        case let other:
+            throw DecodingError.dataCorruptedError(
+                forKey: .memberType, in: container, debugDescription: "member_type must be business or customer, got \(other.rawValue)")
+        }
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case let .business(body):
+            try container.encode(MemberType.business, forKey: .memberType)
+            try body.encode(to: encoder)
+        case let .customer(body):
+            try container.encode(MemberType.customer, forKey: .memberType)
+            try body.encode(to: encoder)
+        }
     }
 }
 
