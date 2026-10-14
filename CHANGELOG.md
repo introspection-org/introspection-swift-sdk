@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.8.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.7.0...v0.8.0) (2026-10-14)
+
+
+### ⚠ BREAKING CHANGES
+
+* the shareId/shareIds properties and init parameters are removed from FileListParams, ConversationListParams, ConversationItemListParams, ConversationExportParams and ConversationTurnListParams, and the shareId parameter from files.get, files.download, files.downloadStream, conversations.get and conversations.items.get. The server already ignored it, so behaviour is unchanged; drop the argument at call sites.
+
+### Features
+
+* latestRecords on EventListParams ([#39](https://github.com/introspection-org/introspection-swift-sdk/issues/39)) ([5ff39ca](https://github.com/introspection-org/introspection-swift-sdk/commit/5ff39ca50000d9862f5157f99a10e95a75971c74))
+
+
+### Code Refactoring
+
+* drop the ignored share_id read parameter ([#37](https://github.com/introspection-org/introspection-swift-sdk/issues/37)) ([ea83b65](https://github.com/introspection-org/introspection-swift-sdk/commit/ea83b65be671f0feab11e8a319bbe15abc5e3320))
+
 ## [0.7.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.6.0...v0.7.0) (2026-10-10)
 
 
