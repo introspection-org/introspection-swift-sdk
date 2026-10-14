@@ -146,6 +146,8 @@ public struct Member: Codable, Sendable, Hashable {
     public var connectorId: String?
     public var integrationId: String?
     public var isExternalCredentialAgent: Bool?
+    /// Attributes the recipe's Cedar policies read for this member.
+    public var policyAttributes: JSONObject?
     public var createdAt: Date?
     public var updatedAt: Date?
 
@@ -153,7 +155,8 @@ public struct Member: Codable, Sendable, Hashable {
         id: String, orgId: String? = nil, email: String? = nil, name: String? = nil, externalUserId: String? = nil,
         imageUrl: String? = nil, role: String? = nil, memberType: MemberType? = nil, isDeactivated: Bool? = nil,
         tags: [String]? = nil, metadata: [String: String]? = nil, applicationIdpId: String? = nil, connectorId: String? = nil,
-        integrationId: String? = nil, isExternalCredentialAgent: Bool? = nil, createdAt: Date? = nil, updatedAt: Date? = nil
+        integrationId: String? = nil, isExternalCredentialAgent: Bool? = nil, policyAttributes: JSONObject? = nil,
+        createdAt: Date? = nil, updatedAt: Date? = nil
     ) {
         self.id = id
         self.orgId = orgId
@@ -170,6 +173,7 @@ public struct Member: Codable, Sendable, Hashable {
         self.connectorId = connectorId
         self.integrationId = integrationId
         self.isExternalCredentialAgent = isExternalCredentialAgent
+        self.policyAttributes = policyAttributes
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -185,6 +189,7 @@ public struct Member: Codable, Sendable, Hashable {
         case connectorId = "connector_id"
         case integrationId = "integration_id"
         case isExternalCredentialAgent = "is_external_credential_agent"
+        case policyAttributes = "policy_attributes"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
@@ -240,13 +245,24 @@ public struct MemberCreate: Encodable, Sendable, Hashable {
     public var tags: [String]?
     /// Keys are letters, digits, `_` and `-`; values non-empty strings; at most 64 entries.
     public var metadata: [String: String]?
+    /// Attributes the recipe's Cedar policies read for this member.
+    public var policyAttributes: JSONObject?
 
-    public init(email: String, name: String, role: String? = nil, tags: [String]? = nil, metadata: [String: String]? = nil) {
+    public init(
+        email: String, name: String, role: String? = nil, tags: [String]? = nil, metadata: [String: String]? = nil,
+        policyAttributes: JSONObject? = nil
+    ) {
         self.email = email
         self.name = name
         self.role = role
         self.tags = tags
         self.metadata = metadata
+        self.policyAttributes = policyAttributes
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case email, name, role, tags, metadata
+        case policyAttributes = "policy_attributes"
     }
 }
 
@@ -259,20 +275,25 @@ public struct MemberUpdate: Encodable, Sendable, Hashable {
     public var tags: [String]?
     /// Replaces the metadata map wholesale; `[:]` clears it.
     public var metadata: [String: String]?
+    /// Replaces the policy attributes wholesale; `[:]` clears them.
+    public var policyAttributes: JSONObject?
 
     public init(
-        name: String? = nil, imageUrl: String? = nil, role: String? = nil, tags: [String]? = nil, metadata: [String: String]? = nil
+        name: String? = nil, imageUrl: String? = nil, role: String? = nil, tags: [String]? = nil, metadata: [String: String]? = nil,
+        policyAttributes: JSONObject? = nil
     ) {
         self.name = name
         self.imageUrl = imageUrl
         self.role = role
         self.tags = tags
         self.metadata = metadata
+        self.policyAttributes = policyAttributes
     }
 
     private enum CodingKeys: String, CodingKey {
         case name, role, tags, metadata
         case imageUrl = "image_url"
+        case policyAttributes = "policy_attributes"
     }
 }
 

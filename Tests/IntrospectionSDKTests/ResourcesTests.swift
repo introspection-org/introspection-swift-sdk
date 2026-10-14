@@ -13,10 +13,15 @@ private let connectorJSON = #"""
       "updated_at": "2026-09-01T00:00:00Z", "slug": "slack", "name": "Slack", "provider": "slack",
       "auth_mode": "oauth_stored", "environment": "production", "agent_member_id": null,
       "authorization_endpoint": "https://slack.com/oauth/v2/authorize", "token_endpoint": null,
-      "scopes": ["chat:write"], "api_hosts": ["slack.com"], "client_id": "cid", "person_server_mode": null,
-      "person_server_url": null, "approval_policy": "human", "application_id": null,
+      "scopes": ["chat:write"], "api_hosts": ["slack.com"], "client_id": "cid",
+      "person_server_url": null, "application_id": null,
       "assertion_audience": null, "webhook_url": null, "status": "active", "created_by_member_id": "m",
-      "metadata": {"team": "T1"}, "requires_runtime": true
+      "metadata": {"team": "T1"}, "requires_runtime": true,
+      "policy_entities": [
+        {"uid": {"type": "Company", "id": "acme"}, "attrs": {"business_min_level": 5},
+         "parents": [{"type": "Region", "id": "eu"}]},
+        {"uid": {"type": "Region", "id": "eu"}}
+      ]
     }
     """#
 
@@ -100,10 +105,46 @@ private func member(_ id: String, _ email: String?, deactivated: Bool = false) -
         #expect(transport.last?.json == ["status": "active", "signing_secret": "sig"])
 
         let got = try await connectors.get("con-1")
-        #expect(got.approvalPolicy == .human)
+        let company = try #require(got.policyEntities?.first)
+        #expect(company.uid == EntityUid(type: "Company", id: "acme"))
+        #expect(company.attrs["business_min_level"] == 5)
+        #expect(company.parents == [EntityUid(type: "Region", id: "eu")])
+        #expect(got.policyEntities?.last?.attrs == [:], "attrs and parents default when omitted")
+        #expect(got.policyEntities?.last?.parents == [])
         try await connectors.delete("con-1", project: "acme")
         #expect(transport.last?.request.method == "DELETE")
         #expect(transport.last?.path == "/v1/connectors/con-1")
+    }
+
+    @Test func aauthConnectorPolicyEntities() async throws {
+        let aauthJSON = #"""
+            {"id": "con-2", "name": "Travel", "provider": "travel", "auth_mode": "aauth",
+             "person_server_url": "https://ps.example", "status": "active",
+             "policy_entities": [{"uid": {"type": "Company", "id": "acme"}, "attrs": {"business_min_level": 5}, "parents": []}]}
+            """#
+        let transport = MockTransport { _, _ in .response(.json(aauthJSON)) }
+        let connectors = makeClient(transport).connectors
+        let entities = [PolicyEntity(uid: EntityUid(type: "Company", id: "acme"), attrs: ["business_min_level": 5])]
+
+        let created = try await connectors.create(
+            ConnectorCreate(
+                name: "Travel", provider: "travel", authMode: .aauth, personServerUrl: "https://ps.example",
+                policyEntities: entities))
+        #expect(created.authMode == .aauth)
+        #expect(created.policyEntities == entities)
+        let body = try #require(transport.last?.json)
+        #expect(body["auth_mode"]?.stringValue == "aauth")
+        #expect(
+            body["policy_entities"]
+                == [["uid": ["type": "Company", "id": "acme"], "attrs": ["business_min_level": 5], "parents": []]])
+        #expect(body["approval_policy"] == nil)
+        #expect(body["person_server_mode"] == nil)
+
+        _ = try await connectors.update("con-2", ConnectorUpdate(policyEntities: []))
+        #expect(transport.last?.json == ["policy_entities": []])
+
+        let roundTrip = try JSONDecoder().decode([PolicyEntity].self, from: JSONEncoder().encode(entities))
+        #expect(roundTrip == entities)
     }
 
     @Test func connectorAppsAndDiscovery() async throws {
@@ -540,7 +581,7 @@ private func member(_ id: String, _ email: String?, deactivated: Bool = false) -
 
     @Test func memberTagsAndMetadata() async throws {
         let memberJSON =
-            #"{"id": "m/1", "org_id": "o", "email": "ana@example.com", "name": "Ana Lopez", "role": "member", "member_type": "business", "is_deactivated": false, "tags": ["team:acme"], "metadata": {"plan": "enterprise", "region": "eu"}, "is_external_credential_agent": false, "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z"}"#
+            #"{"id": "m/1", "org_id": "o", "email": "ana@example.com", "name": "Ana Lopez", "role": "member", "member_type": "business", "is_deactivated": false, "tags": ["team:acme"], "metadata": {"plan": "enterprise", "region": "eu"}, "policy_attributes": {"level": 7}, "is_external_credential_agent": false, "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z"}"#
         let transport = MockTransport { request, _ in
             request.method == "GET" && request.url.path == "/v1/members"
                 ? .response(.json(#"{"records": [\#(memberJSON)], "count": 1}"#)) : .response(.json(memberJSON))
@@ -550,6 +591,7 @@ private func member(_ id: String, _ email: String?, deactivated: Bool = false) -
         let members = try await api.list(MemberListParams(tag: "team:acme", metadata: ["region": "eu", "deal": "q4:2026"])).collect()
         #expect(members.first?.tags == ["team:acme"])
         #expect(members.first?.metadata == ["plan": "enterprise", "region": "eu"])
+        #expect(members.first?.policyAttributes == ["level": 7])
         #expect(transport.last?.query["tag"] == ["team:acme"])
         #expect(transport.last?.query["metadata"] == ["deal:q4:2026", "region:eu"], "repeated pairs, sorted by key")
 
@@ -572,6 +614,12 @@ private func member(_ id: String, _ email: String?, deactivated: Bool = false) -
 
         _ = try await api.update("m/1", MemberUpdate(imageUrl: "https://x.test/a.png", tags: []))
         #expect(transport.last?.json == ["image_url": "https://x.test/a.png", "tags": []])
+
+        _ = try await api.update("m/1", MemberUpdate(policyAttributes: ["level": 9]))
+        #expect(transport.last?.json == ["policy_attributes": ["level": 9]])
+
+        _ = try await api.create(MemberCreate(email: "bo@example.com", name: "Bo Diaz", policyAttributes: ["level": 3]))
+        #expect(transport.last?.json == ["email": "bo@example.com", "name": "Bo Diaz", "policy_attributes": ["level": 3]])
     }
 
     @Test func annotationEventIdIsUUIDv7() {

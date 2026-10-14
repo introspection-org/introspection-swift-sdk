@@ -623,16 +623,17 @@ import Testing
 
     private func checkConnectors(_ cp: OpenAPIReference) async throws {
         try readModel("Connector: the connector read model", Connector.self, cp, "ConnectorResponse")
+        let entities = [PolicyEntity(uid: EntityUid(type: "Company", id: "acme"), attrs: object, parents: [])]
         let create = ConnectorCreate(
             name: "n", provider: "github", authMode: .oauthStored, slug: "gh", environment: .staging, agentMemberId: "m1",
             authorizationEndpoint: "https://a", tokenEndpoint: "https://t", scopes: ["repo"], apiHosts: ["api.github.com"],
             clientId: "cid", clientSecret: "cs", signingSecret: "ss", metadata: object, issuer: "https://i",
-            personServerMode: .managed, personServerUrl: "https://p", approvalPolicy: .human, applicationId: "app",
-            assertionAudience: "aud", webhookUrl: "https://w")
+            personServerUrl: "https://p", applicationId: "app", assertionAudience: "aud", webhookUrl: "https://w",
+            policyEntities: entities)
         try body("ConnectorCreate: POST /v1/connectors body", create, cp, "ConnectorCreate")
         let update = ConnectorUpdate(
             name: "n", agentMemberId: "m1", scopes: ["repo"], apiHosts: ["api.github.com"], status: .active, metadata: object,
-            webhookUrl: "https://w", clientSecret: "cs", signingSecret: "ss")
+            webhookUrl: "https://w", clientSecret: "cs", signingSecret: "ss", policyEntities: entities)
         try body("ConnectorUpdate: PATCH /v1/connectors/{id} body", update, cp, "ConnectorUpdate")
         await filters("connector list filters: GET /v1/connectors", cp, "GET", "/v1/connectors", missingIsFatal: true) {
             _ = try await $0.connectors.list(ConnectorListParams(project: "p", limit: 1, next: "cursor")).firstPage()
@@ -702,18 +703,22 @@ import Testing
             _ = try await $0.members.list(members).firstPage()
         }
         // The invite route reads only these; the rest of the shared member schema is ignored on create.
+        // `policy_attributes` on create is sent before the server publishes it (introspection-cloud#3391).
         try body(
             "MemberCreate: POST /v1/members body",
-            MemberCreate(email: "a@example.com", name: "Ana Lopez", role: "member", tags: ["a:b"], metadata: ["plan": "enterprise"]),
+            MemberCreate(
+                email: "a@example.com", name: "Ana Lopez", role: "member", tags: ["a:b"], metadata: ["plan": "enterprise"],
+                policyAttributes: object),
             cp, "MemberCreate",
             exempt: [
                 "external_user_id", "image_url", "member_type", "is_deactivated", "application_idp_id", "connector_id", "integration_id",
             ],
-            sdkOnly: ["metadata"])
+            sdkOnly: ["metadata", "policy_attributes"])
         try body(
             "MemberUpdate: PATCH /v1/members/{id} body",
             MemberUpdate(
-                name: "Ana Lopez", imageUrl: "https://example.com/a.png", role: "admin", tags: ["a:b"], metadata: ["plan": "team"]),
+                name: "Ana Lopez", imageUrl: "https://example.com/a.png", role: "admin", tags: ["a:b"], metadata: ["plan": "team"],
+                policyAttributes: object),
             cp, "MemberUpdate", sdkOnly: ["metadata"])
         await filters("member read options: GET /v1/members/{id}", cp, "GET", "/v1/members/{member_id}", missingIsFatal: true) {
             _ = try await $0.members.get("m1", project: "p")
