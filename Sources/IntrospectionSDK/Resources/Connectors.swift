@@ -14,6 +14,7 @@ public struct ConnectorAuthMode: RawRepresentable, Codable, Sendable, Hashable, 
     public static let identityAssertion: ConnectorAuthMode = "identity_assertion"
     public static let federatedExchange: ConnectorAuthMode = "federated_exchange"
     public static let personAuthorized: ConnectorAuthMode = "person_authorized"
+    public static let aauth: ConnectorAuthMode = "aauth"
 }
 
 /// Connector configuration status.
@@ -27,26 +28,39 @@ public struct ConnectorStatus: RawRepresentable, Codable, Sendable, Hashable, Ex
     public static let error: ConnectorStatus = "error"
 }
 
-/// Where a `person_authorized` connector's Person Server is hosted.
-public struct ConnectorPersonServerMode: RawRepresentable, Codable, Sendable, Hashable, ExpressibleByStringLiteral {
-    public let rawValue: String
-    public init(rawValue: String) { self.rawValue = rawValue }
-    public init(stringLiteral value: String) { self.rawValue = value }
+/// A Cedar entity reference, `{"type": "Company", "id": "acme"}`.
+public struct EntityUid: Codable, Sendable, Hashable {
+    public var type: String
+    public var id: String
 
-    public static let managed: ConnectorPersonServerMode = "managed"
-    public static let byo: ConnectorPersonServerMode = "byo"
-    public static let discovered: ConnectorPersonServerMode = "discovered"
+    public init(type: String, id: String) {
+        self.type = type
+        self.id = id
+    }
 }
 
-/// How `person_authorized` missions are decided.
-public struct ConnectorApprovalPolicy: RawRepresentable, Codable, Sendable, Hashable, ExpressibleByStringLiteral {
-    public let rawValue: String
-    public init(rawValue: String) { self.rawValue = rawValue }
-    public init(stringLiteral value: String) { self.rawValue = value }
+/// A Cedar entity a recipe's policies read, in Cedar's JSON entity format.
+public struct PolicyEntity: Codable, Sendable, Hashable {
+    public var uid: EntityUid
+    public var attrs: JSONObject
+    public var parents: [EntityUid]
 
-    public static let human: ConnectorApprovalPolicy = "human"
-    public static let judgeAdvisesHuman: ConnectorApprovalPolicy = "judge_advises_human"
-    public static let judgeAutoWithinEnvelope: ConnectorApprovalPolicy = "judge_auto_within_envelope"
+    public init(uid: EntityUid, attrs: JSONObject = [:], parents: [EntityUid] = []) {
+        self.uid = uid
+        self.attrs = attrs
+        self.parents = parents
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case uid, attrs, parents
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        uid = try container.decode(EntityUid.self, forKey: .uid)
+        attrs = try container.decodeIfPresent(JSONObject.self, forKey: .attrs) ?? [:]
+        parents = try container.decodeIfPresent([EntityUid].self, forKey: .parents) ?? []
+    }
 }
 
 /// Lifecycle of a connection.
@@ -96,15 +110,15 @@ public struct Connector: Codable, Sendable, Hashable {
     public var scopes: [String]?
     public var apiHosts: [String]?
     public var clientId: String?
-    public var personServerMode: ConnectorPersonServerMode?
     public var personServerUrl: String?
-    public var approvalPolicy: ConnectorApprovalPolicy?
     public var applicationId: String?
     public var assertionAudience: String?
     public var webhookUrl: String?
     public var status: ConnectorStatus?
     public var createdByMemberId: String?
     public var metadata: JSONObject?
+    /// Cedar entities the recipe's policies read.
+    public var policyEntities: [PolicyEntity]?
     /// Whether `authorize` must name a `runtime` (chat providers). Read this rather than hardcoding providers.
     public var requiresRuntime: Bool?
     public var createdAt: Date?
@@ -114,11 +128,10 @@ public struct Connector: Codable, Sendable, Hashable {
         id: String, orgId: String? = nil, projectId: String? = nil, slug: String? = nil, name: String? = nil,
         provider: String? = nil, authMode: ConnectorAuthMode? = nil, environment: RuntimeEnvironment? = nil,
         agentMemberId: String? = nil, authorizationEndpoint: String? = nil, tokenEndpoint: String? = nil,
-        scopes: [String]? = nil, apiHosts: [String]? = nil, clientId: String? = nil,
-        personServerMode: ConnectorPersonServerMode? = nil, personServerUrl: String? = nil,
-        approvalPolicy: ConnectorApprovalPolicy? = nil, applicationId: String? = nil, assertionAudience: String? = nil,
-        webhookUrl: String? = nil, status: ConnectorStatus? = nil, createdByMemberId: String? = nil,
-        metadata: JSONObject? = nil, requiresRuntime: Bool? = nil, createdAt: Date? = nil, updatedAt: Date? = nil
+        scopes: [String]? = nil, apiHosts: [String]? = nil, clientId: String? = nil, personServerUrl: String? = nil,
+        applicationId: String? = nil, assertionAudience: String? = nil, webhookUrl: String? = nil,
+        status: ConnectorStatus? = nil, createdByMemberId: String? = nil, metadata: JSONObject? = nil,
+        policyEntities: [PolicyEntity]? = nil, requiresRuntime: Bool? = nil, createdAt: Date? = nil, updatedAt: Date? = nil
     ) {
         self.id = id
         self.orgId = orgId
@@ -134,15 +147,14 @@ public struct Connector: Codable, Sendable, Hashable {
         self.scopes = scopes
         self.apiHosts = apiHosts
         self.clientId = clientId
-        self.personServerMode = personServerMode
         self.personServerUrl = personServerUrl
-        self.approvalPolicy = approvalPolicy
         self.applicationId = applicationId
         self.assertionAudience = assertionAudience
         self.webhookUrl = webhookUrl
         self.status = status
         self.createdByMemberId = createdByMemberId
         self.metadata = metadata
+        self.policyEntities = policyEntities
         self.requiresRuntime = requiresRuntime
         self.createdAt = createdAt
         self.updatedAt = updatedAt
@@ -158,13 +170,12 @@ public struct Connector: Codable, Sendable, Hashable {
         case tokenEndpoint = "token_endpoint"
         case apiHosts = "api_hosts"
         case clientId = "client_id"
-        case personServerMode = "person_server_mode"
         case personServerUrl = "person_server_url"
-        case approvalPolicy = "approval_policy"
         case applicationId = "application_id"
         case assertionAudience = "assertion_audience"
         case webhookUrl = "webhook_url"
         case createdByMemberId = "created_by_member_id"
+        case policyEntities = "policy_entities"
         case requiresRuntime = "requires_runtime"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
@@ -194,21 +205,20 @@ public struct ConnectorCreate: Encodable, Sendable, Hashable {
     public var metadata: JSONObject?
     /// OAuth discovery: the server resolves endpoints (and may register a client) from this issuer. Not persisted.
     public var issuer: String?
-    public var personServerMode: ConnectorPersonServerMode?
     public var personServerUrl: String?
-    public var approvalPolicy: ConnectorApprovalPolicy?
     public var applicationId: String?
     public var assertionAudience: String?
     public var webhookUrl: String?
+    /// Cedar entities the recipe's policies read.
+    public var policyEntities: [PolicyEntity]?
 
     public init(
         name: String, provider: String, authMode: ConnectorAuthMode, slug: String? = nil,
         environment: RuntimeEnvironment? = nil, agentMemberId: String? = nil, authorizationEndpoint: String? = nil,
         tokenEndpoint: String? = nil, scopes: [String]? = nil, apiHosts: [String]? = nil, clientId: String? = nil,
         clientSecret: String? = nil, signingSecret: String? = nil, metadata: JSONObject? = nil, issuer: String? = nil,
-        personServerMode: ConnectorPersonServerMode? = nil, personServerUrl: String? = nil,
-        approvalPolicy: ConnectorApprovalPolicy? = nil, applicationId: String? = nil,
-        assertionAudience: String? = nil, webhookUrl: String? = nil
+        personServerUrl: String? = nil, applicationId: String? = nil, assertionAudience: String? = nil,
+        webhookUrl: String? = nil, policyEntities: [PolicyEntity]? = nil
     ) {
         self.name = name
         self.provider = provider
@@ -225,12 +235,11 @@ public struct ConnectorCreate: Encodable, Sendable, Hashable {
         self.signingSecret = signingSecret
         self.metadata = metadata
         self.issuer = issuer
-        self.personServerMode = personServerMode
         self.personServerUrl = personServerUrl
-        self.approvalPolicy = approvalPolicy
         self.applicationId = applicationId
         self.assertionAudience = assertionAudience
         self.webhookUrl = webhookUrl
+        self.policyEntities = policyEntities
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -243,12 +252,11 @@ public struct ConnectorCreate: Encodable, Sendable, Hashable {
         case clientId = "client_id"
         case clientSecret = "client_secret"
         case signingSecret = "signing_secret"
-        case personServerMode = "person_server_mode"
         case personServerUrl = "person_server_url"
-        case approvalPolicy = "approval_policy"
         case applicationId = "application_id"
         case assertionAudience = "assertion_audience"
         case webhookUrl = "webhook_url"
+        case policyEntities = "policy_entities"
     }
 }
 
@@ -263,11 +271,13 @@ public struct ConnectorUpdate: Encodable, Sendable, Hashable {
     public var webhookUrl: String?
     public var clientSecret: String?
     public var signingSecret: String?
+    /// Replaces the Cedar entities wholesale.
+    public var policyEntities: [PolicyEntity]?
 
     public init(
         name: String? = nil, agentMemberId: String? = nil, scopes: [String]? = nil, apiHosts: [String]? = nil,
         status: ConnectorStatus? = nil, metadata: JSONObject? = nil, webhookUrl: String? = nil,
-        clientSecret: String? = nil, signingSecret: String? = nil
+        clientSecret: String? = nil, signingSecret: String? = nil, policyEntities: [PolicyEntity]? = nil
     ) {
         self.name = name
         self.agentMemberId = agentMemberId
@@ -278,6 +288,7 @@ public struct ConnectorUpdate: Encodable, Sendable, Hashable {
         self.webhookUrl = webhookUrl
         self.clientSecret = clientSecret
         self.signingSecret = signingSecret
+        self.policyEntities = policyEntities
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -287,6 +298,7 @@ public struct ConnectorUpdate: Encodable, Sendable, Hashable {
         case webhookUrl = "webhook_url"
         case clientSecret = "client_secret"
         case signingSecret = "signing_secret"
+        case policyEntities = "policy_entities"
     }
 }
 

@@ -146,6 +146,8 @@ public struct Member: Codable, Sendable, Hashable {
     public var connectorId: String?
     public var integrationId: String?
     public var isExternalCredentialAgent: Bool?
+    /// Attributes the recipe's Cedar policies read for this member.
+    public var policyAttributes: JSONObject?
     public var createdAt: Date?
     public var updatedAt: Date?
 
@@ -153,7 +155,8 @@ public struct Member: Codable, Sendable, Hashable {
         id: String, orgId: String? = nil, email: String? = nil, name: String? = nil, externalUserId: String? = nil,
         imageUrl: String? = nil, role: String? = nil, memberType: MemberType? = nil, isDeactivated: Bool? = nil,
         tags: [String]? = nil, metadata: [String: String]? = nil, applicationIdpId: String? = nil, connectorId: String? = nil,
-        integrationId: String? = nil, isExternalCredentialAgent: Bool? = nil, createdAt: Date? = nil, updatedAt: Date? = nil
+        integrationId: String? = nil, isExternalCredentialAgent: Bool? = nil, policyAttributes: JSONObject? = nil,
+        createdAt: Date? = nil, updatedAt: Date? = nil
     ) {
         self.id = id
         self.orgId = orgId
@@ -170,6 +173,7 @@ public struct Member: Codable, Sendable, Hashable {
         self.connectorId = connectorId
         self.integrationId = integrationId
         self.isExternalCredentialAgent = isExternalCredentialAgent
+        self.policyAttributes = policyAttributes
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -185,6 +189,7 @@ public struct Member: Codable, Sendable, Hashable {
         case connectorId = "connector_id"
         case integrationId = "integration_id"
         case isExternalCredentialAgent = "is_external_credential_agent"
+        case policyAttributes = "policy_attributes"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
@@ -229,8 +234,8 @@ public struct MemberListParams: Sendable, Hashable {
     }
 }
 
-/// The body of `POST /v1/members`: invites a business member by email.
-public struct MemberCreate: Encodable, Sendable, Hashable {
+/// A business member invited by email.
+public struct BusinessMemberCreate: Codable, Sendable, Hashable {
     public var email: String
     /// First and last name; the server rejects a single word.
     public var name: String
@@ -240,13 +245,88 @@ public struct MemberCreate: Encodable, Sendable, Hashable {
     public var tags: [String]?
     /// Keys are letters, digits, `_` and `-`; values non-empty strings; at most 64 entries.
     public var metadata: [String: String]?
+    /// Attributes the recipe's Cedar policies read for this member.
+    public var policyAttributes: JSONObject?
 
-    public init(email: String, name: String, role: String? = nil, tags: [String]? = nil, metadata: [String: String]? = nil) {
+    public init(
+        email: String, name: String, role: String? = nil, tags: [String]? = nil, metadata: [String: String]? = nil,
+        policyAttributes: JSONObject? = nil
+    ) {
         self.email = email
         self.name = name
         self.role = role
         self.tags = tags
         self.metadata = metadata
+        self.policyAttributes = policyAttributes
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case email, name, role, tags, metadata
+        case policyAttributes = "policy_attributes"
+    }
+}
+
+/// A customer member keyed by its external identity, so its attributes are ready before its first session.
+public struct CustomerMemberCreate: Codable, Sendable, Hashable {
+    /// `user:{id}` or `anon:{id}`.
+    public var externalUserId: String
+    public var name: String?
+    public var email: String?
+    public var tags: [String]?
+    public var metadata: [String: String]?
+    /// Attributes the recipe's Cedar policies read for this member.
+    public var policyAttributes: JSONObject?
+
+    public init(
+        externalUserId: String, name: String? = nil, email: String? = nil, tags: [String]? = nil,
+        metadata: [String: String]? = nil, policyAttributes: JSONObject? = nil
+    ) {
+        self.externalUserId = externalUserId
+        self.name = name
+        self.email = email
+        self.tags = tags
+        self.metadata = metadata
+        self.policyAttributes = policyAttributes
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case name, email, tags, metadata
+        case externalUserId = "external_user_id"
+        case policyAttributes = "policy_attributes"
+    }
+}
+
+/// The body of `POST /v1/members`. Customers, tags and policy attributes need `members:manage`.
+public enum MemberCreate: Codable, Sendable, Hashable {
+    case business(BusinessMemberCreate)
+    case customer(CustomerMemberCreate)
+
+    private enum CodingKeys: String, CodingKey {
+        case memberType = "member_type"
+    }
+
+    /// The server reads a missing `member_type` as `business`.
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        switch try container.decodeIfPresent(MemberType.self, forKey: .memberType) ?? .business {
+        case .business: self = .business(try BusinessMemberCreate(from: decoder))
+        case .customer: self = .customer(try CustomerMemberCreate(from: decoder))
+        case let other:
+            throw DecodingError.dataCorruptedError(
+                forKey: .memberType, in: container, debugDescription: "member_type must be business or customer, got \(other.rawValue)")
+        }
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case let .business(body):
+            try container.encode(MemberType.business, forKey: .memberType)
+            try body.encode(to: encoder)
+        case let .customer(body):
+            try container.encode(MemberType.customer, forKey: .memberType)
+            try body.encode(to: encoder)
+        }
     }
 }
 
@@ -259,20 +339,25 @@ public struct MemberUpdate: Encodable, Sendable, Hashable {
     public var tags: [String]?
     /// Replaces the metadata map wholesale; `[:]` clears it.
     public var metadata: [String: String]?
+    /// Replaces the policy attributes wholesale; `[:]` clears them.
+    public var policyAttributes: JSONObject?
 
     public init(
-        name: String? = nil, imageUrl: String? = nil, role: String? = nil, tags: [String]? = nil, metadata: [String: String]? = nil
+        name: String? = nil, imageUrl: String? = nil, role: String? = nil, tags: [String]? = nil, metadata: [String: String]? = nil,
+        policyAttributes: JSONObject? = nil
     ) {
         self.name = name
         self.imageUrl = imageUrl
         self.role = role
         self.tags = tags
         self.metadata = metadata
+        self.policyAttributes = policyAttributes
     }
 
     private enum CodingKeys: String, CodingKey {
         case name, role, tags, metadata
         case imageUrl = "image_url"
+        case policyAttributes = "policy_attributes"
     }
 }
 
