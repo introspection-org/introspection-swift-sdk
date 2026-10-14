@@ -49,6 +49,18 @@ import Testing
         #expect(throws: (any Error).self) { try client.events.list(EventListParams(eventName: .pattern, end: Date(), lookback: "1d")) }
     }
 
+    @Test func eventsListAsksForLatestRecords() async throws {
+        let transport = MockTransport(json: #"{"records":[],"count":0,"total_count":null,"next":null}"#)
+        let client = makeClient(transport)
+        _ = try await client.events.list(
+            EventListParams(eventName: .track, conversationId: "c1", names: ["todo", "goal"], latestRecords: true)
+        ).collect()
+        let q = try #require(transport.last).query
+        #expect(q["latest"] == ["true"])
+        #expect(q["conversation_id"] == ["c1"])
+        #expect(q["name"] == ["todo", "goal"])
+    }
+
     @Test func eventGetAndTypedPayloads() async throws {
         let observation = #"""
             {"id":"o1","timestamp":"2026-10-01T12:00:00Z","event_name":"introspection.observation",
