@@ -431,6 +431,9 @@ public struct EventListParams: Sendable, Hashable {
     /// Custom events (``IntrospectionEventName/track``): exact logged names, sent as repeated `name` (max 20, each
     /// at most 256 characters). The server accepts it from introspection-cloud#3172.
     public var names: [String]?
+    /// Custom events: the newest event of each record, a record being its logged name and its `properties.id`
+    /// (sent as `latest=true`). Needs ``conversationId`` and ``names``; newest first.
+    public var latestRecords: Bool?
 
     public init(
         eventName: IntrospectionEventName, limit: Int? = nil, next: String? = nil, sort: EventSortField? = nil,
@@ -440,7 +443,8 @@ public struct EventListParams: Sendable, Hashable {
         ownerKey: String? = nil, eventIds: [String]? = nil, runtimeGroupUnattributed: Bool? = nil,
         lens: String? = nil, patternId: String? = nil, includeSuperseded: Bool? = nil, status: String? = nil,
         judgeId: String? = nil, issueId: String? = nil, latestRequests: Bool? = nil, requestId: String? = nil,
-        assigneeId: String? = nil, automationId: String? = nil, taskId: String? = nil, names: [String]? = nil
+        assigneeId: String? = nil, automationId: String? = nil, taskId: String? = nil, names: [String]? = nil,
+        latestRecords: Bool? = nil
     ) {
         self.eventName = eventName
         self.limit = limit
@@ -472,6 +476,7 @@ public struct EventListParams: Sendable, Hashable {
         self.automationId = automationId
         self.taskId = taskId
         self.names = names
+        self.latestRecords = latestRecords
     }
 
     func query(now: Date) throws -> Query {
@@ -502,6 +507,7 @@ public struct EventListParams: Sendable, Hashable {
         q.add("automation_id", automationId)
         q.add("task_id", taskId)
         q.add("name", names)
+        q.add("latest", latestRecords)
         return q
     }
 }
