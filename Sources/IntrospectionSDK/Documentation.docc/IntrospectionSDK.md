@@ -132,7 +132,7 @@ their own task-targeted automations.
 - ``ConnectionsAPI``
 - ``RepositoriesAPI``
 - ``AnnotationsAPI``
-- ``ProjectLabelsAPI``
+- ``TagsAPI``
 - ``OrganizationsAPI``
 - ``ProjectsAPI``
 - ``MembersAPI``

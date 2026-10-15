@@ -209,8 +209,8 @@ import Testing
             "PATCH /v1/automations/{automation_id}", "DELETE /v1/automations/{automation_id}",
             "POST /v1/automations/{automation_id}/trigger",
             "GET /v1/annotations", "POST /v1/annotations", "GET /v1/annotations/facets", "GET /v1/annotations/navigation",
-            "GET /v1/project-labels", "POST /v1/project-labels", "GET /v1/project-labels/{slug}",
-            "PATCH /v1/project-labels/{slug}",
+            "GET /v1/tags", "POST /v1/tags", "GET /v1/tags/{kind}/{name}",
+            "PATCH /v1/tags/{kind}/{name}", "DELETE /v1/tags/{kind}/{name}",
             "GET /v1/repositories/{repository_id}/commits", "GET /v1/repositories/{repository_id}/commits/{sha}",
             "GET /v1/repositories/{repository_id}/contents", "GET /v1/repositories/{repository_id}/contents/{path}",
             "POST /v1/repositories/{repository_id}/merges",
@@ -509,13 +509,13 @@ import Testing
                 target, annotatedByMemberId: "m1", assigneeMemberId: "m2", labels: ["bug"], status: .assigned)
         }
 
-        try readModel("ProjectLabel: the project label read model", ProjectLabel.self, dp, "ProjectLabel")
+        try readModel("Tag: the tag catalogue read model", SDKTag.self, dp, "Tag")
         try body(
-            "ProjectLabelCreate: POST /v1/project-labels body", ProjectLabelCreate(slug: "bug", color: "#f97316", description: "d"), dp,
-            "ProjectLabelCreate")
-        try body("ProjectLabelUpdate: PATCH /v1/project-labels/{slug} body", ProjectLabelUpdate(description: "d"), dp, "ProjectLabelUpdate")
-        await filters("project label filters: GET /v1/project-labels", dp, "GET", "/v1/project-labels", missingIsFatal: true) {
-            _ = try await $0.projectLabels.list(ProjectLabelListParams(search: "b", limit: 1, next: "cursor")).firstPage()
+            "TagCreate: POST /v1/tags body", TagCreate.annotation(name: "bug", color: "#f97316", description: "d"), dp,
+            "TagCreate")
+        try body("TagUpdate: PATCH /v1/tags/{kind}/{name} body", TagUpdate.description("d"), dp, "TagUpdate")
+        await filters("tag filters: GET /v1/tags", dp, "GET", "/v1/tags", missingIsFatal: true) {
+            _ = try await $0.tags.list(TagListParams(kind: .annotation, search: "b", limit: 1, next: "cursor")).firstPage()
         }
     }
 

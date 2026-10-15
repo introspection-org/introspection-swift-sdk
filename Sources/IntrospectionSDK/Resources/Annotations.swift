@@ -225,70 +225,6 @@ public struct AnnotationWriteResult: Sendable, Hashable {
     }
 }
 
-/// A reusable project label.
-public struct ProjectLabel: Codable, Sendable, Hashable {
-    public var slug: String
-    public var color: String?
-    public var description: String?
-    public var createdAt: Date?
-    public var updatedAt: Date?
-
-    public init(slug: String, color: String? = nil, description: String? = nil, createdAt: Date? = nil, updatedAt: Date? = nil) {
-        self.slug = slug
-        self.color = color
-        self.description = description
-        self.createdAt = createdAt
-        self.updatedAt = updatedAt
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case slug, color, description
-        case createdAt = "created_at"
-        case updatedAt = "updated_at"
-    }
-}
-
-/// Body of `POST /v1/project-labels`.
-public struct ProjectLabelCreate: Encodable, Sendable, Hashable {
-    public var slug: String
-    /// Six-digit hex color such as `#f97316`.
-    public var color: String
-    public var description: String?
-
-    public init(slug: String, color: String, description: String? = nil) {
-        self.slug = slug
-        self.color = color
-        self.description = description
-    }
-}
-
-/// Body of `PATCH /v1/project-labels/{slug}`. Slug and color are immutable; nil clears the description.
-public struct ProjectLabelUpdate: Encodable, Sendable, Hashable {
-    public var description: String?
-
-    public init(description: String?) { self.description = description }
-
-    private enum CodingKeys: String, CodingKey { case description }
-
-    public func encode(to encoder: any Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(description, forKey: .description)
-    }
-}
-
-/// Paging and search for `GET /v1/project-labels`.
-public struct ProjectLabelListParams: Sendable, Hashable {
-    public var search: String?
-    public var limit: Int?
-    public var next: String?
-
-    public init(search: String? = nil, limit: Int? = nil, next: String? = nil) {
-        self.search = search
-        self.limit = limit
-        self.next = next
-    }
-}
-
 // MARK: Helpers
 
 private func annotationValidationError(_ message: String, code: String) -> IntrospectionError {
@@ -521,62 +457,7 @@ public struct AnnotationsAPI: Sendable {
     }
 }
 
-/// The managed project label catalog annotations use.
-public struct ProjectLabelsAPI: Sendable {
-    let http: HTTPClient
-
-    public init(http: HTTPClient) { self.http = http }
-
-    /// List labels.
-    public func list(_ params: ProjectLabelListParams = ProjectLabelListParams()) -> Paginator<ProjectLabel> {
-        var query = Query()
-        query.add("search", params.search)
-        query.add("limit", params.limit)
-        return http.paginate("/v1/project-labels", query: query, start: params.next)
-    }
-
-    /// Create a label. The slug is trimmed and the color lowercased.
-    public func create(_ body: ProjectLabelCreate) async throws -> ProjectLabel {
-        let slug = body.slug.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !slug.isEmpty, slug.count <= 128 else {
-            throw annotationValidationError("Project label slug must contain 1 to 128 characters", code: "invalid_project_label_slug")
-        }
-        let color = body.color.lowercased()
-        let hex = color.dropFirst()
-        guard color.hasPrefix("#"), hex.count == 6, hex.allSatisfy(\.isHexDigit) else {
-            throw annotationValidationError(
-                "Project label color must be a six-digit hex color such as #f97316", code: "invalid_project_label_color"
-            )
-        }
-        if let description = body.description, description.count > 2000 {
-            throw annotationValidationError(
-                "Project label description must not exceed 2000 characters", code: "invalid_project_label_description"
-            )
-        }
-        let normalized = ProjectLabelCreate(slug: slug, color: color, description: body.description)
-        return try await http.json("POST", "/v1/project-labels", body: .encode(normalized))
-    }
-
-    /// Fetch one label.
-    public func get(_ slug: String) async throws -> ProjectLabel {
-        try await http.json("GET", "/v1/project-labels/\(pathSegment(slug))")
-    }
-
-    /// Update a label's description.
-    public func update(_ slug: String, _ body: ProjectLabelUpdate) async throws -> ProjectLabel {
-        if let description = body.description, description.count > 2000 {
-            throw annotationValidationError(
-                "Project label description must not exceed 2000 characters", code: "invalid_project_label_description"
-            )
-        }
-        return try await http.json("PATCH", "/v1/project-labels/\(pathSegment(slug))", body: .encode(body))
-    }
-}
-
 extension IntrospectionClient {
     /// Span annotations (Data Plane), with reviewer emails resolved on the Control Plane.
     public var annotations: AnnotationsAPI { AnnotationsAPI(controlPlane: controlPlane, dataPlane: dataPlane) }
-
-    /// Reusable project labels (Data Plane).
-    public var projectLabels: ProjectLabelsAPI { ProjectLabelsAPI(http: dataPlane) }
 }

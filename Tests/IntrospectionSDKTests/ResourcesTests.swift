@@ -496,33 +496,51 @@ private func member(_ id: String, _ email: String?, deactivated: Bool = false) -
         #expect(transport.last?.query["trace_id"] == ["t"])
     }
 
-    @Test func projectLabels() async throws {
-        let label =
-            ##"{"slug": "bug", "color": "#f97316", "description": null, "created_at": "2026-09-01T00:00:00Z", "updated_at": "2026-09-01T00:00:00Z"}"##
+    @Test func tags() async throws {
+        let tag =
+            ##"{"kind": "annotation", "name": "bug", "color": "#f97316", "description": null, "created_at": "2026-09-01T00:00:00Z", "updated_at": "2026-09-01T00:00:00Z"}"##
         let transport = MockTransport { request, _ in
-            request.method == "GET" && request.url.path == "/v1/project-labels"
-                ? .response(.json(#"{"records": [\#(label)], "count": 1}"#))
-                : .response(.json(label))
+            request.method == "GET" && request.url.path == "/v1/tags"
+                ? .response(.json(#"{"records": [\#(tag)], "count": 1}"#))
+                : .response(.json(tag))
         }
-        let labels = makeClient(transport).projectLabels
-        let all = try await labels.list(ProjectLabelListParams(search: "bu")).collect()
+        let tags = makeClient(transport).tags
+        let all = try await tags.list(TagListParams(kind: .annotation, search: "bu")).collect()
         #expect(all.first?.color == "#f97316")
+        #expect(all.first?.kind == .annotation)
         #expect(transport.last?.request.url.host == "dp.test")
+        #expect(transport.last?.query["kind"] == ["annotation"])
         #expect(transport.last?.query["search"] == ["bu"])
 
-        _ = try await labels.create(ProjectLabelCreate(slug: "  bug ", color: "#F97316"))
-        #expect(transport.last?.json == ["slug": "bug", "color": "#f97316"])
+        _ = try await tags.create(.annotation(name: "  bug ", color: "#F97316"))
+        #expect(transport.last?.json == ["kind": "annotation", "name": "bug", "color": "#f97316"])
 
-        _ = try await labels.update("bug", ProjectLabelUpdate(description: nil))
+        // The kind is the discriminant, and an access tag sends no `color` at all.
+        _ = try await tags.create(.access(name: "acme/eu"))
+        #expect(transport.last?.json == ["kind": "access", "name": "acme/eu"])
+
+        _ = try await tags.update(.annotation, "bug", .clearDescription)
         #expect(transport.last?.request.method == "PATCH")
         #expect(transport.last?.bodyString == #"{"description":null}"#)
 
+        // An opaque access name is encoded, so it cannot add a path segment.
+        try await tags.delete(.access, "acme/eu")
+        #expect(transport.last?.request.method == "DELETE")
+        #expect(transport.last?.request.url.absoluteString.hasSuffix("/v1/tags/access/acme%2Feu") == true)
+
         let before = transport.requests.count
-        for bad in [
-            ProjectLabelCreate(slug: " ", color: "#ffffff"), ProjectLabelCreate(slug: "a", color: "orange"),
-            ProjectLabelCreate(slug: "a", color: "#12345g"),
+        for bad: TagCreate in [
+            .annotation(name: " ", color: "#ffffff"), .annotation(name: "a", color: "orange"),
+            .annotation(name: "a", color: "#12345g"),
         ] {
-            let error = await #expect(throws: IntrospectionError.self) { try await labels.create(bad) }
+            let error = await #expect(throws: IntrospectionError.self) { try await tags.create(bad) }
+            #expect(error?.kind == .validation)
+        }
+        // An access tag has no colour, and an update must name a field.
+        for bad: TagUpdate in [.color("#f97316"), TagUpdate()] {
+            let error = await #expect(throws: IntrospectionError.self) {
+                try await tags.update(.access, "acme/eu", bad)
+            }
             #expect(error?.kind == .validation)
         }
         #expect(transport.requests.count == before)
