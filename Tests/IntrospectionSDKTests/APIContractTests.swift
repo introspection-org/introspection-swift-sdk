@@ -509,7 +509,7 @@ import Testing
                 target, annotatedByMemberId: "m1", assigneeMemberId: "m2", labels: ["bug"], status: .assigned)
         }
 
-        try readModel("Tag: the tag catalogue read model", Tag.self, dp, "Tag")
+        try readModel("Tag: the tag catalogue read model", SDKTag.self, dp, "Tag")
         try body(
             "TagCreate: POST /v1/tags body", TagCreate.annotation(name: "bug", color: "#f97316", description: "d"), dp,
             "TagCreate")
