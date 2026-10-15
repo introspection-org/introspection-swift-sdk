@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.9.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.8.0...v0.9.0) (2026-10-15)
+
+
+### ⚠ BREAKING CHANGES
+
+* **tags:** `client.projectLabels` is now `client.tags`, `ProjectLabelsAPI` is `TagsAPI`, and `ProjectLabel{,Create,Update,ListParams}` are replaced by `Tag`, `TagCreate`, `TagUpdate` and `TagListParams`, which take a `TagKind`.
+
+### Features
+
+* **tags:** the tag catalogue, keyed by access or annotation ([#41](https://github.com/introspection-org/introspection-swift-sdk/issues/41)) ([6fbe2f3](https://github.com/introspection-org/introspection-swift-sdk/commit/6fbe2f392b838183e4e1baeb1eebe857797d0a07))
+
 ## [0.8.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.7.0...v0.8.0) (2026-10-14)
 
 
