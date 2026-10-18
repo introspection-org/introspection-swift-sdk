@@ -88,6 +88,43 @@ import Testing
         #expect(transport.requests[1].query["wait_for_start"] == ["false"])
     }
 
+    @Test(arguments: [false, true]) func currentReconnectScopesCursorToResolvedRun(changesRun: Bool) async throws {
+        let nextRun = changesRun ? "r2" : "r1"
+        let transport = MockTransport { request, index in
+            switch index {
+            case 0:
+                #expect(request.url.path == "/v1/tasks/t1/runs/current/stream")
+                return .stream(
+                    status: 200, headers: [:],
+                    chunks: [
+                        Self.frame("c-1", "ag_ui", #"{"type":"RUN_STARTED","threadId":"t1","runId":"r1"}"#),
+                        Self.content("10", "before"),
+                    ], error: Severed())
+            case 1:
+                #expect(request.url.path == "/v1/tasks/t1/runs/current")
+                return .response(.json(#"{"id":"\#(nextRun)","task_id":"t1","status":"running"}"#))
+            default:
+                #expect(request.url.path == "/v1/tasks/t1/runs/\(nextRun)/stream")
+                #expect(request.headers["Last-Event-ID"] == (changesRun ? "0" : "10"))
+                return .stream(
+                    status: 200, headers: [:],
+                    chunks: [
+                        Self.frame("c-1", "ag_ui", #"{"type":"RUN_STARTED","threadId":"t1","runId":"\#(nextRun)"}"#),
+                        Self.content(changesRun ? "1" : "10", changesRun ? "new run" : "duplicate"),
+                        Self.content(changesRun ? "2" : "11", "after"),
+                        Self.frame(
+                            "c-2", "ag_ui",
+                            #"{"type":"RUN_FINISHED","threadId":"t1","runId":"\#(nextRun)","result":{"reason":"stream_close"}}"#),
+                        Self.frame("c-3", "ag_ui", #"{"type":"RUN_FINISHED","threadId":"t1","runId":"\#(nextRun)"}"#),
+                    ], error: nil)
+            }
+        }
+        let events = try await collect(makeClient(transport).tasks.runs.stream("t1", "current", options: Self.fast))
+        #expect(events.compactMap(\.delta) == (changesRun ? ["before", "new run", "after"] : ["before", "after"]))
+        #expect(events.filter { $0.eventType == .runFinished }.count == 1)
+        #expect(transport.requests.count == 3)
+    }
+
     @Test func readinessWaitsHonourRetryAfterAndDoNotSpendReconnectBudget() async throws {
         let transport = MockTransport { _, index in
             if index < 4 {
