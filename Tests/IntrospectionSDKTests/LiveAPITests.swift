@@ -236,9 +236,11 @@ struct LiveAPITests {
             #expect(updated.description == "updated")
 
             try await automations.delete(created.id)
-            // A get reads soft-deleted automations too, so the delete shows as absence from the list.
             let remaining = try await automations.list().collect(limit: limit)
             #expect(!remaining.contains { $0.id == created.id })
+            // Fails today: the DP reads automations with deleted ones included and
+            // returns no deleted_at, so a deleted automation reads back as live.
+            await expectFailure(.notFound, status: 404) { try await automations.get(created.id) }
         } cleanup: {
             try await automations.delete(created.id)
         }
