@@ -13,70 +13,62 @@ import Testing
 /// settings are absent. Run with `swift test --filter LiveAPITests`.
 ///
 /// Settings: `INTROSPECTION_BASE_API_URL` (or `INTROSPECTION_BASE_URL`), the
-/// Control Plane; `INTROSPECTION_DP_URL`, the Data Plane; `INTROSPECTION_TOKEN`,
-/// the project's API key; `INTROSPECTION_MEMBER_TOKEN`, a member's Data Plane
-/// token, for the writes no API key capability grants (share deletes, tags,
-/// automations); `INTROSPECTION_CP_SESSION`, a member's encoded
-/// `intro_cp_session` cookie, for member-authored Control Plane reads;
-/// `INTROSPECTION_PROJECT`; `INTROSPECTION_RUNTIME_GROUP_ID` for automations,
-/// which the seed does not create; and, when set, `INTROSPECTION_PROJECT_ID` and
+/// Control Plane; `INTROSPECTION_CLIENT_ID` / `INTROSPECTION_CLIENT_SECRET`, the
+/// project's service account, whose `client_credentials` response names the Data
+/// Plane (no Data Plane URL is configured); `INTROSPECTION_PROJECT`;
+/// `INTROSPECTION_MEMBER_TOKEN`, a member's Data Plane token, for annotation tags,
+/// which no service account is granted; `INTROSPECTION_CP_SESSION`, a member's
+/// encoded `intro_cp_session` cookie, for member reads; `INTROSPECTION_RUNTIME_GROUP_ID`
+/// for automations; and, when set, `INTROSPECTION_PROJECT_ID` and
 /// `INTROSPECTION_ORG_ID`, checked against what the server returns.
 @Suite(.enabled(if: Live.isEnabled, "Live tests run only with INTROSPECTION_LIVE=1"))
 struct LiveAPITests {
     private let limit = 500
 
-    private enum Credential {
-        /// The project's API key.
-        case apiKey
-        /// A member's Control Plane session cookie, with the API key on the Data Plane.
-        case session
-        /// A member's Data Plane token.
-        case member
-    }
+    /// The settings the service-account client reads.
+    private static let serviceAccount = ["INTROSPECTION_CLIENT_ID", "INTROSPECTION_CLIENT_SECRET", "INTROSPECTION_PROJECT"]
 
     private func setting(_ name: String) throws -> String {
         guard let value = Live.value(name) else { try Test.cancel("\(name) is not set") }
         return value
     }
 
-    private func url(_ name: String) throws -> URL {
-        let raw = try setting(name)
-        guard let url = URL(string: raw) else { try Test.cancel("Invalid \(name): \(raw)") }
+    private func controlPlaneURL() throws -> URL {
+        let raw = try Live.value("INTROSPECTION_BASE_API_URL") ?? setting("INTROSPECTION_BASE_URL")
+        guard let url = URL(string: raw) else { try Test.cancel("Invalid Control Plane URL: \(raw)") }
         return url
     }
 
-    private func client(_ credential: Credential) throws -> IntrospectionClient {
-        switch credential {
-        case .apiKey:
-            return try client(token: try setting("INTROSPECTION_TOKEN"))
-        case .session:
-            // The Control Plane authenticates a bearer token ahead of the session cookie, so the
-            // cookie goes alone: an API key beside it would answer 403 on member-authored reads.
-            let cookie = "intro_cp_session=\(try setting("INTROSPECTION_CP_SESSION"))"
-            return try client(
-                controlPlane: nil, dataPlane: BearerToken(try setting("INTROSPECTION_TOKEN")), headers: ["Cookie": cookie])
-        case .member:
-            return try client(token: try setting("INTROSPECTION_MEMBER_TOKEN"))
-        }
+    /// The project's service account, on the Data Plane its token response names.
+    private func serviceAccountClient() async throws -> IntrospectionClient {
+        let client = try await IntrospectionClient.fromServiceAccount(
+            clientId: try setting("INTROSPECTION_CLIENT_ID"),
+            clientSecret: try setting("INTROSPECTION_CLIENT_SECRET"),
+            project: try setting("INTROSPECTION_PROJECT"),
+            controlPlaneURL: try controlPlaneURL()
+        )
+        #expect(client.configuration.dataPlaneURL != nil, "the client_credentials response carries dp_url")
+        return client
     }
 
-    private func client(token: String) throws -> IntrospectionClient {
-        try client(controlPlane: BearerToken(token), dataPlane: nil)
+    /// `token` on the Data Plane `discoveredFrom` was built for.
+    private func client(token: String, discoveredFrom primary: IntrospectionClient) throws -> IntrospectionClient {
+        IntrospectionClient(
+            configuration: IntrospectionClient.Configuration(
+                controlPlaneURL: try controlPlaneURL(),
+                dataPlaneURL: primary.dataPlane.baseURL,
+                controlPlaneCredentials: BearerToken(token)
+            ))
     }
 
-    /// `dataPlane` nil sends the Control Plane credential to both planes.
-    private func client(
-        controlPlane credentials: (any CredentialProvider)?, dataPlane: (any CredentialProvider)?,
-        headers: [String: String] = [:]
-    ) throws -> IntrospectionClient {
-        let controlPlane = try Live.value("INTROSPECTION_BASE_API_URL").flatMap(URL.init(string:)) ?? url("INTROSPECTION_BASE_URL")
+    /// A member's Control Plane session cookie, sent alone: the Control Plane authenticates a
+    /// bearer ahead of the cookie, so a token beside it would answer 403 on member reads.
+    private func sessionClient() throws -> IntrospectionClient {
+        let cookie = "intro_cp_session=\(try setting("INTROSPECTION_CP_SESSION"))"
         return IntrospectionClient(
             configuration: IntrospectionClient.Configuration(
-                controlPlaneURL: controlPlane,
-                dataPlaneURL: try url("INTROSPECTION_DP_URL"),
-                controlPlaneCredentials: credentials,
-                dataPlaneCredentials: dataPlane,
-                options: HTTPClient.Options(additionalHeaders: headers)
+                controlPlaneURL: try controlPlaneURL(),
+                options: HTTPClient.Options(additionalHeaders: ["Cookie": cookie])
             ))
     }
 
@@ -106,9 +98,9 @@ struct LiveAPITests {
 
     // MARK: Files
 
-    @Test(Live.requires("INTROSPECTION_TOKEN", "INTROSPECTION_DP_URL"))
+    @Test(Live.requires(serviceAccount))
     func filesCrudWalk() async throws {
-        let files = try client(.apiKey).files
+        let files = try await serviceAccountClient().files
         let name = unique("file") + ".txt"
         let content = "hello from the swift sdk"
 
@@ -145,10 +137,9 @@ struct LiveAPITests {
 
     // MARK: Upload and shares
 
-    @Test(Live.requires("INTROSPECTION_TOKEN", "INTROSPECTION_MEMBER_TOKEN", "INTROSPECTION_DP_URL"))
+    @Test(Live.requires(serviceAccount))
     func uploadAndSharesCrudWalk() async throws {
-        let client = try client(.apiKey)
-        let member = try self.client(.member)
+        let client = try await serviceAccountClient()
         let name = unique("shared") + ".bin"
         let file = try await client.files.upload(
             FileUpload(data: Data("shared bytes".utf8), filename: name, name: name, contentType: "application/octet-stream"))
@@ -169,11 +160,10 @@ struct LiveAPITests {
                     try await client.shares.update(share.id, ShareUpdate(visibleFrom: Date(timeIntervalSince1970: 1_767_225_600)))
                 }
 
-                // No API key capability carries `shares:delete`, so a member removes it.
-                try await member.shares.delete(share.id)
+                try await client.shares.delete(share.id)
                 await expectFailure(.notFound, status: 404) { try await client.shares.get(share.id) }
             } cleanup: {
-                try await member.shares.delete(share.id)
+                try await client.shares.delete(share.id)
             }
             try await client.files.delete(file.id)
         } cleanup: {
@@ -183,40 +173,44 @@ struct LiveAPITests {
 
     // MARK: Tags
 
-    @Test(Live.requires("INTROSPECTION_MEMBER_TOKEN", "INTROSPECTION_DP_URL"))
+    @Test(Live.requires(serviceAccount + ["INTROSPECTION_MEMBER_TOKEN"]))
     func tagsCrudWalk() async throws {
-        let tags = try client(.member).tags
+        let client = try await serviceAccountClient()
+        let accessTags = client.tags
+        // `annotations:write` is granted to members only, never to a service account.
+        let annotationTags = try self.client(token: try setting("INTROSPECTION_MEMBER_TOKEN"), discoveredFrom: client).tags
         let access = unique("access")
 
-        _ = try await tags.create(.access(name: access))
-        let created = try await tags.create(.annotation(name: unique("label"), color: "#f97316"))
+        _ = try await accessTags.create(.access(name: access))
+        let created = try await annotationTags.create(.annotation(name: unique("label"), color: "#f97316"))
         try await cleaningUp {
             #expect(created.kind == .annotation)
-            #expect(try await tags.get(.access, access).name == access)
-            #expect(try await tags.get(.annotation, created.name).color?.lowercased() == "#f97316")
+            #expect(try await accessTags.get(.access, access).name == access)
+            #expect(try await annotationTags.get(.annotation, created.name).color?.lowercased() == "#f97316")
 
-            let listed = try await tags.list(TagListParams(kind: .annotation)).collect(limit: limit)
+            let listed = try await annotationTags.list(TagListParams(kind: .annotation)).collect(limit: limit)
             #expect(listed.contains { $0.name == created.name })
 
-            let updated = try await tags.update(.annotation, created.name, TagUpdate(color: "#22c55e", description: "recolored"))
+            let updated = try await annotationTags.update(
+                .annotation, created.name, TagUpdate(color: "#22c55e", description: "recolored"))
             #expect(updated.color?.lowercased() == "#22c55e")
             #expect(updated.description == "recolored")
 
-            try await tags.delete(.annotation, created.name)
-            try await tags.delete(.access, access)
-            await expectFailure(.notFound, status: 404) { try await tags.get(.annotation, created.name) }
+            try await annotationTags.delete(.annotation, created.name)
+            try await accessTags.delete(.access, access)
+            await expectFailure(.notFound, status: 404) { try await annotationTags.get(.annotation, created.name) }
         } cleanup: {
-            try? await tags.delete(.annotation, created.name)
-            try await tags.delete(.access, access)
+            try? await annotationTags.delete(.annotation, created.name)
+            try await accessTags.delete(.access, access)
         }
     }
 
     // MARK: Automations
 
     /// An automation dispatches into a runtime group, which the seed does not create.
-    @Test(Live.requires("INTROSPECTION_MEMBER_TOKEN", "INTROSPECTION_DP_URL", "INTROSPECTION_RUNTIME_GROUP_ID"))
+    @Test(Live.requires(serviceAccount + ["INTROSPECTION_RUNTIME_GROUP_ID"]))
     func automationsCrudWalk() async throws {
-        let automations = try client(.member).automations
+        let automations = try await serviceAccountClient().automations
         let created = try await automations.create(
             AutomationCreate(
                 name: unique("automation"),
@@ -248,9 +242,9 @@ struct LiveAPITests {
 
     // MARK: Control Plane reads
 
-    @Test(Live.requires("INTROSPECTION_TOKEN", "INTROSPECTION_DP_URL", "INTROSPECTION_PROJECT"))
+    @Test(Live.requires(serviceAccount))
     func controlPlaneReads() async throws {
-        let client = try client(.apiKey)
+        let client = try await serviceAccountClient()
         let project = try setting("INTROSPECTION_PROJECT")
 
         _ = try await client.runtimes.list(RuntimeListParams(project: project)).collect(limit: limit)
@@ -262,9 +256,9 @@ struct LiveAPITests {
 
     // MARK: Telemetry reads
 
-    @Test(Live.requires("INTROSPECTION_TOKEN", "INTROSPECTION_DP_URL"))
+    @Test(Live.requires(serviceAccount))
     func telemetryReads() async throws {
-        let client = try client(.apiKey)
+        let client = try await serviceAccountClient()
         _ = try await client.conversations.list().firstPage()
         let events = try await client.events.list(EventListParams(eventName: .annotation)).firstPage()
         #expect(events.records.allSatisfy { $0.eventName == .annotation })
@@ -272,9 +266,10 @@ struct LiveAPITests {
 
     // MARK: Members with a Control Plane session
 
-    @Test(Live.requires("INTROSPECTION_TOKEN", "INTROSPECTION_CP_SESSION", "INTROSPECTION_DP_URL"))
+    /// `members:read` is granted to members only, never to a service account.
+    @Test(Live.requires("INTROSPECTION_CP_SESSION"))
     func membersReadsWithSession() async throws {
-        let members = try client(.session).members
+        let members = try sessionClient().members
         let listed = try await members.list().collect(limit: limit)
         let first = try #require(listed.first, "the seeded org has members")
         let fetched = try await members.get(first.id)
@@ -284,9 +279,16 @@ struct LiveAPITests {
 
     // MARK: Rejected credentials
 
-    @Test(Live.requires("INTROSPECTION_DP_URL"))
+    @Test(Live.requires(serviceAccount))
     func rejectedCredentialsAreTyped() async throws {
-        let client = try client(token: "intro_dev_not_a_real_key")
-        await expectFailure(.authentication, status: 401) { try await client.files.get(UUID().uuidString.lowercased()) }
+        let auth = AuthAPI(controlPlaneURL: try controlPlaneURL())
+        await expectFailure(.authentication, status: 401) {
+            try await auth.clientCredentials(
+                clientId: try setting("INTROSPECTION_CLIENT_ID"), clientSecret: "not-the-secret",
+                project: try setting("INTROSPECTION_PROJECT"))
+        }
+
+        let bogus = try client(token: "intro_dev_not_a_real_key", discoveredFrom: try await serviceAccountClient())
+        await expectFailure(.authentication, status: 401) { try await bogus.files.get(UUID().uuidString.lowercased()) }
     }
 }
