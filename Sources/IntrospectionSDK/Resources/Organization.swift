@@ -6,7 +6,7 @@ import Foundation
 public struct Organization: Codable, Sendable, Hashable {
     public var id: String
     public var name: String?
-    var slug: String?
+    public var slug: String?
     public var externalOrgId: String?
     public var imageUrl: String?
     public var hostedGit: Bool?
