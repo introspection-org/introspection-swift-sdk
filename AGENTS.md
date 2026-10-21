@@ -9,6 +9,7 @@ scripts/setup-hooks.sh   # once: installs the pre-commit hook
 swift build
 swift test
 scripts/lint.sh --fix    # swift format, then the strict lint CI runs
+scripts/swiftlint.sh     # complexity and size limits (pinned SwiftLint, .swiftlint.yml)
 scripts/coverage.sh      # tests with the line-coverage floor
 ```
 
@@ -33,6 +34,7 @@ The pre-commit hook runs the lint, a build with every trait enabled and the cove
 - **Semantic-convention strings** (`gen_ai.*`, `introspection.*`, event names, AG-UI custom events) are defined once in `SemanticConventions.swift` and pinned by its tests.
 - **Public API**: required parameters first, optional ones with defaults after; one short `///` line per public declaration, plus anything non-obvious about server behaviour.
 - **Comments** record what the code cannot say (a server quirk, a constraint, a decision); they do not narrate the next line.
+- **Complexity and size limits** in `.swiftlint.yml` are a ratchet set at today's worst values: never raise a limit, only lower it, toward the targets (complexity 10, function body 60, file 400, type body 300, parameters 5, nesting type 1 / function 3).
 
 ## Tests
 

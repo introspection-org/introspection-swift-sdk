@@ -48,6 +48,15 @@ jobs:
       - name: swift format lint
         run: scripts/lint.sh
 
+  swiftlint:
+    name: SwiftLint (complexity & size)
+    runs-on: ubuntu-latest
+    container: swift:6.4-noble
+    steps:
+      - uses: actions/checkout@v7
+      - name: swiftlint
+        run: scripts/swiftlint.sh
+
   linux:
     name: Tests (Linux)
     runs-on: ubuntu-latest
