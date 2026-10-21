@@ -3,19 +3,6 @@
 import Foundation
 import IntrospectionSDK
 
-/// The submit tool's schema, as the recipe's `submit_result` tool declares it.
-struct Triage: Decodable {
-    enum Category: String, Decodable {
-        case billing, bug, other
-    }
-
-    let category: Category
-    let priority: Int
-    let summary: String
-
-    var isValid: Bool { (1...4).contains(priority) && summary.count <= 280 }
-}
-
 enum StructuredOutput {
     static func readStream(runner: Runner) async throws -> String? {
         // #region docs:patterns/structured-output/read-stream
@@ -47,6 +34,19 @@ enum StructuredOutput {
 
     static func validate(runner: Runner, taskId: String, raw: String?) async throws {
         // #region docs:patterns/structured-output/validate
+        // The submit tool's schema, as the recipe's `submit_result` tool declares it.
+        struct Triage: Decodable {
+            enum Category: String, Decodable {
+                case billing, bug, other
+            }
+
+            let category: Category
+            let priority: Int
+            let summary: String
+
+            var isValid: Bool { (1...4).contains(priority) && summary.count <= 280 }
+        }
+
         let result = raw.flatMap { try? JSONDecoder().decode(Triage.self, from: Data($0.utf8)) }
         if result?.isValid != true {
             _ = try await runner.tasks.runs.create(
