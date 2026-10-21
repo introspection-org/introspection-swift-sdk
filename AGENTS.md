@@ -10,8 +10,11 @@ swift build
 swift test
 scripts/lint.sh --fix    # swift format, then the strict lint CI runs
 scripts/coverage.sh      # tests with the line-coverage floor
-scripts/duplicates.sh    # jscpd duplicate-code gate (needs Node.js)
+scripts/api-breakage.sh [<ref>]  # public API breakage against <ref> (default: latest tag)
+scripts/duplicates.sh    # jscpd duplicate-code gate (tools from mise)
 ```
+
+Tools other than Swift (Node.js and jscpd) are managed by mise: `brew install mise`, then `mise install`. `.mise.toml` names the tools and `mise.lock` pins their versions and checksums for macOS and Linux; mise runs in locked mode, so after a version change in `.mise.toml`, run `mise lock` and commit `mise.lock` and `.mise/locks/`.
 
 No Swift toolchain? `scripts/docker-test.sh` runs the tests in `swift:6.4-noble`.
 
@@ -21,6 +24,7 @@ The pre-commit hook runs the lint, a build with every trait enabled and the cove
 
 - **The PR title is a Conventional Commit**: `feat:`, `fix:`, `docs:`, `refactor:`, `perf:`, `test:`, `build:`, `ci:`, `chore:`, `revert:`, with an optional scope (`feat(auth):`). Breaking changes use `feat!:` or a `BREAKING CHANGE:` footer. The title becomes the squash commit, and release-please derives the version and changelog from it.
 - **Releases** come from the release-please PR. Merging it tags `vX.Y.Z`, which is what Swift Package Manager installs. Never tag by hand and never edit `version.txt`, `CHANGELOG.md` or the `x-release-please-version` lines.
+- **Public API breakage** fails the `API Breakage` job. It compares both library products, with every trait enabled, against the PR's base commit rather than the latest tag, since `main` may already hold unreleased breaks. To break the API on purpose, mark the PR title `type!:` or add a `BREAKING CHANGE:` footer to the PR body, then re-run the job (editing a PR does not restart CI).
 - **Pre-1.0**, a `feat` bumps the minor version and a `fix` the patch; a breaking change bumps the minor version.
 
 ## Code conventions
