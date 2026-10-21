@@ -24,8 +24,21 @@ enum StructuredOutput {
         var submitId: String?
 
         for try await event in handle.stream() {
-            if event.eventType == .toolCallStart, event.toolCallName == "submit_result" { submitId = event.toolCallId }
-            if event.eventType == .toolCallArgs, let id = event.toolCallId { args[id, default: ""] += event.delta ?? "" }
+            switch event.eventType {
+            case .toolCallStart where event.toolCallName == "submit_result":
+                submitId = event.toolCallId
+            case .toolCallArgs:
+                if let id = event.toolCallId { args[id, default: ""] += event.delta ?? "" }
+            case .messagesSnapshot:
+                // A stream resumed past its replay buffer sends a snapshot with each call's complete arguments.
+                for call in (event.raw["messages"]?.arrayValue ?? []).flatMap({ $0["toolCalls"]?.arrayValue ?? [] }) {
+                    guard let id = call["id"]?.stringValue else { continue }
+                    if call["function"]?["name"]?.stringValue == "submit_result" { submitId = id }
+                    args[id] = call["function"]?["arguments"]?.stringValue
+                }
+            default:
+                break
+            }
         }
         let raw = submitId.flatMap { args[$0] }
         // #endregion docs:patterns/structured-output/read-stream
