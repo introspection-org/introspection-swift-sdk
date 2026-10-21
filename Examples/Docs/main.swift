@@ -12,7 +12,7 @@ let pages = [
     "reference/authentication", "observe/patterns", "identity/agents", "identity/sharing",
     "patterns/add-to-your-app", "patterns/agent-follow-ups", "patterns/approve-outside", "patterns/ask-the-user",
     "patterns/files", "patterns/multi-tenant", "patterns/per-user-tools",
-    "patterns/structured-output", "patterns/trigger", "patterns/web-chat",
+    "patterns/structured-output", "patterns/trigger", "patterns/web-chat", "reference/swift",
 ]
 print("Docs snippets for:")
 for page in pages { print("  \(page)") }
