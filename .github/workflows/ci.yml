@@ -50,8 +50,8 @@ jobs:
 
   swiftlint:
     name: SwiftLint (complexity & size)
+    # The static SwiftLint binary needs no toolchain; the swift image lacks curl.
     runs-on: ubuntu-latest
-    container: swift:6.4-noble
     steps:
       - uses: actions/checkout@v7
       - name: swiftlint

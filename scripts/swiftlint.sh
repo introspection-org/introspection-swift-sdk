@@ -29,7 +29,7 @@ DIR=.build/swiftlint-$VERSION
 if [ ! -x "$DIR/swiftlint" ]; then
     mkdir -p "$DIR"
     url=https://github.com/realm/SwiftLint/releases/download/$VERSION/$ASSET
-    if command -v curl >/dev/null; then curl -fsSL -o "$DIR/$ASSET" "$url"; else wget -qO "$DIR/$ASSET" "$url"; fi
+    curl -fsSL -o "$DIR/$ASSET" "$url"
     if command -v sha256sum >/dev/null; then sum=$(sha256sum "$DIR/$ASSET"); else sum=$(shasum -a 256 "$DIR/$ASSET"); fi
     [ "${sum%% *}" = "$SHA256" ] || { echo "Checksum mismatch for $ASSET." >&2; rm -f "$DIR/$ASSET"; exit 1; }
     unzip -oq "$DIR/$ASSET" -d "$DIR"
