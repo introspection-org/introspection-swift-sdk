@@ -15,8 +15,6 @@ scripts/api-breakage.sh [<ref>]  # public API breakage against <ref> (default: l
 
 No Swift toolchain? `scripts/docker-test.sh` runs the tests in `swift:6.4-noble`.
 
-In a git worktree `.git` is a file, so `scripts/setup-hooks.sh` fails; copy `hooks/pre-commit` into `$(git rev-parse --git-common-dir)/hooks/` by hand.
-
 The pre-commit hook runs the lint, a build with every trait enabled and the coverage-gated tests. CI runs the same checks plus a secrets scan, actionlint, Apple-platform builds (including iOS and documentation), and the PR title check. CI is the source of truth by convention: the `main` ruleset requires a PR, allows only squash merges and blocks force-push and deletion, but has no required status checks, and adding them needs a repo admin.
 
 ## Pull requests and releases
