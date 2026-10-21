@@ -120,6 +120,7 @@ public struct OAuthToken: Codable, Sendable, Hashable {
         } else if let text = try? container.decodeIfPresent(String.self, forKey: .expiresIn) {
             expiresIn = Int(text)
         }
+        // jscpd:ignore-start: Codable init(from:) of a public type; one decode per stored property
         scope = try container.decodeIfPresent(String.self, forKey: .scope)
         refreshToken = try container.decodeIfPresent(String.self, forKey: .refreshToken)
         idToken = try container.decodeIfPresent(String.self, forKey: .idToken)
@@ -134,6 +135,7 @@ public struct OAuthToken: Codable, Sendable, Hashable {
         memberId = try container.decodeIfPresent(String.self, forKey: .memberId)
         memberName = try container.decodeIfPresent(String.self, forKey: .memberName)
         act = try container.decodeIfPresent(JSONValue.self, forKey: .act)
+        // jscpd:ignore-end
         var all = (try? decoder.singleValueContainer().decode(JSONObject.self)) ?? [:]
         for key in CodingKeys.allCases { all.removeValue(forKey: key.rawValue) }
         extra = all

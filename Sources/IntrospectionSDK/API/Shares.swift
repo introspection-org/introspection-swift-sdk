@@ -135,6 +135,7 @@ public struct ShareListParams: Sendable, Hashable {
         limit: Int? = nil, next: String? = nil, resourceType: ShareResourceType? = nil, resourceId: String? = nil,
         grantedMemberId: String? = nil, createdByMe: Bool? = nil, grantedToMe: Bool? = nil, grantedTag: String? = nil
     ) {
+        // jscpd:ignore-start: memberwise init of a public type; the assignments cannot be shared
         self.limit = limit
         self.next = next
         self.resourceType = resourceType
@@ -143,6 +144,7 @@ public struct ShareListParams: Sendable, Hashable {
         self.createdByMe = createdByMe
         self.grantedToMe = grantedToMe
         self.grantedTag = grantedTag
+        // jscpd:ignore-end
     }
 }
 

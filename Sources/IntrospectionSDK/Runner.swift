@@ -346,6 +346,11 @@ public final class Runner: DataPlaneConnection, Sendable {
         current = Mutex((spec, try Self.makeHTTP(spec: spec, template: template, gate: gate)))
     }
 
+    /// A runner the Control Plane just minted for `source`, so `refresh()` can mint the next one.
+    convenience init(opened spec: RunnerSpec, client: IntrospectionClient, source: RunnerSource) throws {
+        try self.init(spec: spec, template: client.dataPlane, controlPlane: client.controlPlane, source: source)
+    }
+
     /// Build a runner from a spec using the client's transport and options; `refresh()` is unavailable.
     public convenience init(spec: RunnerSpec, client: IntrospectionClient) throws {
         try self.init(spec: spec, template: client.dataPlane)

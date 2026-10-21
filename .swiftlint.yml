@@ -30,10 +30,12 @@ function_body_length:
   warning: 111
   error: 111
 
-# Target 400 lines. Worst: Sources/IntrospectionSDK/API/Conversations.swift (1323).
+# Target 400 lines. Worst: Sources/IntrospectionSDK/API/Conversations.swift (1064).
+# Comment-only lines don't count, so doc comments and jscpd:ignore markers never trip the limit.
 file_length:
-  warning: 1323
-  error: 1323
+  ignore_comment_only_lines: true
+  warning: 1064
+  error: 1064
 
 # Target 300 lines. Worst: Tests/IntrospectionSDKTests/APIContractTests.swift:34 (660).
 type_body_length:

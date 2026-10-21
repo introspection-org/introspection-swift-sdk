@@ -13,9 +13,10 @@ scripts/lint.sh --fix    # swift format, then the strict lint CI runs
 scripts/swiftlint.sh     # complexity and size limits (SwiftLint from mise, .swiftlint.yml)
 scripts/coverage.sh      # tests with the line-coverage floor
 scripts/api-breakage.sh [<ref>]  # public API breakage against <ref> (default: latest tag)
+scripts/duplicates.sh    # jscpd duplicate-code gate (tools from mise)
 ```
 
-Tool versions other than the Swift toolchain live in `.mise.toml`, checksum-locked in `mise.lock`; Renovate can bump them. After changing one, run `mise lock` to refresh the lockfile.
+Tools other than Swift (Node.js, jscpd and SwiftLint) are managed by mise: `brew install mise`, then `mise install`. `.mise.toml` names the tools and `mise.lock` pins their versions and checksums for macOS and Linux; Renovate can bump them. mise runs in locked mode, so after a version change in `.mise.toml`, run `mise lock` and commit `mise.lock` and `.mise/locks/`.
 
 No Swift toolchain? `scripts/docker-test.sh` runs the tests in `swift:6.4-noble`.
 
@@ -39,7 +40,8 @@ The pre-commit hook runs the lint, a build with every trait enabled and the cove
 - **Semantic-convention strings** (`gen_ai.*`, `introspection.*`, event names, AG-UI custom events) are defined once in `SemanticConventions.swift` and pinned by its tests.
 - **Public API**: required parameters first, optional ones with defaults after; one short `///` line per public declaration, plus anything non-obvious about server behaviour.
 - **Comments** record what the code cannot say (a server quirk, a constraint, a decision); they do not narrate the next line.
-- **Complexity and size limits** in `.swiftlint.yml` are a ratchet set at today's worst values: never raise a limit, only lower it, toward the targets (complexity 10, function body 60, file 400, type body 300, parameters 5, nesting type 1 / function 3).
+- **Complexity and size limits** in `.swiftlint.yml` are a ratchet set at today's worst values: never raise a limit, only lower it, toward the targets (complexity 10, function body 60, file 400 lines not counting comment-only ones, type body 300, parameters 5, nesting type 1 / function 3).
+- **No duplicated code**: `scripts/duplicates.sh` runs jscpd over `Sources` (not `Tests`, where repeated fixtures read better) and fails on any clone, renamed ones included, of 150 tokens or more (`.jscpd.json`); at 50 tokens, renamed clones flag every memberwise init and `CodingKeys` list. Extract an internal or private helper. Only a public declaration that cannot be shared without an API change (a memberwise init, a `Codable` run, a constant catalogue) may sit between `// jscpd:ignore-start: <reason>` and `// jscpd:ignore-end`, kept as small as possible and never around logic.
 
 ## Tests
 

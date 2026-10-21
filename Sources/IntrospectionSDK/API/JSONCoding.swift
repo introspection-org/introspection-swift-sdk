@@ -66,3 +66,16 @@ public enum ISO8601 {
     private static let fractional = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
     private static let plain = Date.ISO8601FormatStyle()
 }
+
+// The explicit Codable witnesses of the open string enums share these; dropping the witnesses for the standard
+// library's defaults would remove public symbols.
+extension Decoder {
+    func singleString() throws -> String { try singleValueContainer().decode(String.self) }
+}
+
+extension Encoder {
+    func encodeSingle(_ value: String) throws {
+        var container = singleValueContainer()
+        try container.encode(value)
+    }
+}

@@ -94,5 +94,14 @@ let package = Package(
         .executableTarget(
             name: "FederatedExample", dependencies: ["IntrospectionSDK"], path: "Examples/Federated",
             swiftSettings: swiftSettings),
+        // The docs snippets: each `// #region docs:<id>` is the code a docs page shows.
+        .executableTarget(
+            name: "DocsExamples",
+            dependencies: [
+                "IntrospectionSDK",
+                .target(name: "IntrospectionTelemetry", condition: .when(traits: ["Telemetry"])),
+            ],
+            path: "Examples/Docs",
+            swiftSettings: swiftSettings),
     ]
 )

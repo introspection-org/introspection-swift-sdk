@@ -160,15 +160,7 @@ public final class HTTPClient: Sendable {
             headers: try await buildHeaders(extra: headers, contentType: contentType, authenticated: authenticated),
             body: data, timeout: options.timeout
         )
-        do {
-            return (try await transport.send(request), request.headers["Authorization"])
-        } catch let error as IntrospectionError {
-            throw error
-        } catch is CancellationError {
-            throw CancellationError()
-        } catch {
-            throw IntrospectionError(kind: .network, message: error.localizedDescription, underlying: error)
-        }
+        return (try await mapTransportErrors { try await transport.send(request) }, request.headers["Authorization"])
     }
 
     private func buildHeaders(extra: [String: String], contentType: String?, authenticated: Bool) async throws -> [String: String] {
@@ -268,8 +260,13 @@ public final class HTTPClient: Sendable {
         merged["Accept"] = "text/event-stream"
         for (name, value) in headers { merged[name] = value }
         let request = HTTPRequest(method: method, url: url, headers: merged, body: data, timeout: nil)
+        return (try await mapTransportErrors { try await transport.stream(request) }, request.headers["Authorization"])
+    }
+
+    /// Passes SDK errors and cancellation through and reports any other transport failure as `.network`.
+    private func mapTransportErrors<T>(_ operation: () async throws -> T) async throws -> T {
         do {
-            return (try await transport.stream(request), request.headers["Authorization"])
+            return try await operation()
         } catch let error as IntrospectionError {
             throw error
         } catch is CancellationError {
