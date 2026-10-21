@@ -22,14 +22,17 @@ enum AddToYourApp {
         return runner
     }
 
-    static func startTask(runner: Runner, user: SignedInUser, orders: OrderStore) async throws {
-        let orderId = "1842"
+    static func startTask(runner: Runner, user: SignedInUser) async throws {
         // #region docs:patterns/add-to-your-app/start-task
+        // Your app's code: remember which task belongs to the order, and forward events to the browser.
+        func saveAgentBinding(orderId: String, taskId: String, userId: String) async throws {}
+        func sendEventToBrowser(_ event: AGUIEvent) async throws {}
+
         let handle = try await runner.tasks.start(
             prompt: "Review order 1842 against the refund policy and draft the next response.",
             TaskCreate(metadata: ["order_id": "1842"])
         )
-        try await orders.saveAgentBinding(orderId, AgentBinding(taskId: handle.run.taskId, userId: user.id))
+        try await saveAgentBinding(orderId: "1842", taskId: handle.run.taskId, userId: user.id)
 
         for try await event in handle.stream() {
             try await sendEventToBrowser(event)
@@ -39,6 +42,9 @@ enum AddToYourApp {
 
     static func reconnect(runner: Runner, binding: AgentBinding) async throws {
         // #region docs:patterns/add-to-your-app/reconnect
+        // Your app's code: forward one event to the browser, for example over server-sent events.
+        func sendEventToBrowser(_ event: AGUIEvent) async throws {}
+
         let task = try await runner.tasks.get(binding.taskId)
         let runId = task.metadata?["active_run_id"]?.stringValue ?? task.metadata?["latest_run_id"]?.stringValue
         guard let runId else { return }
