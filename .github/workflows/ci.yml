@@ -109,6 +109,9 @@ jobs:
     # macOS so the Apple-only public API (Keychain, hosted login) is compared too.
     runs-on: macos-26
     needs: lint
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v7
         with:
@@ -119,17 +122,21 @@ jobs:
       # The baseline is the PR's base commit, not the latest tag: main may already hold
       # intentional breaks that are not released yet, and only this PR's breakage matters.
       # A PR titled `type!:` or with a `BREAKING CHANGE:` footer declares the break and passes.
+      # Title and body are read live, since a re-run reuses the event payload of the first run.
       - name: Diagnose API-breaking changes against the base commit
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           if scripts/api-breakage.sh "$BASE_SHA"; then
             exit 0
           fi
-          if printf '%s\n' "$PR_TITLE" | grep -Eq '^[a-z]+(\([^)]*\))?!:' ||
-            printf '%s\n' "$PR_BODY" | grep -Eq '^BREAKING[ -]CHANGE:'; then
+          title="$(gh pr view "$PR_NUMBER" --json title --jq .title)"
+          body="$(gh pr view "$PR_NUMBER" --json body --jq .body)"
+          if printf '%s\n' "$title" | grep -Eq '^[a-z]+(\([^)]*\))?!:' ||
+            printf '%s\n' "$body" | grep -Eq '^BREAKING[ -]CHANGE:'; then
             echo "::notice::The PR declares a breaking change, so the breakage above is intended."
             exit 0
           fi
