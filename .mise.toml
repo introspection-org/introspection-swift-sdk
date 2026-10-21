@@ -5,8 +5,9 @@ locked = true
 
 [tools."github:realm/SwiftLint"]
 version = "0.65.1"
-# The Linux archive also ships a fully static build, which needs no Swift toolchain.
-platforms.linux-x64 = { asset_pattern = "swiftlint_linux_amd64.zip", rename_exe = { "swiftlint-static" = "swiftlint" }, filter_bins = "swiftlint" }
-platforms.linux-arm64 = { asset_pattern = "swiftlint_linux_arm64.zip", rename_exe = { "swiftlint-static" = "swiftlint" }, filter_bins = "swiftlint" }
+# The Linux archive also ships a fully static build, which needs no Swift toolchain;
+# the dynamic one moves aside first, since mise never renames onto an existing file.
+platforms.linux-x64 = { asset_pattern = "swiftlint_linux_amd64.zip", rename_exe = { "swiftlint" = "swiftlint-dynamic", "swiftlint-static" = "swiftlint" }, filter_bins = "swiftlint" }
+platforms.linux-arm64 = { asset_pattern = "swiftlint_linux_arm64.zip", rename_exe = { "swiftlint" = "swiftlint-dynamic", "swiftlint-static" = "swiftlint" }, filter_bins = "swiftlint" }
 platforms.macos-arm64 = { asset_pattern = "portable_swiftlint.zip" }
 platforms.macos-x64 = { asset_pattern = "portable_swiftlint.zip" }
