@@ -15,11 +15,13 @@ scripts/api-breakage.sh [<ref>]  # public API breakage against <ref> (default: l
 
 No Swift toolchain? `scripts/docker-test.sh` runs the tests in `swift:6.4-noble`.
 
-The pre-commit hook runs the lint, a build with every trait enabled and the coverage-gated tests. CI runs the same checks plus a secrets scan, actionlint, Apple-platform builds (including iOS and documentation), and the PR title check. CI is the source of truth.
+In a git worktree `.git` is a file, so `scripts/setup-hooks.sh` fails; copy `hooks/pre-commit` into `$(git rev-parse --git-common-dir)/hooks/` by hand.
+
+The pre-commit hook runs the lint, a build with every trait enabled and the coverage-gated tests. CI runs the same checks plus a secrets scan, actionlint, Apple-platform builds (including iOS and documentation), and the PR title check. CI is the source of truth by convention: the `main` ruleset requires a PR, allows only squash merges and blocks force-push and deletion, but has no required status checks, and adding them needs a repo admin.
 
 ## Pull requests and releases
 
-- **The PR title is a Conventional Commit**: `feat:`, `fix:`, `docs:`, `refactor:`, `perf:`, `test:`, `build:`, `ci:`, `chore:`, `revert:`, with an optional scope (`feat(auth):`). Breaking changes use `feat!:` or a `BREAKING CHANGE:` footer. The title becomes the squash commit, and release-please derives the version and changelog from it.
+- **The PR title is a Conventional Commit**: `feat:`, `fix:`, `docs:`, `refactor:`, `perf:`, `test:`, `build:`, `ci:`, `chore:`, `revert:`, with an optional scope (`feat(auth):`). Breaking changes use `feat!:` or a `BREAKING CHANGE:` footer. The title becomes the squash commit, and release-please derives the version and changelog from it. It uses release-type `simple`, so only `feat`, `fix`, `perf` and `revert` make a release; `docs:`, `chore:`, `ci:` and the rest do not. A change to `Examples/` that the docs pin uses `feat(examples):` so it ships.
 - **Releases** come from the release-please PR. Merging it tags `vX.Y.Z`, which is what Swift Package Manager installs. Never tag by hand and never edit `version.txt`, `CHANGELOG.md` or the `x-release-please-version` lines.
 - **Public API breakage** fails the `API Breakage` job. It compares both library products, with every trait enabled, against the PR's base commit rather than the latest tag, since `main` may already hold unreleased breaks. To break the API on purpose, mark the PR title `type!:` or add a `BREAKING CHANGE:` footer to the PR body, then re-run the job (editing a PR does not restart CI).
 - **Pre-1.0**, a `feat` bumps the minor version and a `fix` the patch; a breaking change bumps the minor version.
@@ -42,5 +44,5 @@ The pre-commit hook runs the lint, a build with every trait enabled and the cove
 - Every resource is tested against `MockTransport`: request method, path, query and body encoding, and decoding of realistic server JSON taken from the server models.
 - The coverage floor in `scripts/coverage.sh` is a do-not-regress gate. Add tests for new code; lower the floor only with an explicit justification in the PR.
 - `IdentityModesTests` drives every way of authenticating (API key, service account runner with end-user identity, federated exchange, hosted login, device code) through a fake platform. `LiveIdentityTests` runs the same modes against a deployment when `INTROSPECTION_LIVE=1`; `live-tests.yml` runs it on demand (workflow_dispatch) in the `build` environment; it never gates a merge.
-- Examples in `Examples/` must keep compiling: CI builds them with the package.
+- Examples in `Examples/` must keep compiling. They are executable targets in `Package.swift`; CI compiles them with `swift build --build-tests --enable-all-traits` on Linux and macOS and never runs them.
 - `APIContractTests` compares the SDK's wire surface with the published OpenAPI references. It is skipped unless `INTROSPECTION_API_CONTRACT=1` and runs daily in CI; a red run means the API moved.
