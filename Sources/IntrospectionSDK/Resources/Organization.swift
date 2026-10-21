@@ -158,6 +158,7 @@ public struct Member: Codable, Sendable, Hashable {
         integrationId: String? = nil, isExternalCredentialAgent: Bool? = nil, policyAttributes: JSONObject? = nil,
         createdAt: Date? = nil, updatedAt: Date? = nil
     ) {
+        // jscpd:ignore-start: memberwise init of a public type; the assignments cannot be shared
         self.id = id
         self.orgId = orgId
         self.email = email
@@ -176,6 +177,7 @@ public struct Member: Codable, Sendable, Hashable {
         self.policyAttributes = policyAttributes
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+        // jscpd:ignore-end
     }
 
     private enum CodingKeys: String, CodingKey {

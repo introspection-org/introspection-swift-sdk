@@ -74,6 +74,7 @@ public struct File: Codable, Sendable, Hashable {
         generatedOutputTaskId: String? = nil, sizeBytes: Int64? = nil, version: Int? = nil, parentId: String? = nil,
         storageVersionId: String? = nil, expiresAt: Date? = nil
     ) {
+        // jscpd:ignore-start: memberwise init of a public type; the assignments cannot be shared
         self.id = id
         self.name = name
         self.orgId = orgId
@@ -93,6 +94,7 @@ public struct File: Codable, Sendable, Hashable {
         self.parentId = parentId
         self.storageVersionId = storageVersionId
         self.expiresAt = expiresAt
+        // jscpd:ignore-end
     }
 
     private enum CodingKeys: String, CodingKey {

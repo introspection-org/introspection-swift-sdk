@@ -1,0 +1,9 @@
+# Developer tools, installed with `mise install`; versions and checksums are pinned in mise.lock.
+[tools]
+node = "22"
+"npm:jscpd" = "5.4.1"
+
+[settings]
+# Install only what mise.lock records, so a new release cannot change a check's result.
+locked = true
+lockfile_platforms = ["macos-arm64", "macos-x64", "linux-x64", "linux-arm64"]

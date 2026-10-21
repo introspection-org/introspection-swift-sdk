@@ -11,7 +11,10 @@ swift test
 scripts/lint.sh --fix    # swift format, then the strict lint CI runs
 scripts/coverage.sh      # tests with the line-coverage floor
 scripts/api-breakage.sh [<ref>]  # public API breakage against <ref> (default: latest tag)
+scripts/duplicates.sh    # jscpd duplicate-code gate (tools from mise)
 ```
+
+Tools other than Swift (Node.js and jscpd) are managed by mise: `brew install mise`, then `mise install`. `.mise.toml` names the tools and `mise.lock` pins their versions and checksums for macOS and Linux; mise runs in locked mode, so after a version change in `.mise.toml`, run `mise lock` and commit `mise.lock` and `.mise/locks/`.
 
 No Swift toolchain? `scripts/docker-test.sh` runs the tests in `swift:6.4-noble`.
 
@@ -35,6 +38,7 @@ The pre-commit hook runs the lint, a build with every trait enabled and the cove
 - **Semantic-convention strings** (`gen_ai.*`, `introspection.*`, event names, AG-UI custom events) are defined once in `SemanticConventions.swift` and pinned by its tests.
 - **Public API**: required parameters first, optional ones with defaults after; one short `///` line per public declaration, plus anything non-obvious about server behaviour.
 - **Comments** record what the code cannot say (a server quirk, a constraint, a decision); they do not narrate the next line.
+- **No duplicated code**: `scripts/duplicates.sh` runs jscpd over `Sources` (not `Tests`, where repeated fixtures read better) and fails on any clone, renamed ones included, of 150 tokens or more (`.jscpd.json`); at 50 tokens, renamed clones flag every memberwise init and `CodingKeys` list. Extract an internal or private helper. Only a public declaration that cannot be shared without an API change (a memberwise init, a `Codable` run, a constant catalogue) may sit between `// jscpd:ignore-start: <reason>` and `// jscpd:ignore-end`, kept as small as possible and never around logic.
 
 ## Tests
 
