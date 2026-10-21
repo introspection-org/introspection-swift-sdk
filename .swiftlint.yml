@@ -1,0 +1,58 @@
+# SwiftLint checks complexity and size only; swift format (.swift-format) owns style.
+# Run with scripts/swiftlint.sh, which pins the SwiftLint version.
+#
+# Ratchet: each limit is today's worst value, so the check passes without refactoring.
+# Never raise a limit, only lower it: when a refactor brings the worst offender down,
+# lower the limit to the new worst value, until it reaches the target in the comment.
+# A limit already at its target stays there.
+
+only_rules:
+  - cyclomatic_complexity
+  - function_body_length
+  - file_length
+  - type_body_length
+  - function_parameter_count
+  - nesting
+
+included:
+  - Package.swift
+  - Sources
+  - Tests
+  - Examples
+
+# Target 10. Worst: Sources/IntrospectionSDK/API/Transcript.swift:330 (31).
+cyclomatic_complexity:
+  warning: 31
+  error: 31
+
+# Target 60 lines. Worst: Sources/IntrospectionSDK/API/Resumable.swift:78 (111).
+function_body_length:
+  warning: 111
+  error: 111
+
+# Target 400 lines. Worst: Sources/IntrospectionSDK/API/Conversations.swift (1064).
+# Comment-only lines don't count, so doc comments and jscpd:ignore markers never trip the limit.
+file_length:
+  ignore_comment_only_lines: true
+  warning: 1064
+  error: 1064
+
+# Target 300 lines. Worst: Tests/IntrospectionSDKTests/APIContractTests.swift:34 (660).
+type_body_length:
+  warning: 660
+  error: 660
+
+# Target 5. Worst: Sources/IntrospectionSDK/API/Conversations.swift:53 and HTTPClient.swift:128, :153 (6).
+function_parameter_count:
+  warning: 6
+  error: 6
+
+# Target type 1, function 3. Worst type: Tests/IntrospectionSDKTests/RunStreamContractTests.swift:21 (2).
+# Functions nest at most 1 level today, already within the target, so the limit is the target.
+nesting:
+  type_level:
+    warning: 2
+    error: 2
+  function_level:
+    warning: 3
+    error: 3

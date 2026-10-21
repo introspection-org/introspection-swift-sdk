@@ -48,6 +48,18 @@ jobs:
       - name: swift format lint
         run: scripts/lint.sh
 
+  swiftlint:
+    name: SwiftLint (complexity & size)
+    # mise installs the static SwiftLint binary pinned in .mise.toml, which needs no toolchain.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v5
+        with:
+          cache: true
+      - name: swiftlint
+        run: scripts/swiftlint.sh
+
   duplicates:
     name: Duplicate Code
     runs-on: ubuntu-latest
