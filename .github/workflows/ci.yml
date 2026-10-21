@@ -102,3 +102,43 @@ jobs:
           xcodebuild docbuild -scheme IntrospectionSDK \
             -destination 'generic/platform=macOS' \
             OTHER_DOCC_FLAGS="--warnings-as-errors"
+
+  api-breakage:
+    name: API Breakage
+    if: github.event_name == 'pull_request'
+    # macOS so the Apple-only public API (Keychain, hosted login) is compared too.
+    runs-on: macos-26
+    needs: lint
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      # The baseline is the PR's base commit, not the latest tag: main may already hold
+      # intentional breaks that are not released yet, and only this PR's breakage matters.
+      # A PR titled `type!:` or with a `BREAKING CHANGE:` footer declares the break and passes.
+      # Title and body are read live, since a re-run reuses the event payload of the first run.
+      - name: Diagnose API-breaking changes against the base commit
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if scripts/api-breakage.sh "$BASE_SHA"; then
+            exit 0
+          fi
+          title="$(gh pr view "$PR_NUMBER" --json title --jq .title)"
+          body="$(gh pr view "$PR_NUMBER" --json body --jq .body)"
+          if printf '%s\n' "$title" | grep -Eq '^[a-z]+(\([^)]*\))?!:' ||
+            printf '%s\n' "$body" | grep -Eq '^BREAKING[ -]CHANGE:'; then
+            echo "::notice::The PR declares a breaking change, so the breakage above is intended."
+            exit 0
+          fi
+          echo "::error::The public API broke. Fix it, or mark the PR title with '!' (see AGENTS.md)."
+          exit 1
