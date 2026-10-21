@@ -5,14 +5,17 @@ Guidance for anyone contributing to this repository, humans and coding agents al
 ## Workflow
 
 ```sh
+brew install mise && mise install   # once: the tools pinned in .mise.toml (https://mise.jdx.dev)
 scripts/setup-hooks.sh   # once: installs the pre-commit hook
 swift build
 swift test
 scripts/lint.sh --fix    # swift format, then the strict lint CI runs
-scripts/swiftlint.sh     # complexity and size limits (pinned SwiftLint, .swiftlint.yml)
+scripts/swiftlint.sh     # complexity and size limits (SwiftLint from mise, .swiftlint.yml)
 scripts/coverage.sh      # tests with the line-coverage floor
 scripts/api-breakage.sh [<ref>]  # public API breakage against <ref> (default: latest tag)
 ```
+
+Tool versions other than the Swift toolchain live in `.mise.toml`, checksum-locked in `mise.lock`; Renovate can bump them. After changing one, run `mise lock` to refresh the lockfile.
 
 No Swift toolchain? `scripts/docker-test.sh` runs the tests in `swift:6.4-noble`.
 

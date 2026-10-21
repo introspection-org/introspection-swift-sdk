@@ -50,10 +50,13 @@ jobs:
 
   swiftlint:
     name: SwiftLint (complexity & size)
-    # The static SwiftLint binary needs no toolchain; the swift image lacks curl.
+    # mise installs the static SwiftLint binary pinned in .mise.toml, which needs no toolchain.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v5
+        with:
+          cache: true
       - name: swiftlint
         run: scripts/swiftlint.sh
 
