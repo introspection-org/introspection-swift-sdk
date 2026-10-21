@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.1](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.9.0...v0.9.1) (2026-10-21)
+
+
+### Bug Fixes
+
+* **examples:** show the helpers each docs region calls inside the region ([#51](https://github.com/introspection-org/introspection-swift-sdk/issues/51)) ([a95fe1d](https://github.com/introspection-org/introspection-swift-sdk/commit/a95fe1de267d0030abc0c9bd1a4a1276dbfdc324))
+
 ## [0.9.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.8.0...v0.9.0) (2026-10-21)
 
 
