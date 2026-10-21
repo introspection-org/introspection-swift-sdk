@@ -62,7 +62,7 @@ enum AddToYourApp {
         outcomes.feedback(
             "thumbs_down",
             comments: "Missed the final-sale rule",
-            conversationId: binding.taskId,
+            conversationId: task.conversationId,
             previousResponseId: task.metadata?["last_response"]?["response_id"]?.stringValue
         )
         await outcomes.flush()

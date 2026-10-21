@@ -15,7 +15,7 @@ enum ObservePatterns {
             logs.feedback(
                 "thumbs_down",
                 comments: "Applied the wrong refund rule",
-                conversationId: task.id,
+                conversationId: task.conversationId,
                 previousResponseId: task.metadata?["last_response"]?["response_id"]?.stringValue  // the answer being rated
             )
             try logs.track("case_closed", properties: ["value": 1, "plan": "pro"])
