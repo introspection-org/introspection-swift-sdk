@@ -170,6 +170,7 @@ public struct Experiment: Codable, Sendable, Hashable {
         endedAt: Date? = nil, haltedAt: Date? = nil, haltedReason: String? = nil, archivedAt: Date? = nil,
         createdByMemberId: String? = nil, createdAt: Date? = nil, updatedAt: Date? = nil
     ) {
+        // jscpd:ignore-start: memberwise init of a public type; the assignments cannot be shared
         self.id = id
         self.orgId = orgId
         self.projectId = projectId
@@ -194,6 +195,7 @@ public struct Experiment: Codable, Sendable, Hashable {
         self.createdByMemberId = createdByMemberId
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+        // jscpd:ignore-end
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -345,8 +347,10 @@ public struct ExperimentListParams: Sendable, Hashable {
         self.runtime = runtime
         self.environment = environment
         self.status = status
+        // jscpd:ignore-start: memberwise init of a public type; the assignments cannot be shared
         self.limit = limit
         self.next = next
+        // jscpd:ignore-end
     }
 }
 
@@ -433,13 +437,9 @@ public struct ExperimentsAPI: Sendable {
 
     /// Open a runner on the arm this identity is routed to.
     public func run(_ id: String, _ request: RunRequest = RunRequest(), project: String? = nil) async throws -> Runner {
-        let spec = try await openRunner(id, request, project: project)
-        return try Runner(
-            spec: spec,
-            template: client.dataPlane,
-            controlPlane: http,
-            source: .experiment(id: id, request: request, project: project)
-        )
+        try await Runner(
+            opened: openRunner(id, request, project: project), client: client,
+            source: .experiment(id: id, request: request, project: project))
     }
 
     /// A handle on one experiment.
@@ -449,6 +449,7 @@ public struct ExperimentsAPI: Sendable {
 }
 
 /// One experiment's lifecycle and runs.
+// jscpd:ignore-start: public handle declaration, mirrored by RuntimeHandle
 public struct ExperimentHandle: Sendable {
     let api: ExperimentsAPI
     public let id: String
@@ -458,6 +459,7 @@ public struct ExperimentHandle: Sendable {
         self.api = api
         self.id = id
         self.project = project
+        // jscpd:ignore-end
     }
 
     /// Fetch the experiment.

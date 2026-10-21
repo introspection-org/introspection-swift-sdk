@@ -1,0 +1,12 @@
+{
+  "path": ["Sources"],
+  "format": ["swift"],
+  "mode": "weak",
+  "kind": ["exact", "renamed"],
+  "ignoreIdentifiers": true,
+  "minTokens": 150,
+  "minLines": 5,
+  "threshold": 0,
+  "exitCode": 1,
+  "reporters": ["console"]
+}

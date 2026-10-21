@@ -77,10 +77,7 @@ public struct TaskRunsAPI: Sendable {
 
     /// Send a turn. A running task is steered; an idle or settled one is resumed or restarted.
     public func create(_ taskId: String, _ body: TaskRunCreate) async throws -> RunHandle {
-        let response = try await http.json(
-            "POST", "/v1/tasks/\(pathSegment(taskId))/runs", body: .encode(body), as: TaskRunResponse.self
-        )
-        return RunHandle(task: nil, run: response.run, runs: self)
+        try await postRun(taskId, body: .encode(body))
     }
 
     /// Send a turn with prompt text.
@@ -90,10 +87,7 @@ public struct TaskRunsAPI: Sendable {
 
     /// Answer the task's pending interrupt with AG-UI resume entries.
     public func resume(_ taskId: String, _ body: TaskRunResume) async throws -> RunHandle {
-        let response = try await http.json(
-            "POST", "/v1/tasks/\(pathSegment(taskId))/runs", body: .encode(body), as: TaskRunResponse.self
-        )
-        return RunHandle(task: nil, run: response.run, runs: self)
+        try await postRun(taskId, body: .encode(body))
     }
 
     /// Get a run's status.
@@ -116,6 +110,11 @@ public struct TaskRunsAPI: Sendable {
         _ taskId: String, _ runId: String, options: RunStreamOptions = RunStreamOptions()
     ) -> AsyncThrowingStream<AGUIEvent, any Error> {
         RunStream.events(http: http, taskId: taskId, runId: runId, options: options)
+    }
+
+    private func postRun(_ taskId: String, body: RequestBody) async throws -> RunHandle {
+        let response = try await http.json("POST", "/v1/tasks/\(pathSegment(taskId))/runs", body: body, as: TaskRunResponse.self)
+        return RunHandle(task: nil, run: response.run, runs: self)
     }
 }
 

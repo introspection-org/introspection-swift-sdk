@@ -6,6 +6,7 @@ public struct IntrospectionEventName: RawRepresentable, Codable, Sendable, Hasha
     public init(rawValue: String) { self.rawValue = rawValue }
     public init(stringLiteral value: String) { rawValue = value }
 
+    // jscpd:ignore-start: public catalogue of event families; one constant each
     public static let annotation = IntrospectionEventName(rawValue: PlatformEventNames.annotation)
     public static let feedback = IntrospectionEventName(rawValue: PlatformEventNames.feedback)
     public static let observation = IntrospectionEventName(rawValue: PlatformEventNames.observation)
@@ -22,6 +23,7 @@ public struct IntrospectionEventName: RawRepresentable, Codable, Sendable, Hasha
     public static let automationTriggered = IntrospectionEventName(rawValue: PlatformEventNames.automationTriggered)
     /// Project-owned: readable only with project-wide telemetry access.
     public static let automationSkipped = IntrospectionEventName(rawValue: PlatformEventNames.automationSkipped)
+    // jscpd:ignore-end
 
     /// Every family the platform serves, in its registry order.
     public static let allCases: [IntrospectionEventName] = [
@@ -70,6 +72,7 @@ public struct IntrospectionEvent: Codable, Sendable, Hashable {
         environment: String? = nil, runtimeGroupId: String? = nil, runtimeId: String? = nil,
         experimentId: String? = nil, recipeGitCommitSha: String? = nil, payload: JSONValue? = nil
     ) {
+        // jscpd:ignore-start: memberwise init of a public type; the assignments cannot be shared
         self.id = id
         self.eventName = eventName
         self.timestamp = timestamp
@@ -83,6 +86,7 @@ public struct IntrospectionEvent: Codable, Sendable, Hashable {
         self.experimentId = experimentId
         self.recipeGitCommitSha = recipeGitCommitSha
         self.payload = payload
+        // jscpd:ignore-end
     }
 
     private enum CodingKeys: String, CodingKey {

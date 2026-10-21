@@ -8,14 +8,8 @@ public struct TaskStatus: RawRepresentable, Codable, Sendable, Hashable, Express
     public init(rawValue: String) { self.rawValue = rawValue }
     public init(stringLiteral value: String) { rawValue = value }
 
-    public init(from decoder: any Decoder) throws {
-        rawValue = try decoder.singleValueContainer().decode(String.self)
-    }
-
-    public func encode(to encoder: any Encoder) throws {
-        var container = encoder.singleValueContainer()
-        try container.encode(rawValue)
-    }
+    public init(from decoder: any Decoder) throws { rawValue = try decoder.singleString() }
+    public func encode(to encoder: any Encoder) throws { try encoder.encodeSingle(rawValue) }
 
     public static let pending: TaskStatus = "pending"
     public static let queued: TaskStatus = "queued"
@@ -42,14 +36,8 @@ public struct TaskKind: RawRepresentable, Codable, Sendable, Hashable, Expressib
     public init(rawValue: String) { self.rawValue = rawValue }
     public init(stringLiteral value: String) { rawValue = value }
 
-    public init(from decoder: any Decoder) throws {
-        rawValue = try decoder.singleValueContainer().decode(String.self)
-    }
-
-    public func encode(to encoder: any Encoder) throws {
-        var container = encoder.singleValueContainer()
-        try container.encode(rawValue)
-    }
+    public init(from decoder: any Decoder) throws { rawValue = try decoder.singleString() }
+    public func encode(to encoder: any Encoder) throws { try encoder.encodeSingle(rawValue) }
 
     public static let agent: TaskKind = "agent"
     public static let eval: TaskKind = "eval"
@@ -63,14 +51,8 @@ public struct TaskInclude: RawRepresentable, Codable, Sendable, Hashable, Expres
     public init(rawValue: String) { self.rawValue = rawValue }
     public init(stringLiteral value: String) { rawValue = value }
 
-    public init(from decoder: any Decoder) throws {
-        rawValue = try decoder.singleValueContainer().decode(String.self)
-    }
-
-    public func encode(to encoder: any Encoder) throws {
-        var container = encoder.singleValueContainer()
-        try container.encode(rawValue)
-    }
+    public init(from decoder: any Decoder) throws { rawValue = try decoder.singleString() }
+    public func encode(to encoder: any Encoder) throws { try encoder.encodeSingle(rawValue) }
 
     /// Live sandbox status for an in-flight task (one extra server round-trip).
     public static let agent: TaskInclude = "agent"
@@ -82,14 +64,8 @@ public struct TaskRunKind: RawRepresentable, Codable, Sendable, Hashable, Expres
     public init(rawValue: String) { self.rawValue = rawValue }
     public init(stringLiteral value: String) { rawValue = value }
 
-    public init(from decoder: any Decoder) throws {
-        rawValue = try decoder.singleValueContainer().decode(String.self)
-    }
-
-    public func encode(to encoder: any Encoder) throws {
-        var container = encoder.singleValueContainer()
-        try container.encode(rawValue)
-    }
+    public init(from decoder: any Decoder) throws { rawValue = try decoder.singleString() }
+    public func encode(to encoder: any Encoder) throws { try encoder.encodeSingle(rawValue) }
 
     public static let prompt: TaskRunKind = "prompt"
     /// Falls back to `prompt` when no turn is active.
@@ -102,14 +78,8 @@ public struct TaskCancelMode: RawRepresentable, Codable, Sendable, Hashable, Exp
     public init(rawValue: String) { self.rawValue = rawValue }
     public init(stringLiteral value: String) { rawValue = value }
 
-    public init(from decoder: any Decoder) throws {
-        rawValue = try decoder.singleValueContainer().decode(String.self)
-    }
-
-    public func encode(to encoder: any Encoder) throws {
-        var container = encoder.singleValueContainer()
-        try container.encode(rawValue)
-    }
+    public init(from decoder: any Decoder) throws { rawValue = try decoder.singleString() }
+    public func encode(to encoder: any Encoder) throws { try encoder.encodeSingle(rawValue) }
 
     /// Interrupt the turn now and keep the sandbox warm; the task returns to `idle`.
     public static let abort: TaskCancelMode = "abort"

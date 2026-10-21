@@ -312,13 +312,8 @@ public struct RuntimesAPI: Sendable {
 
     /// Open a runner on a runtime version id, or on a Runtime slug the server resolves in the caller's project.
     public func run(_ id: String, _ request: RunRequest = RunRequest(), project: String? = nil) async throws -> Runner {
-        let spec = try await openRunner(id, request, project: project)
-        return try Runner(
-            spec: spec,
-            template: client.dataPlane,
-            controlPlane: http,
-            source: .runtime(id: id, request: request, project: project)
-        )
+        try await Runner(
+            opened: openRunner(id, request, project: project), client: client, source: .runtime(id: id, request: request, project: project))
     }
 
     /// A handle on a runtime group slug or id that resolves it on every `run()`.

@@ -48,6 +48,14 @@ jobs:
       - name: swift format lint
         run: scripts/lint.sh
 
+  duplicates:
+    name: Duplicate Code
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: jscpd (no clones allowed)
+        run: scripts/duplicates.sh
+
   linux:
     name: Tests (Linux)
     runs-on: ubuntu-latest

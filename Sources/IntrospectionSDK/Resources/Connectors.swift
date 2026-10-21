@@ -466,6 +466,7 @@ public struct ConnectorAuthorizeParams: Sendable, Hashable {
         runtime: String? = nil, binding: ConnectorAuthorizeBinding? = nil, subject: ConnectionSubjectType? = nil,
         returnUrl: String? = nil, expiresIn: Int? = nil
     ) {
+        // jscpd:ignore-start: memberwise init of a public type; the assignments cannot be shared
         self.app = app
         self.allowProgressiveScopes = allowProgressiveScopes
         self.identity = identity
@@ -474,6 +475,7 @@ public struct ConnectorAuthorizeParams: Sendable, Hashable {
         self.subject = subject
         self.returnUrl = returnUrl
         self.expiresIn = expiresIn
+        // jscpd:ignore-end
     }
 }
 
@@ -551,6 +553,7 @@ public struct Connection: Codable, Sendable, Hashable {
         providerApp: String? = nil, providerAccountId: String? = nil, scopesGranted: [String]? = nil,
         status: ConnectionStatus? = nil, tokenExpiresAt: Date? = nil, createdAt: Date? = nil, updatedAt: Date? = nil
     ) {
+        // jscpd:ignore-start: memberwise init of a public type; the assignments cannot be shared
         self.id = id
         self.orgId = orgId
         self.connectorId = connectorId
@@ -565,6 +568,7 @@ public struct Connection: Codable, Sendable, Hashable {
         self.tokenExpiresAt = tokenExpiresAt
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+        // jscpd:ignore-end
     }
 
     private enum CodingKeys: String, CodingKey {

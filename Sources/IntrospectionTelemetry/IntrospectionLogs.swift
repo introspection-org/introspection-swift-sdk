@@ -64,6 +64,7 @@ public final class IntrospectionLogs: Sendable {
             options: options, now: { Date() })
     }
 
+    // jscpd:ignore-start: public convenience inits, mirrored by IntrospectionTelemetry's
     /// Export with a fixed token; nil reads `INTROSPECTION_TOKEN`.
     public convenience init(
         token: String? = nil, baseURL: URL? = nil, serviceName: String? = nil, options: TelemetryOptions = TelemetryOptions()
@@ -79,6 +80,7 @@ public final class IntrospectionLogs: Sendable {
     ) throws {
         try self.init(credentials: ClosureCredentials(token: token), baseURL: baseURL, serviceName: serviceName, options: options)
     }
+    // jscpd:ignore-end
 
     /// Everything from the environment: `INTROSPECTION_TOKEN` (required), `INTROSPECTION_BASE_OTEL_URL`,
     /// `INTROSPECTION_SERVICE_NAME` and the `OTEL_BLRP_*` batch settings.

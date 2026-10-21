@@ -451,6 +451,7 @@ public enum GenAIMessagePart: Codable, Sendable, Hashable {
 
     public func encode(to encoder: any Encoder) throws {
         switch self {
+        // jscpd:ignore-start: public encode(to:) switch; one case per public enum case
         case let .text(part): try part.encode(to: encoder)
         case let .thinking(part): try part.encode(to: encoder)
         case let .toolCall(part): try part.encode(to: encoder)
@@ -461,6 +462,7 @@ public enum GenAIMessagePart: Codable, Sendable, Hashable {
         case let .blob(part): try part.encode(to: encoder)
         case let .file(part): try part.encode(to: encoder)
         case let .unknown(raw): try JSONValue.object(raw).encode(to: encoder)
+        // jscpd:ignore-end
         }
     }
 }
@@ -974,6 +976,7 @@ public struct ConversationExportParams: Sendable, Hashable {
         annotationId: String? = nil, startDate: Date? = nil, endDate: Date? = nil,
         fromCompaction: Bool? = nil
     ) {
+        // jscpd:ignore-start: memberwise init of a public type; the assignments cannot be shared
         self.agent = agent
         self.serviceName = serviceName
         self.operationName = operationName
@@ -982,6 +985,7 @@ public struct ConversationExportParams: Sendable, Hashable {
         self.startDate = startDate
         self.endDate = endDate
         self.fromCompaction = fromCompaction
+        // jscpd:ignore-end
     }
 
     var query: Query {
