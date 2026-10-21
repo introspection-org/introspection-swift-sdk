@@ -203,7 +203,7 @@ import Testing
             "GET /v1/shares", "POST /v1/shares", "GET /v1/shares/{share_id}", "DELETE /v1/shares/{share_id}",
             "GET /v1/conversations", "GET /v1/conversations/{conversation_id}",
             "GET /v1/conversations/{conversation_id}/export", "GET /v1/conversations/{conversation_id}/items",
-            "GET /v1/conversations/{conversation_id}/items/{item_id}", "GET /v1/conversations/{conversation_id}/turns",
+            "GET /v1/conversations/{conversation_id}/items/{item_id}",
             "GET /v1/events", "GET /v1/events/{event_id}", "POST /v1/metrics",
             "GET /v1/automations", "POST /v1/automations", "GET /v1/automations/{automation_id}",
             "PATCH /v1/automations/{automation_id}", "DELETE /v1/automations/{automation_id}",
@@ -376,8 +376,9 @@ import Testing
             missingIsFatal: true
         ) { _ = try await $0.conversations.get("c1", annotationId: "an") }
         let items = ConversationItemListParams(
-            limit: 1, next: "cursor", include: [.events], agent: "a", serviceName: "svc", operationName: "chat", traceId: "tr",
-            spanId: "sp", startDate: date, endDate: date, lookbackDays: 7, annotationId: "an", fromCompaction: true)
+            limit: 1, next: "cursor", include: [.events], agent: "a", serviceName: "svc", operationNames: ["chat"], traceId: "tr",
+            spanId: "sp", content: [.userText], startDate: date, endDate: date, lookbackDays: 7, annotationId: "an",
+            fromCompaction: true)
         await filters(
             "conversation item filters: GET /v1/conversations/{id}/items", dp, "GET", "/v1/conversations/{conversation_id}/items",
             missingIsFatal: true
@@ -393,12 +394,6 @@ import Testing
             "conversation export filters: GET /v1/conversations/{id}/export", dp, "GET", "/v1/conversations/{conversation_id}/export",
             missingIsFatal: true
         ) { _ = try await $0.conversations.exportJSON("c1", export) }
-        let turns = ConversationTurnListParams(
-            limit: 1, next: "cursor", agent: "a", beforeTraceId: "tr0", traceId: "tr", lookbackDays: 7, annotationId: "an")
-        await filters(
-            "conversation turn filters: GET /v1/conversations/{id}/turns", dp, "GET", "/v1/conversations/{conversation_id}/turns",
-            missingIsFatal: true
-        ) { _ = try await $0.conversations.turns("c1", turns).firstPage() }
     }
 
     // MARK: Events and metrics

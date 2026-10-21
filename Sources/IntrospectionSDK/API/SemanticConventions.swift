@@ -48,6 +48,9 @@ public enum IntrospectionAttributes {
     public static let agentInvocationId = "introspection.agent.invocation_id"
     /// The client id of the turn's optimistic user message.
     public static let conversationClientMessageId = "introspection.conversation.client_message_id"
+    /// The processor's plaintext summary of a chat span's sealed content (`version`, `user_text`,
+    /// `assistant_text`, `tool_calls`, `tool_results`).
+    public static let content = "introspection.content"
     /// Why a turn was aborted: `cancelled` or `awaiting_user`.
     public static let terminationReason = "introspection.termination_reason"
     /// Provider-reported cost of the call in USD.
