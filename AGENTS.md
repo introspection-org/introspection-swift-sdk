@@ -20,7 +20,7 @@ Tools other than Swift (Node.js, jscpd and SwiftLint) are managed by mise: `brew
 
 No Swift toolchain? `scripts/docker-test.sh` runs the tests in `swift:6.4-noble`.
 
-The pre-commit hook runs the lint, a build with every trait enabled and the coverage-gated tests. CI runs the same checks plus a secrets scan, actionlint, Apple-platform builds (including iOS and documentation), and the PR title check. CI is the source of truth.
+The pre-commit hook runs the lint, a build with every trait enabled and the coverage-gated tests. CI runs the same checks plus a secrets scan, actionlint, Apple-platform builds (including iOS and documentation), and the PR title check. CI is the source of truth. The final `All green` job of `ci.yml` fails unless every other job succeeded or skipped by design (a change to top-level Markdown only skips the build, lint and test jobs), so the rulesets require only `All green` and `Conventional Commit title` (from `pr-title.yml`). Add every new `ci.yml` job to the `needs` of `all-green`, and to its `allowed-skips` when it skips by design.
 
 ## Pull requests and releases
 
