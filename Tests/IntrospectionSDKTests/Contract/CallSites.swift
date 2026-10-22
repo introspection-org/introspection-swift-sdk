@@ -1,45 +1,15 @@
 import Foundation
 
-// Every request Sources sends, found by reading the source: a call of `json`, `empty`, `data`,
+// Every route Sources requests, found by reading the source: a call of `json`, `empty`, `data`,
 // `stream` or `send` with a literal HTTP method, `paginate` (a GET) or `url` (a GET the browser
-// opens). The route, body, query and response type are followed from the call through local
-// constants, path helpers, `params.query` builders and private wrappers that pass them through.
+// opens). The route is followed from the call through local constants, path helpers and private
+// wrappers that take it as a parameter.
 
-enum BodyPart {
-    case none
-    case json(Shape)
-    case form
-    case multipart
-    case raw
-    case unresolved(String)
-}
-
-enum ResponsePart {
-    /// The call decodes nothing (`empty`, or a result it drops).
-    case none
-    /// Bytes, a stream or a redirect URL: not compared, they declare no fields.
-    case nonJSON
-    case json(Shape)
-    case unresolved(String)
-}
-
-struct QueryField {
-    var shape: Shape?
-    var optional: Bool
-}
-
-struct CallSite {
+struct CallSite: Hashable {
     var method: String
     /// Route templates with each path parameter written `{}`.
     var paths: [String]
     var location: String
-    var body: BodyPart
-    var query: [String: QueryField]
-    /// Why some of the query could not be read; empty when all of it was.
-    var queryGaps: [String]
-    var response: ResponsePart
-    /// The media type a literal `Accept` header asks for; empty when the header is not a literal.
-    var accept: String?
 }
 
 /// Where an expression is evaluated: a file, the function around it, and what that function's
@@ -60,22 +30,21 @@ final class Scope {
 
 /// What an identifier refers to at a point in a function.
 enum Referent {
-    case expression(Range<Int>, Scope, type: String?)
-    case parameter(SwiftParameter)
-    case property(String)
+    case expression(Range<Int>, Scope)
+    case parameter
     case none
 }
 
 struct CallSiteScanner {
-    let index: SwiftTypeIndex
+    let files: [SwiftFile]
     static let methods: Set<String> = ["GET", "POST", "PUT", "PATCH", "DELETE"]
     private static let verbs: Set<String> = ["json", "empty", "data", "stream", "send"]
 
-    func tokens(_ scope: Scope) -> [SwiftToken] { index.files[scope.file].tokens }
+    func tokens(_ scope: Scope) -> [SwiftToken] { files[scope.file].tokens }
 
     func scan() -> [CallSite] {
-        var sites: [CallSite] = []
-        for (fileIndex, file) in index.files.enumerated() {
+        var sites: Set<CallSite> = []
+        for (fileIndex, file) in files.enumerated() {
             let tokens = file.tokens
             for position in 1..<max(tokens.count - 1, 1) {
                 let token = tokens[position]
@@ -85,14 +54,14 @@ struct CallSiteScanner {
                 guard Self.verbs.contains(token.text) || token.text == "paginate" || token.text == "url" else { continue }
                 let function = file.enclosingFunction(position)
                 if function?.owner == "HTTPClient" { continue }
-                sites += expand(position, Scope(file: fileIndex, function: function))
+                sites.formUnion(expand(position, Scope(file: fileIndex, function: function)))
             }
         }
-        return sites
+        return Array(sites)
     }
 
-    /// The call at `position` in `scope`, or, when its route, body or query is a parameter of a private
-    /// wrapper, the call once for each caller of that wrapper.
+    /// The call at `position` in `scope`, or, when its route is a parameter of a private wrapper, the call
+    /// once for each caller of that wrapper.
     private func expand(_ position: Int, _ scope: Scope) -> [CallSite] {
         let tokens = tokens(scope)
         let verb = tokens[position].text
@@ -107,79 +76,27 @@ struct CallSiteScanner {
             pathArgument = arguments[1]
         }
         guard let pathArgument else { return [] }
-        let passthrough = [pathArgument.range] + arguments.filter { ["body", "query"].contains($0.label) }.map(\.range)
-        if scope.depth < 3, let wrapper = scope.function, passthrough.contains(where: { unboundParameter($0, scope) != nil }) {
+        if scope.depth < 3, let wrapper = scope.function, isUnboundParameter(pathArgument.range, scope) {
             let callers = self.callers(of: wrapper, in: scope)
-            if !callers.isEmpty { return Self.merged(callers.flatMap { expand(position, $0) }) }
+            if !callers.isEmpty { return callers.flatMap { expand(position, $0) } }
         }
         let paths = Set(self.paths(pathArgument.range, scope)).filter { $0.hasPrefix("/v1/") }
         guard !paths.isEmpty else { return [] }
-        let file = index.files[scope.file]
-        var site = CallSite(
-            method: method, paths: paths.sorted(), location: file.location(position), body: .none, query: [:], queryGaps: [],
-            response: .none)
-        if verb != "url" {
-            site.body = body(arguments.first { $0.label == "body" }?.range, scope)
-        }
-        if let query = arguments.first(where: { $0.label == "query" })?.range {
-            var collector = QueryCollector(scanner: self)
-            collector.collect(query, scope)
-            site.query = collector.fields
-            site.queryGaps = collector.gaps
-        }
-        if verb == "paginate" { site.query["next"] = QueryField(shape: .string, optional: true) }
-        site.response = response(verb, position, arguments, scope)
-        site.accept = accept(arguments.first { $0.label == "headers" }?.range, tokens)
-        return [site]
+        return [CallSite(method: method, paths: paths.sorted(), location: files[scope.file].location(position))]
     }
 
-    private func accept(_ range: Range<Int>?, _ tokens: [SwiftToken]) -> String? {
-        guard let range else { return nil }
-        for position in range where position + 2 < range.upperBound && tokens[position].kind == .string && tokens[position].text == "Accept"
-        {
-            guard tokens[position + 1].isPunctuation(":") else { continue }
-            let value = tokens[position + 2]
-            let alone = position + 3 >= tokens.count || tokens[position + 3].isPunctuation(",") || tokens[position + 3].isPunctuation("]")
-            return value.kind == .string && value.interpolations.isEmpty && alone ? value.text : ""
-        }
-        return nil
-    }
-
-    /// One wrapper call reached from several callers is one call site: what it sends is what any caller passes.
-    private static func merged(_ sites: [CallSite]) -> [CallSite] {
-        var merged: [CallSite] = []
-        for site in sites {
-            guard
-                let existing = merged.firstIndex(where: {
-                    $0.location == site.location && $0.method == site.method && $0.paths == site.paths
-                })
-            else {
-                merged.append(site)
-                continue
-            }
-            if case let .json(lhs) = merged[existing].body, case let .json(rhs) = site.body {
-                merged[existing].body = .json(.merged([lhs, rhs]))
-            }
-            for (name, field) in site.query where merged[existing].query[name] == nil { merged[existing].query[name] = field }
-            merged[existing].queryGaps += site.queryGaps
-        }
-        return merged
-    }
-
-    /// The parameter of the enclosing function that `range` is, when no caller has bound it yet.
-    private func unboundParameter(_ range: Range<Int>, _ scope: Scope) -> SwiftParameter? {
+    /// Whether `range` is a parameter of the enclosing function that no caller has bound yet.
+    private func isUnboundParameter(_ range: Range<Int>, _ scope: Scope) -> Bool {
         let tokens = tokens(scope)
         let stripped = strip(range, tokens)
-        guard stripped.count == 1, tokens[stripped.lowerBound].kind == .identifier else { return nil }
-        if case let .parameter(parameter) = referent(tokens[stripped.lowerBound].text, before: stripped.lowerBound, scope) {
-            return parameter
-        }
-        return nil
+        guard stripped.count == 1, tokens[stripped.lowerBound].kind == .identifier else { return false }
+        if case .parameter = referent(tokens[stripped.lowerBound].text, before: stripped.lowerBound, scope) { return true }
+        return false
     }
 
     /// Calls of `function` in its own file, each as the scope its body runs in for that call.
     private func callers(of function: SwiftFunction, in scope: Scope) -> [Scope] {
-        let file = index.files[scope.file]
+        let file = files[scope.file]
         let tokens = file.tokens
         var scopes: [Scope] = []
         for position in 0..<(tokens.count - 1) where tokens[position].isIdentifier(function.name) && tokens[position + 1].isPunctuation("(")
@@ -193,11 +110,9 @@ struct CallSiteScanner {
     }
 
     /// The parameters of `function` bound to a call's arguments, defaults filled in; nil when they do not fit.
-    func bind(
+    private func bind(
         _ function: SwiftFunction, _ arguments: [CallArgument], caller: Scope, calleeFile: Int
-    )
-        -> [String: (range: Range<Int>, scope: Scope)]?
-    {
+    ) -> [String: (range: Range<Int>, scope: Scope)]? {
         var bindings: [String: (range: Range<Int>, scope: Scope)] = [:]
         var remaining = arguments
         for parameter in function.parameters {
@@ -214,7 +129,7 @@ struct CallSiteScanner {
     // MARK: Expressions
 
     /// `range` without a leading `try`, `try?`, `await` or `self.`.
-    func strip(_ range: Range<Int>, _ tokens: [SwiftToken]) -> Range<Int> {
+    private func strip(_ range: Range<Int>, _ tokens: [SwiftToken]) -> Range<Int> {
         var lower = range.lowerBound
         while lower < range.upperBound {
             if tokens[lower].isIdentifier("try") || tokens[lower].isIdentifier("await") {
@@ -230,67 +145,33 @@ struct CallSiteScanner {
     }
 
     /// What `name` refers to at token `position` of `scope`.
-    func referent(_ name: String, before position: Int, _ scope: Scope) -> Referent {
-        if let bound = scope.bindings[name] { return .expression(bound.range, bound.scope, type: nil) }
+    private func referent(_ name: String, before position: Int, _ scope: Scope) -> Referent {
+        if let bound = scope.bindings[name] { return .expression(bound.range, bound.scope) }
+        guard let function = scope.function, let body = function.body else { return .none }
         let tokens = tokens(scope)
-        if let function = scope.function, let body = function.body {
-            var found: Referent?
-            var cursor = body.lowerBound
-            while cursor < min(position, body.upperBound) - 1 {
-                if tokens[cursor].isIdentifier("let") || tokens[cursor].isIdentifier("var"), tokens[cursor + 1].isIdentifier(name) {
-                    // `guard let name` and `if var name` unwrap the same name from further out.
-                    let next = tokens[cursor + 2]
-                    if next.isPunctuation("=") || next.isPunctuation(":"),
-                        let declared = declaration(at: cursor + 2, before: position, scope)
-                    {
-                        found = declared
-                    }
-                }
-                cursor += 1
+        var found: Referent?
+        var cursor = body.lowerBound
+        while cursor < min(position, body.upperBound) - 1 {
+            if tokens[cursor].isIdentifier("let") || tokens[cursor].isIdentifier("var"), tokens[cursor + 1].isIdentifier(name) {
+                // `guard let name` and `if var name` unwrap the same name from further out.
+                if let declared = initializer(at: cursor + 2, before: position, tokens) { found = .expression(declared, scope) }
             }
-            if let found { return found }
-            if let parameter = function.parameters.first(where: { $0.name == name }) { return .parameter(parameter) }
-            if isPaginatorCursor(name, before: position, in: body, tokens) { return .property("String?") }
+            cursor += 1
         }
-        if let owner = scope.function?.owner, let type = index.type(owner), let property = index.propertyType(name, of: type) {
-            return .property(property)
-        }
-        return .none
+        if let found { return found }
+        return function.parameters.contains { $0.name == name } ? .parameter : .none
     }
 
-    /// `Paginator { cursor in … }`: the fetch closure's one parameter is the page cursor, a `String?`.
-    private func isPaginatorCursor(_ name: String, before position: Int, in body: Range<Int>, _ tokens: [SwiftToken]) -> Bool {
-        for cursor in body where cursor < position && tokens[cursor].isIdentifier("Paginator") {
-            var open = cursor + 1
-            if open < tokens.count, tokens[open].isPunctuation("(") { open = tokens.closing(open) + 1 }
-            guard open + 2 < tokens.count, tokens[open].isPunctuation("{") else { continue }
-            var parameter = open + 1
-            if tokens[parameter].isPunctuation("[") { parameter = tokens.closing(parameter) + 1 }
-            if tokens[parameter].isIdentifier(name), tokens[parameter + 1].isIdentifier("in"), tokens.closing(open) > position {
-                return true
-            }
-        }
-        return false
-    }
-
-    /// The declaration whose name is just before `start`, or nil when its initializer is still running at `position`
-    /// (as in `var body = body`, whose right-hand side means the name from further out).
-    private func declaration(at start: Int, before position: Int, _ scope: Scope) -> Referent? {
-        let tokens = tokens(scope)
+    /// The initializer of the declaration whose name is just before `start`, or nil when there is none or it is
+    /// still running at `position` (as in `var path = path`, whose right-hand side means the name from further out).
+    private func initializer(at start: Int, before position: Int, _ tokens: [SwiftToken]) -> Range<Int>? {
         var cursor = start
-        var type: String?
         if tokens[cursor].isPunctuation(":") {
-            var end = cursor + 1
-            while end < position, !tokens[end].isPunctuation("="), tokens[end].line == tokens[cursor].line { end += 1 }
-            type = tokens.text((cursor + 1)..<end)
-            cursor = end
+            while cursor < position, !tokens[cursor].isPunctuation("="), tokens[cursor].line == tokens[start].line { cursor += 1 }
         }
-        guard cursor < position, tokens[cursor].isPunctuation("=") else {
-            return type.map { .expression(cursor..<cursor, scope, type: $0) }
-        }
+        guard cursor < position, tokens[cursor].isPunctuation("=") else { return nil }
         let end = lineEnd(from: cursor + 1, limit: tokens.count, tokens)
-        guard end <= position else { return nil }
-        return .expression((cursor + 1)..<end, scope, type: type)
+        return end <= position ? (cursor + 1)..<end : nil
     }
 
     // MARK: Routes
@@ -310,25 +191,22 @@ struct CallSiteScanner {
         }
         let first = tokens[range.lowerBound]
         if range.count == 1, first.kind == .string { return [template(first, scope)] }
-        if first.kind == .identifier {
-            let last = range.upperBound - 1
-            if tokens[last].isPunctuation(")"), let open = openParen(of: last, tokens), open > range.lowerBound {
-                return helperPaths(tokens[open - 1].text, tokens.arguments(open), scope)
-            }
-            if range.count == 1 {
-                switch referent(first.text, before: range.lowerBound, scope) {
-                case let .expression(expression, inner, _): return paths(expression, inner)
-                default: return helperPaths(first.text, [], scope)
-                }
-            }
-            if tokens[last].kind == .identifier, tokens[last - 1].isPunctuation(".") {
-                return helperPaths(tokens[last].text, [], scope)
-            }
+        guard first.kind == .identifier else { return [] }
+        let last = range.upperBound - 1
+        if tokens[last].isPunctuation(")"), let open = openParen(of: last, tokens), open > range.lowerBound {
+            return helperPaths(tokens[open - 1].text, tokens.arguments(open), scope)
         }
+        if range.count == 1 {
+            if case let .expression(expression, inner) = referent(first.text, before: range.lowerBound, scope) {
+                return paths(expression, inner)
+            }
+            return helperPaths(first.text, [], scope)
+        }
+        if tokens[last].kind == .identifier, tokens[last - 1].isPunctuation(".") { return helperPaths(tokens[last].text, [], scope) }
         return []
     }
 
-    func openParen(of close: Int, _ tokens: [SwiftToken]) -> Int? {
+    private func openParen(of close: Int, _ tokens: [SwiftToken]) -> Int? {
         var depth = 0
         var cursor = close
         while cursor >= 0 {
@@ -342,7 +220,7 @@ struct CallSiteScanner {
         return nil
     }
 
-    func ternaryBranches(_ range: Range<Int>, _ tokens: [SwiftToken]) -> [Range<Int>]? {
+    private func ternaryBranches(_ range: Range<Int>, _ tokens: [SwiftToken]) -> [Range<Int>]? {
         let question = tokens.split(range, at: "?")
         guard question.count == 2, let mark = question.first?.upperBound, tokens[mark].spaceBefore else { return nil }
         let branches = tokens.split(question[1], at: ":")
@@ -356,7 +234,7 @@ struct CallSiteScanner {
             let inner = SwiftTokenizer.tokenize(source)
             var value = "{}"
             if inner.count == 1, inner[0].kind == .identifier {
-                if case let .expression(expression, innerScope, _) = referent(inner[0].text, before: Int.max, scope) {
+                if case let .expression(expression, innerScope) = referent(inner[0].text, before: Int.max, scope) {
                     value = literal(expression, innerScope) ?? paths(expression, innerScope).first ?? "{}"
                 }
             } else if let call = inner.firstIndex(where: { $0.isPunctuation("(") }), call > 0, inner.last?.isPunctuation(")") == true,
@@ -380,10 +258,9 @@ struct CallSiteScanner {
 
     /// The routes a path helper (a function or computed property returning a route) returns.
     private func helperPaths(_ name: String, _ arguments: [CallArgument], _ scope: Scope) -> [String] {
-        let file = index.files[scope.file]
-        let candidates = file.functions.filter { $0.name == name && $0.body != nil }
+        let file = files[scope.file]
         var routes: [String] = []
-        for function in candidates {
+        for function in file.functions where function.name == name && function.body != nil {
             guard let bindings = bind(function, arguments, caller: scope, calleeFile: scope.file) else { continue }
             let inner = Scope(file: scope.file, function: function, bindings: bindings, depth: scope.depth + 1)
             guard inner.depth < 6 else { continue }
@@ -393,7 +270,7 @@ struct CallSiteScanner {
     }
 
     /// The expressions a function body returns: each `return`, or the whole body when it has none.
-    func returnedExpressions(_ function: SwiftFunction, _ tokens: [SwiftToken]) -> [Range<Int>] {
+    private func returnedExpressions(_ function: SwiftFunction, _ tokens: [SwiftToken]) -> [Range<Int>] {
         guard let body = function.body else { return [] }
         let returns = body.filter { tokens[$0].isIdentifier("return") }
         guard !returns.isEmpty else { return [body] }
@@ -402,7 +279,7 @@ struct CallSiteScanner {
 
     /// The end of the expression starting at `start`: the first token at bracket depth 0 on a later line that
     /// does not continue it, or the `}` closing its block.
-    func lineEnd(from start: Int, limit: Int, _ tokens: [SwiftToken]) -> Int {
+    private func lineEnd(from start: Int, limit: Int, _ tokens: [SwiftToken]) -> Int {
         var cursor = start
         while cursor < limit {
             let token = tokens[cursor]

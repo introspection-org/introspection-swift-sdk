@@ -1,7 +1,7 @@
 import Foundation
 
 // A tokenizer for the Swift this SDK is written in, enough for the contract check to read call
-// sites and type declarations without a compiler: comments are dropped, a string literal is one
+// sites and function declarations without a compiler: comments are dropped, a string literal is one
 // token with its interpolations kept apart, and every token knows its line and whether whitespace
 // came before it (which tells a ternary `?` from optional chaining).
 
@@ -250,16 +250,6 @@ extension Array where Element == SwiftToken {
         return pieces.filter { !$0.isEmpty }
     }
 
-    /// The source text of `range`, tokens joined the way they were spaced.
-    func text(_ range: Range<Int>) -> String {
-        var out = ""
-        for index in range {
-            let token = self[index]
-            if token.spaceBefore && !out.isEmpty { out += " " }
-            out += token.kind == .string ? "\"\(token.text)\"" : token.text
-        }
-        return out
-    }
 }
 
 /// One argument of a call: its label (nil when unlabeled) and its expression's token range.

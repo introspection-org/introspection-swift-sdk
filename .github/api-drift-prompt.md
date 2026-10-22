@@ -9,7 +9,7 @@ Fix the API drift that the nightly API Contract run found in introspection-swift
 
 Where: the introspection-swift-sdk repository. Fetch origin, create a new branch from origin/main, and work only there.
 
-What: make the SDK match the API reference, fixing exactly the drift in the SDK drift report below and nothing else. Each fix covers the Swift types, the call that sends or reads the field, and a test against MockTransport that follows AGENTS.md. Deleting something the check reports as calling a route or reading a field the API no longer has is allowed; list each deletion in the PR body. The reference changelog is context: what changed in the API since the saved copies in api-reference/ were taken.
+What: make the SDK match the API reference, fixing exactly the drift in the SDK drift report below and nothing else. A missing operation gets a method on the SDK and a test against MockTransport that follows AGENTS.md. Deleting a call the check reports as an unknown route (one the API no longer has) is allowed; list each deletion in the PR body. The reference changelog is context: what changed in the API since the saved copies in api-reference/ were taken.
 
 Finish: when the drift is fixed, refresh both saved copies from staging:
 

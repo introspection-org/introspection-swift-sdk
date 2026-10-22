@@ -45,9 +45,9 @@ extension OpenAPIDocument {
     }
 }
 
-extension SwiftTypeIndex {
-    /// Every `.swift` file under `Sources`, paths relative to the repository root.
-    static func sources(root: URL) throws -> SwiftTypeIndex {
+extension CallSiteScanner {
+    /// A scanner over every `.swift` file under `Sources`, paths relative to the repository root.
+    static func sources(root: URL) throws -> CallSiteScanner {
         let directory = root.appendingPathComponent("Sources")
         let enumerator = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: nil)
         var paths: [URL] = []
@@ -58,14 +58,6 @@ extension SwiftTypeIndex {
             let relative = url.path.replacingOccurrences(of: root.path + "/", with: "")
             return SwiftFile(path: relative, source: try String(contentsOf: url, encoding: .utf8))
         }
-        return SwiftTypeIndex(files: files)
-    }
-}
-
-extension ContractCheck {
-    /// Check `index` against `documents` and return the report.
-    static func run(documents: [OpenAPIDocument], index: SwiftTypeIndex) -> ContractReport {
-        var check = ContractCheck(documents: documents, sites: CallSiteScanner(index: index).scan())
-        return check.run()
+        return CallSiteScanner(files: files)
     }
 }
