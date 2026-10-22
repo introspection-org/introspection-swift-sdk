@@ -13,8 +13,8 @@
 #
 # Writes to --out:
 #   state       drift | clean
-#   body.txt    the Slack message below its headline: summary, run link, and the
-#               agent prompt carrying both reports trimmed to fit
+#   body.txt    the Slack message below its headline: summary, run link, and both
+#               reports trimmed to fit
 #   summary.md  both reports in full, for the job summary
 #
 # Exits 0 when the report was built (drift or clean) and 2 when it could not be,
@@ -99,11 +99,6 @@ trim() {
   ' <<<"${text}"
 }
 
-# Replace placeholder $2 in $1 with $3, without bash treating `&` in $3 as the match.
-fill() {
-  printf '%s%s%s' "${1%%"$2"*}" "$3" "${1#*"$2"}"
-}
-
 changelogs=""
 trimmed=""
 headers=""
@@ -121,15 +116,11 @@ if [ "${check_drift}" = true ] || [ "${changed}" = true ]; then state=drift; fi
 check_counts="${check_headline#API contract: }"
 summary_lines="SDK drift: ${check_counts#*: }"$'\n'"${headers}"
 
-prompt="$(sed '/^<!--/,/^-->/d' .github/api-drift-prompt.md)"
-prompt="$(fill "${prompt}" "{{RUN_URL}}" "${run_url}")"
-prompt="$(fill "${prompt}" "{{SDK_DRIFT}}" "$(trim "${check_text}" "${drift_budget}")")"
-prompt="$(fill "${prompt}" "{{CHANGELOG}}" "${trimmed%$'\n\n'}")"
-
 mkdir -p "${out}"
 echo "${state}" >"${out}/state"
 if [ "${state}" = drift ]; then
-  body="${summary_lines}${run_url}"$'\n\n'"Agent prompt, ready to paste:"$'\n```\n'"$(sed '/./,$!d' <<<"${prompt}")"$'\n```'
+  drift="$(trim "${check_text}" "${drift_budget}")"$'\n\n'"${trimmed%$'\n\n'}"
+  body="${summary_lines}${run_url}"$'\n```\n'"${drift}"$'\n```'
 else
   body="${run_url}"
 fi

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Tell #main-build-alerts when the nightly API drift state changes: clean to
 # drift, or drift to clean. A drift that stays drift stays quiet, so the channel
-# hears each drift once rather than every night until someone fixes it.
+# hears each drift once rather than every night until someone fixes it. With no
+# state yet (unknown), the first drift found posts.
 #
 # scripts/api-drift-report.sh builds the report; this script owns the decision
 # and the post, which follow introspection-sre's change/gates/main-status.sh: a
@@ -26,7 +27,7 @@ state="$(cat "${REPORT_DIR}/state")"
 body="$(cat "${REPORT_DIR}/body.txt")"
 previous=""
 if [ -f "${STATE_DIR}/last-posted" ]; then previous="$(cat "${STATE_DIR}/last-posted")"; fi
-echo "state=${state} last posted=${previous:-none}"
+echo "state=${state} last posted=${previous:-unknown}"
 
 edge=""
 if [ "${state}" = drift ] && [ "${previous}" != drift ]; then
