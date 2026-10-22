@@ -24,7 +24,7 @@ private let chatSpanJSON = #"""
        {"type":"tool_call","id":"call-1","name":"search","arguments":{"q":"x"}},
        {"type":"image-url","url":"https://x/y.png"},{"type":"hologram","depth":3}]}]}},
       "introspection":{"conversation":{"client_message_id":"cm-1"},
-      "contains":{"version":1,"input_user_parts":1,"output_text_parts":0,"output_tool_names":["message_user"],"input_tool_response_names":[]}},"custom.attr":"kept"}}
+      "contains":{"version":1,"values":["gen_ai.input.messages.role:user","gen_ai.output.messages.parts.name:message_user","gen_ai.output.messages.parts.name:*"]}},"custom.attr":"kept"}}
     """#
 
 private let toolSpanJSON = #"""
@@ -96,9 +96,8 @@ private let toolSpanJSON = #"""
         #expect(span.operationName == "chat")
         #expect(span.responseId == "resp-1")
         #expect(span.clientMessageId == "cm-1")
-        #expect(span.contains?.inputUserParts == 1)
-        #expect(span.contains?.outputToolNames == ["message_user"])
-        #expect(span.contains?.inputToolResponseNames == [])
+        #expect(span.contains?.version == 1)
+        #expect(span.contains?.values == [.inputUser, .outputToolCall("message_user"), .outputToolCall("*")])
         #expect(span.inputTokens == 5)
         #expect(span.kind == .client)
         #expect(span.status?.code == .ok)

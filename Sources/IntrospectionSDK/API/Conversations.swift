@@ -238,7 +238,7 @@ public struct GenAISpan: Codable, Sendable, Hashable {
     public var invocationId: String? { string(IntrospectionAttributes.agentInvocationId) }
     /// `introspection.conversation.client_message_id`.
     public var clientMessageId: String? { string(IntrospectionAttributes.conversationClientMessageId) }
-    /// `introspection.contains.*`, nil on a span written before the contains summary existed.
+    /// `introspection.contains`, nil on a span written before the contains summary existed.
     public var contains: GenAIContainsSummary? {
         guard let value = attribute(IntrospectionAttributes.contains), value.objectValue != nil else { return nil }
         return try? value.decode(GenAIContainsSummary.self)
@@ -911,7 +911,7 @@ public struct ConversationListParams: Sendable, Hashable {
 /// it must contain, resolved on the server before anything is decrypted. An input path returns only
 /// the item's new input messages and an output path only its output; `tool(name)` and
 /// `operation(name)` match a span attribute and return the whole item. The set is closed because
-/// every value is resolved from the plaintext `introspection.contains.*` summary or a plaintext column.
+/// every value is resolved from the plaintext `introspection.contains` summary or a plaintext column.
 public struct ConversationContains: RawRepresentable, Codable, Sendable, Hashable, ExpressibleByStringLiteral {
     public let rawValue: String
     public init(rawValue: String) { self.rawValue = rawValue }
@@ -941,23 +941,14 @@ public struct ConversationContains: RawRepresentable, Codable, Sendable, Hashabl
     }
 }
 
-/// `introspection.contains.*`: the processor's plaintext summary of what a chat span's sealed input
-/// delta and output contain, counts and tool names only. Absent on a span written before the summary
-/// existed.
+/// `introspection.contains`: the processor's plaintext summary of what a chat span's sealed input
+/// delta and output contain. Absent on a span written before the summary existed.
 public struct GenAIContainsSummary: Codable, Sendable, Hashable {
+    /// Summary schema version; 0 or nil means the span was never summarized.
     public var version: Int?
-    public var inputUserParts: Int?
-    public var outputTextParts: Int?
-    public var outputToolNames: [String]?
-    public var inputToolResponseNames: [String]?
-
-    private enum CodingKeys: String, CodingKey {
-        case version
-        case inputUserParts = "input_user_parts"
-        case outputTextParts = "output_text_parts"
-        case outputToolNames = "output_tool_names"
-        case inputToolResponseNames = "input_tool_response_names"
-    }
+    /// The `contains` values this span answers, spelled as a request passes them. A tool-name list the
+    /// processor cut at its bound carries `<path>:*`, e.g. `gen_ai.output.messages.parts.name:*`.
+    public var values: [ConversationContains]?
 }
 
 /// Filters for `GET /v1/conversations/{id}/items`. Items are always newest first.
