@@ -913,9 +913,10 @@ public struct ConversationListParams: Sendable, Hashable {
 /// `operation(name)` match a span attribute and return the whole item. The set is closed because
 /// every value is resolved from the plaintext `introspection.contains` summary or a plaintext column.
 ///
-/// A tool name (`inputToolResponse`, `outputToolCall`, `tool`) may end in one `*` to match by prefix:
-/// `.outputToolCall("mcp_browserbase_*")` matches every Browserbase MCP call, `.tool("*")` any tool.
-/// The server rejects (422) a `*` anywhere else, and on the role, part-type and operation values.
+/// A name (`inputToolResponse`, `outputToolCall`, `tool`, `operation`) may end in one `*` to match by
+/// prefix: `.outputToolCall("mcp_browserbase_*")` matches every Browserbase MCP call, `.tool("*")` any
+/// tool, `.operation("invoke_*")` any invoke operation. The server rejects (422) a `*` anywhere else, and
+/// on the role and part-type values.
 public struct ConversationContains: RawRepresentable, Codable, Sendable, Hashable, ExpressibleByStringLiteral {
     public let rawValue: String
     public init(rawValue: String) { self.rawValue = rawValue }
@@ -942,6 +943,7 @@ public struct ConversationContains: RawRepresentable, Codable, Sendable, Hashabl
     /// `gen_ai.tool.name:<name>`: the `execute_tool` item for the tool. A trailing `*` in `name` matches by prefix.
     public static func tool(_ name: String) -> ConversationContains { ConversationContains(rawValue: "gen_ai.tool.name:\(name)") }
     /// `gen_ai.operation.name:<name>`: every item of that operation, e.g. `invoke_agent`.
+    /// A trailing `*` in `name` matches by prefix.
     public static func operation(_ name: String) -> ConversationContains {
         ConversationContains(rawValue: "gen_ai.operation.name:\(name)")
     }

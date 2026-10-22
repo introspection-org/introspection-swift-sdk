@@ -173,12 +173,14 @@ private let toolSpanJSON = #"""
     @Test func containsNamesMatchByTrailingWildcard() async throws {
         let transport = MockTransport(json: #"{"object":"list","data":[],"has_more":false,"next":null}"#)
         let client = makeClient(transport)
-        let prefixes: [ConversationContains] = [.outputToolCall("mcp_browserbase_*"), .tool("mcp_*"), .inputToolResponse("*")]
+        let prefixes: [ConversationContains] = [
+            .outputToolCall("mcp_browserbase_*"), .tool("mcp_*"), .inputToolResponse("*"), .operation("invoke_*"),
+        ]
         _ = try await client.conversations.items.list("c", ConversationItemListParams(contains: prefixes)).collect()
         #expect(
             transport.last?.query["contains"] == [
                 "gen_ai.output.messages.parts.name:mcp_browserbase_*", "gen_ai.tool.name:mcp_*",
-                "gen_ai.input.messages.parts.name:*",
+                "gen_ai.input.messages.parts.name:*", "gen_ai.operation.name:invoke_*",
             ])
         #expect(ConversationContains.outputToolCall("mcp_browserbase_*") == "gen_ai.output.messages.parts.name:mcp_browserbase_*")
     }
