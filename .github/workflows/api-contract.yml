@@ -1,7 +1,12 @@
-# Watches the published API reference for drift against this SDK's request and response surface.
-# Scheduled rather than run on pull requests: it goes red when the *API* changes, which is a fact
-# about the world and not about the commit under review, and a gate people learn to ignore is how
-# the last one went unnoticed.
+# Watches the API reference on staging for drift against this SDK: the contract check
+# (Tests/IntrospectionSDKTests/APIContractTests.swift) compares Sources with the
+# x-introspection flags of both OpenAPI documents, and oasdiff compares the saved copies in
+# api-reference/ with staging. Scheduled rather than run on pull requests: it goes red when
+# the *API* changes, which is a fact about the world and not about the commit under review.
+#
+# A red run that nobody opens is ignorable too, so the run tells #main-build-alerts when the
+# state changes (clean to drift, drift to clean), with a ready-to-paste agent prompt for the
+# fix. It never opens a fix PR itself: drift often needs a decision that belongs to a person.
 name: API Contract
 
 on:
@@ -13,15 +18,89 @@ on:
 permissions:
   contents: read
 
+env:
+  OASDIFF_VERSION: "1.33.0"
+  OASDIFF_SHA256: "43a4e328e2d13ba1552d760aa68d2485c75c5621f309f6ff64ae895188345247"
+
 jobs:
-  sdk-surface:
-    name: SDK surface vs published reference
+  check:
+    name: SDK vs API reference (staging)
     runs-on: ubuntu-latest
     container: swift:6.4-noble
     steps:
       - uses: actions/checkout@v7
 
-      - name: Compare the SDK surface against the reference
+      # Drift is reported by the next job, so a red check does not fail this one; a check
+      # that wrote no report (staging down, a crash) makes the report job error instead.
+      - name: Run the contract check
         env:
           INTROSPECTION_API_CONTRACT: "1"
-        run: swift test --filter APIContractTests
+          INTROSPECTION_API_CONTRACT_REPORT: ${{ runner.temp }}/contract-report.txt
+        run: swift test --filter APIContractTests || true
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: contract-report
+          path: ${{ runner.temp }}/contract-report.txt
+          if-no-files-found: ignore
+
+  report:
+    name: Drift report and alert
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          name: contract-report
+          path: ${{ runner.temp }}/check
+
+      - name: Install oasdiff
+        run: |
+          archive="oasdiff_${OASDIFF_VERSION}_linux_amd64.tar.gz"
+          curl -fsSL -o "${RUNNER_TEMP}/${archive}" \
+            "https://github.com/oasdiff/oasdiff/releases/download/v${OASDIFF_VERSION}/${archive}"
+          echo "${OASDIFF_SHA256}  ${RUNNER_TEMP}/${archive}" | sha256sum -c -
+          mkdir -p "${RUNNER_TEMP}/oasdiff"
+          tar -xzf "${RUNNER_TEMP}/${archive}" -C "${RUNNER_TEMP}/oasdiff" oasdiff
+          echo "${RUNNER_TEMP}/oasdiff" >> "${GITHUB_PATH}"
+
+      - name: Build the drift report
+        run: |
+          scripts/api-drift-report.sh --check-report "${RUNNER_TEMP}/check/contract-report.txt" \
+            --out "${RUNNER_TEMP}/api-drift" \
+            --run-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          cat "${RUNNER_TEMP}/api-drift/summary.md" >> "${GITHUB_STEP_SUMMARY}"
+
+      # The state of the last real post. Caches are immutable, so each post saves under a new
+      # key and the newest one is restored by prefix.
+      - name: Restore the last posted state
+        uses: actions/cache/restore@v5
+        with:
+          path: .api-drift-state
+          key: api-drift-state-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: api-drift-state-
+
+      - name: Notify #main-build-alerts
+        id: notify
+        env:
+          REPORT_DIR: ${{ runner.temp }}/api-drift
+          STATE_DIR: .api-drift-state
+          SLACK_WEBHOOK_URL: ${{ secrets.MAIN_STATUS_SLACK_WEBHOOK_URL }}
+        run: scripts/api-drift-notify.sh
+
+      - name: Save the posted state
+        if: steps.notify.outputs.posted == 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: .api-drift-state
+          key: api-drift-state-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Fail on drift
+        run: |
+          if [ "$(cat "${RUNNER_TEMP}/api-drift/state")" = "drift" ]; then
+            echo "::error::API drift found; the job summary has both reports."
+            exit 1
+          fi
