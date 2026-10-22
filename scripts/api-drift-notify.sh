@@ -1,48 +1,51 @@
 #!/usr/bin/env bash
-# Tell #main-build-alerts when the nightly API drift state changes: clean to
-# drift, or drift to clean. A drift that stays drift stays quiet, so the channel
-# hears each drift once rather than every night until someone fixes it. With no
-# state yet (unknown), the first drift found posts.
+# Tell #main-build-alerts when the API contract state changes: clean to drift, or
+# drift to clean. A drift that stays drift stays quiet, so the channel hears each
+# drift once. With no state yet, the first drift found posts.
 #
-# scripts/api-drift-report.sh builds the report; this script owns the decision
-# and the post, which follow introspection-sre's change/gates/main-status.sh: a
-# {text} JSON curled to the webhook, and an empty webhook prints the message
-# instead.
-#
-# The last posted state lives in STATE_DIR/last-posted, and the workflow carries
-# that directory between runs. It is written only after a real post, so a run
-# without the secret never swallows the edge the first real post needs.
+# The post follows introspection-sre's change/gates/main-status.sh: a {text} JSON
+# curled to the webhook, and an empty webhook prints the message instead. The
+# last posted state lives in STATE_DIR/last-posted, which the workflow carries
+# between runs; it is written only after a real post.
 #
 # env:
-#   REPORT_DIR         the --out directory of api-drift-report.sh
+#   REPORT             the report APIContractTests wrote
 #   STATE_DIR          holds last-posted between runs
+#   RUN_URL            the run link in the message
 #   SLACK_WEBHOOK_URL  empty prints the message instead of posting it
 #   GITHUB_OUTPUT      optional; receives posted=true|false
 set -euo pipefail
 
-: "${REPORT_DIR:?}" "${STATE_DIR:?}"
+: "${REPORT:?}" "${STATE_DIR:?}" "${RUN_URL:?}"
 output="${GITHUB_OUTPUT:-/dev/null}"
 
-state="$(cat "${REPORT_DIR}/state")"
-body="$(cat "${REPORT_DIR}/body.txt")"
-previous=""
-if [ -f "${STATE_DIR}/last-posted" ]; then previous="$(cat "${STATE_DIR}/last-posted")"; fi
+state=clean
+case "$(head -n 1 "${REPORT}")" in
+  "API contract: drift:"*) state=drift ;;
+  "API contract: clean:"*) ;;
+  *) echo "::error::Unexpected contract report: $(head -n 1 "${REPORT}")" >&2; exit 2 ;;
+esac
+previous="$(cat "${STATE_DIR}/last-posted" 2>/dev/null || true)"
 echo "state=${state} last posted=${previous:-unknown}"
 
-edge=""
 if [ "${state}" = drift ] && [ "${previous}" != drift ]; then
-  edge="🚨 API drift: introspection-swift-sdk is out of step with the API reference on staging"
+  # The first lines of the report that fit: a message much past a few thousand
+  # characters is unreadable in the channel, and the job summary has the rest.
+  drift="$(awk '{ if (used + length($0) > 3500) { rest++; next } print; used += length($0) + 1 }
+    END { if (rest) printf "… %d more lines, in the job summary\n", rest }' "${REPORT}")"
+  message="🚨 API drift: introspection-swift-sdk is out of step with the API reference on staging"$'\n'"${RUN_URL}"$'\n```\n'"${drift}"$'\n```'
 elif [ "${state}" = clean ] && [ "${previous}" = drift ]; then
-  edge="✅ API drift cleared: introspection-swift-sdk matches the API reference on staging again"
-fi
-
-if [ -z "${edge}" ]; then
-  echo "No state change (${state}, last posted ${previous:-nothing}); staying quiet."
+  message="✅ API drift cleared: introspection-swift-sdk matches the API reference on staging again"$'\n'"${RUN_URL}"
+else
+  echo "No state change; staying quiet."
   echo "posted=false" >>"${output}"
   exit 0
 fi
+# Slack reads & < > as control characters, so they travel as entities.
+message="${message//&/&amp;}"
+message="${message//</&lt;}"
+message="${message//>/&gt;}"
 
-message="$(printf '%s\n%s' "${edge}" "${body}")"
 if [ -z "${SLACK_WEBHOOK_URL:-}" ]; then
   printf 'MAIN_STATUS_SLACK_WEBHOOK_URL is empty; would have posted:\n%s\n' "${message}"
   echo "posted=false" >>"${output}"

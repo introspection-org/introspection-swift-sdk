@@ -7,11 +7,11 @@ import Testing
 // carry the cloud's own classification of every route (`x-introspection`). See
 // Contract/ContractCheck.swift for what fails.
 //
-// The sweep is skipped unless `INTROSPECTION_API_CONTRACT=1`: it reads staging and goes red when the
-// API moves, which is a fact about the world rather than the commit under review, so it runs nightly
-// (.github/workflows/api-contract.yml), not on pull requests. `INTROSPECTION_CP_OPENAPI` /
-// `INTROSPECTION_DP_OPENAPI` name a local file to check instead, such as the saved copies in
-// api-reference/, and `INTROSPECTION_API_CONTRACT_REPORT` a file the report is also written to.
+// The sweep reads staging, so it is skipped unless `INTROSPECTION_API_CONTRACT=1`
+// (.github/workflows/api-contract.yml sets it). `INTROSPECTION_CP_OPENAPI` / `INTROSPECTION_DP_OPENAPI`
+// name a local file to check instead, `INTROSPECTION_API_CONTRACT_REPORT` a file the report is also
+// written to, and `INTROSPECTION_API_CONTRACT_MISSING=report` reports missing operations without
+// failing on them, as pull requests do: a new cloud route must not block an unrelated change.
 //
 // Run: INTROSPECTION_API_CONTRACT=1 swift test --filter APIContractTests
 @Suite struct APIContractTests {
@@ -34,24 +34,9 @@ import Testing
         if let path = ProcessInfo.processInfo.environment["INTROSPECTION_API_CONTRACT_REPORT"], !path.isEmpty {
             try report.text.write(toFile: path, atomically: true, encoding: .utf8)
         }
-        if report.failed { Issue.record("Sources have drifted from the API reference: \(report.summary)") }
-    }
-
-    /// The check on Sources and the saved copies in api-reference/: it runs without staging and finds
-    /// called operations in both documents. Drift is not asserted; the nightly run reports it.
-    @Test func runsOnSourcesAgainstTheSavedCopies() throws {
-        let documents = try ["controlplane", "dataplane"].map { plane in
-            let path = Self.root.appendingPathComponent("api-reference/\(plane).json")
-            return try OpenAPIDocument.parse(plane: plane, data: Data(contentsOf: path), source: path.lastPathComponent)
-        }
-        let report = ContractCheck.run(documents: documents, sites: try CallSiteScanner.sources(root: Self.root).scan())
-        #expect(report.sources == ["controlplane.json", "dataplane.json"])
-        for document in documents {
-            let flagged = (document.document["paths"]?.objectValue ?? [:]).values.flatMap { item in
-                (item.objectValue ?? [:]).values.filter { $0["x-introspection"]?["clients"]?.arrayValue?.contains("sdk") == true }
-            }
-            let missing = report.missing.filter { $0.hasPrefix("\(document.plane) ") }
-            #expect(missing.count < flagged.count / 2, "most \(document.plane) operations flagged for sdk are called")
+        let reportOnly = ProcessInfo.processInfo.environment["INTROSPECTION_API_CONTRACT_MISSING"] == "report"
+        if !report.unknown.isEmpty || (!reportOnly && report.failed) {
+            Issue.record("Sources have drifted from the API reference: \(report.summary)")
         }
     }
 

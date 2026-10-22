@@ -10,7 +10,7 @@ import Foundation
 // It fails when
 // 1. an operation whose clients include `sdk` is not called anywhere in Sources (method + path);
 // 2. Sources calls a `/v1` route (method + path) that is in neither document.
-// Field-level changes are not compared here; the nightly workflow reports them with oasdiff.
+// Field-level changes are not compared.
 
 /// One OpenAPI document, read as plain JSON.
 struct OpenAPIDocument {
@@ -24,7 +24,6 @@ struct OpenAPIDocument {
 struct ContractReport {
     var missing: [String] = []
     var unknown: [String] = []
-    var notes: [String] = []
     var sources: [String] = []
 
     var failed: Bool { !missing.isEmpty || !unknown.isEmpty }
@@ -39,7 +38,6 @@ struct ContractReport {
         }
         section("Missing operations: flagged for sdk, not called in Sources", missing)
         section("Unknown routes: called in Sources, in neither document", unknown)
-        section("Notes", notes)
         return lines.joined(separator: "\n")
     }
 }
@@ -70,13 +68,10 @@ enum ContractCheck {
         for site in sites {
             for path in site.paths {
                 let key = key(site.method, path)
-                guard let operation = operations[key] else {
+                if operations[key] == nil {
                     report.unknown.append("\(site.method) \(path)  (\(site.location))")
-                    continue
                 }
-                if called.insert(key).inserted, !operation.clients.contains("sdk") {
-                    report.notes.append("\(operation.name) is called (\(site.location)) but its clients are \(operation.clients)")
-                }
+                called.insert(key)
             }
         }
         report.missing = operations.filter { $0.value.clients.contains("sdk") && !called.contains($0.key) }.map(\.value.name)
