@@ -907,10 +907,11 @@ public struct ConversationListParams: Sendable, Hashable {
     }
 }
 
-/// One `content` value of an items read: a class of item a chat client renders. `user_text` and
+/// One `content` value of an items read: a class of item a chat client renders. `userText` and
 /// `assistantText` select a chat item by the text parts of its new input or output, `toolCall(name)`
 /// and `toolResult(name)` a chat item whose output calls the tool or whose new input carries its
-/// result, `tool(name)` the `execute_tool` item itself, and `delegation` a delegation wrapper.
+/// result (`anyToolCall` / `anyToolResult` for any tool), `tool(name)` the `execute_tool` item
+/// itself, and `delegation` a delegation wrapper.
 public struct ConversationContentClass: RawRepresentable, Codable, Sendable, Hashable, ExpressibleByStringLiteral {
     public let rawValue: String
     public init(rawValue: String) { self.rawValue = rawValue }
@@ -924,6 +925,8 @@ public struct ConversationContentClass: RawRepresentable, Codable, Sendable, Has
     public static func toolResult(_ name: String) -> ConversationContentClass {
         ConversationContentClass(rawValue: "tool_result:\(name)")
     }
+    public static let anyToolCall: ConversationContentClass = "tool_call"
+    public static let anyToolResult: ConversationContentClass = "tool_result"
 }
 
 /// `introspection.content.*`: the processor's plaintext summary of a chat span's sealed content,

@@ -146,14 +146,15 @@ private let toolSpanJSON = #"""
             "conv/1",
             ConversationItemListParams(
                 limit: 1, include: [.events, .toolDefinitions], agent: "root", operationNames: ["chat", "execute_tool"],
-                content: [.userText, .tool("message_user"), .toolResult("react")], fromCompaction: true)
+                content: [.userText, .tool("message_user"), .toolResult("react"), .anyToolCall], fromCompaction: true)
         ).collect()
         #expect(items.map(\.spanId) == ["s2", "s1"])
         #expect(transport.requests[0].request.url.absoluteString.contains("/v1/conversations/conv%2F1/items?"))
         #expect(transport.requests[0].query["include"] == ["events", "gen_ai.tool.definitions"])
         #expect(transport.requests[0].query["agent"] == ["root"])
         #expect(transport.requests[0].query["operation_name"] == ["chat", "execute_tool"])
-        #expect(transport.requests[0].query["content"] == ["user_text", "tool:message_user", "tool_result:react"])
+        #expect(
+            transport.requests[0].query["content"] == ["user_text", "tool:message_user", "tool_result:react", "tool_call"])
         #expect(transport.requests[0].query["from_compaction"] == ["true"])
         #expect(transport.requests[1].query["next"] == ["n2"])
 
