@@ -967,14 +967,6 @@ public struct ConversationItemListParams: Sendable, Hashable {
     /// `root` for the depth-zero transcript, an exact agent id for that invocation, nil for everything.
     public var agent: String?
     public var serviceName: String?
-    /// The deprecated `operation_name` filter, which ANDs with `contains`.
-    private var operationNameFilter: String?
-    /// Deprecated `operation_name` filter, kept for older servers.
-    @available(*, deprecated, message: "Use contains: [.operation(name)] instead.")
-    public var operationName: String? {
-        get { operationNameFilter }
-        set { operationNameFilter = newValue }
-    }
     public var traceId: String?
     public var spanId: String?
     /// `contains` values to match, any of them, selected on the server before anything is decrypted
@@ -1009,28 +1001,12 @@ public struct ConversationItemListParams: Sendable, Hashable {
         self.fromCompaction = fromCompaction
     }
 
-    /// Filters with the deprecated `operation_name`, which ANDs with `contains`.
-    @available(*, deprecated, message: "Pass contains: [.operation(name)] instead of operationName.")
-    public init(
-        limit: Int? = nil, next: String? = nil, include: [ConversationItemInclude]? = nil, agent: String? = nil,
-        serviceName: String? = nil, operationName: String?, traceId: String? = nil, spanId: String? = nil,
-        contains: [ConversationContains]? = nil, startDate: Date? = nil, endDate: Date? = nil, lookbackDays: Int? = nil,
-        annotationId: String? = nil, fromCompaction: Bool? = nil
-    ) {
-        self.init(
-            limit: limit, next: next, include: include, agent: agent, serviceName: serviceName, traceId: traceId,
-            spanId: spanId, contains: contains, startDate: startDate, endDate: endDate, lookbackDays: lookbackDays,
-            annotationId: annotationId, fromCompaction: fromCompaction)
-        operationNameFilter = operationName
-    }
-
     var query: Query {
         var q = Query()
         q.add("limit", limit)
         q.add("include", include)
         q.add("agent", agent)
         q.add("service_name", serviceName)
-        q.add("operation_name", operationNameFilter)
         q.add("trace_id", traceId)
         q.add("span_id", spanId)
         q.add("contains", contains)

@@ -185,17 +185,12 @@ private let toolSpanJSON = #"""
         #expect(ConversationContains.outputToolCall("mcp_browserbase_*") == "gen_ai.output.messages.parts.name:mcp_browserbase_*")
     }
 
-    @available(*, deprecated)
-    @Test func deprecatedOperationNameStillSendsOperationName() async throws {
+    @Test func operationFilterGoesThroughContains() async throws {
         let transport = MockTransport(json: #"{"object":"list","data":[],"has_more":false,"next":null}"#)
         let client = makeClient(transport)
-        var params = ConversationItemListParams(operationName: "chat", contains: [.inputUser])
-        #expect(params.operationName == "chat")
+        let params = ConversationItemListParams(contains: [.operation(GenAIOperationNames.chat)])
         _ = try await client.conversations.items.list("c", params).collect()
-        #expect(transport.last?.query["operation_name"] == ["chat"])
-        #expect(transport.last?.query["contains"] == ["gen_ai.input.messages.role:user"])
-        params.operationName = nil
-        _ = try await client.conversations.items.list("c", params).collect()
+        #expect(transport.last?.query["contains"] == ["gen_ai.operation.name:chat"])
         #expect(transport.last?.query["operation_name"] == nil)
     }
 
