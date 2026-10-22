@@ -238,10 +238,10 @@ public struct GenAISpan: Codable, Sendable, Hashable {
     public var invocationId: String? { string(IntrospectionAttributes.agentInvocationId) }
     /// `introspection.conversation.client_message_id`.
     public var clientMessageId: String? { string(IntrospectionAttributes.conversationClientMessageId) }
-    /// `introspection.content.*`, nil on a span written before the content summary existed.
-    public var contentSummary: GenAIContentSummary? {
-        guard let value = attribute(IntrospectionAttributes.content), value.objectValue != nil else { return nil }
-        return try? value.decode(GenAIContentSummary.self)
+    /// `introspection.contains.*`, nil on a span written before the contains summary existed.
+    public var contains: GenAIContainsSummary? {
+        guard let value = attribute(IntrospectionAttributes.contains), value.objectValue != nil else { return nil }
+        return try? value.decode(GenAIContainsSummary.self)
     }
 
     /// `gen_ai.input.messages`: the turn-local delta on list reads, the full history on item detail.
@@ -907,43 +907,56 @@ public struct ConversationListParams: Sendable, Hashable {
     }
 }
 
-/// One `content` value of an items read: a class of item a chat client renders. `userText` and
-/// `assistantText` select a chat item by the text parts of its new input or output, `toolCall(name)`
-/// and `toolResult(name)` a chat item whose output calls the tool or whose new input carries its
-/// result (`anyToolCall` / `anyToolResult` for any tool), `tool(name)` the `execute_tool` item
-/// itself, and `delegation` a delegation wrapper.
-public struct ConversationContentClass: RawRepresentable, Codable, Sendable, Hashable, ExpressibleByStringLiteral {
+/// One `contains` value of an items read: a GenAI semconv path over the sealed payload and the value
+/// it must contain, resolved on the server before anything is decrypted. An input path returns only
+/// the item's new input messages and an output path only its output; `tool(name)` and
+/// `operation(name)` match a span attribute and return the whole item. The set is closed because
+/// every value is resolved from the plaintext `introspection.contains.*` summary or a plaintext column.
+public struct ConversationContains: RawRepresentable, Codable, Sendable, Hashable, ExpressibleByStringLiteral {
     public let rawValue: String
     public init(rawValue: String) { self.rawValue = rawValue }
     public init(stringLiteral value: String) { rawValue = value }
 
-    public static let userText: ConversationContentClass = "user_text"
-    public static let assistantText: ConversationContentClass = "assistant_text"
-    public static let delegation: ConversationContentClass = "delegation"
-    public static func tool(_ name: String) -> ConversationContentClass { ConversationContentClass(rawValue: "tool:\(name)") }
-    public static func toolCall(_ name: String) -> ConversationContentClass { ConversationContentClass(rawValue: "tool_call:\(name)") }
-    public static func toolResult(_ name: String) -> ConversationContentClass {
-        ConversationContentClass(rawValue: "tool_result:\(name)")
+    /// `gen_ai.input.messages.role:user`: a chat item whose new input carries a user-authored part.
+    public static let inputUser: ConversationContains = "gen_ai.input.messages.role:user"
+    /// `gen_ai.input.messages.parts.type:tool_call_response`: a chat item whose new input carries any tool's response.
+    public static let anyInputToolResponse: ConversationContains = "gen_ai.input.messages.parts.type:tool_call_response"
+    /// `gen_ai.input.messages.parts.name:<name>`: a chat item whose new input carries the tool's response.
+    public static func inputToolResponse(_ name: String) -> ConversationContains {
+        ConversationContains(rawValue: "gen_ai.input.messages.parts.name:\(name)")
     }
-    public static let anyToolCall: ConversationContentClass = "tool_call"
-    public static let anyToolResult: ConversationContentClass = "tool_result"
+    /// `gen_ai.output.messages.parts.type:text`: a chat item whose output carries assistant text.
+    public static let outputText: ConversationContains = "gen_ai.output.messages.parts.type:text"
+    /// `gen_ai.output.messages.parts.type:tool_call`: a chat item whose output calls any tool.
+    public static let anyOutputToolCall: ConversationContains = "gen_ai.output.messages.parts.type:tool_call"
+    /// `gen_ai.output.messages.parts.name:<name>`: a chat item whose output calls the tool.
+    public static func outputToolCall(_ name: String) -> ConversationContains {
+        ConversationContains(rawValue: "gen_ai.output.messages.parts.name:\(name)")
+    }
+    /// `gen_ai.tool.name:<name>`: the `execute_tool` item for the tool.
+    public static func tool(_ name: String) -> ConversationContains { ConversationContains(rawValue: "gen_ai.tool.name:\(name)") }
+    /// `gen_ai.operation.name:<name>`: every item of that operation, e.g. `invoke_agent`.
+    public static func operation(_ name: String) -> ConversationContains {
+        ConversationContains(rawValue: "gen_ai.operation.name:\(name)")
+    }
 }
 
-/// `introspection.content.*`: the processor's plaintext summary of a chat span's sealed content,
-/// counts and tool names only. Absent on a span written before the summary existed.
-public struct GenAIContentSummary: Codable, Sendable, Hashable {
+/// `introspection.contains.*`: the processor's plaintext summary of what a chat span's sealed input
+/// delta and output contain, counts and tool names only. Absent on a span written before the summary
+/// existed.
+public struct GenAIContainsSummary: Codable, Sendable, Hashable {
     public var version: Int?
-    public var userText: Int?
-    public var assistantText: Int?
-    public var toolCalls: [String]?
-    public var toolResults: [String]?
+    public var inputUserParts: Int?
+    public var outputTextParts: Int?
+    public var outputToolNames: [String]?
+    public var inputToolResponseNames: [String]?
 
     private enum CodingKeys: String, CodingKey {
         case version
-        case userText = "user_text"
-        case assistantText = "assistant_text"
-        case toolCalls = "tool_calls"
-        case toolResults = "tool_results"
+        case inputUserParts = "input_user_parts"
+        case outputTextParts = "output_text_parts"
+        case outputToolNames = "output_tool_names"
+        case inputToolResponseNames = "input_tool_response_names"
     }
 }
 
@@ -959,9 +972,9 @@ public struct ConversationItemListParams: Sendable, Hashable {
     public var operationNames: [String]?
     public var traceId: String?
     public var spanId: String?
-    /// Content classes to match, any of them, selected on the server before anything is decrypted
-    /// (`ConversationContentClass`). A chat item written before the content summary existed matches whole.
-    public var content: [ConversationContentClass]?
+    /// `contains` values to match, any of them, selected on the server before anything is decrypted
+    /// (`ConversationContains`). A chat item written before the contains summary existed matches whole.
+    public var contains: [ConversationContains]?
     public var startDate: Date?
     public var endDate: Date?
     /// Partition lookback in days (1-365).
@@ -973,7 +986,7 @@ public struct ConversationItemListParams: Sendable, Hashable {
     public init(
         limit: Int? = nil, next: String? = nil, include: [ConversationItemInclude]? = nil, agent: String? = nil,
         serviceName: String? = nil, operationNames: [String]? = nil, traceId: String? = nil, spanId: String? = nil,
-        content: [ConversationContentClass]? = nil, startDate: Date? = nil, endDate: Date? = nil, lookbackDays: Int? = nil,
+        contains: [ConversationContains]? = nil, startDate: Date? = nil, endDate: Date? = nil, lookbackDays: Int? = nil,
         annotationId: String? = nil, fromCompaction: Bool? = nil
     ) {
         self.limit = limit
@@ -984,7 +997,7 @@ public struct ConversationItemListParams: Sendable, Hashable {
         self.operationNames = operationNames
         self.traceId = traceId
         self.spanId = spanId
-        self.content = content
+        self.contains = contains
         self.startDate = startDate
         self.endDate = endDate
         self.lookbackDays = lookbackDays
@@ -1001,7 +1014,7 @@ public struct ConversationItemListParams: Sendable, Hashable {
         q.add("operation_name", operationNames)
         q.add("trace_id", traceId)
         q.add("span_id", spanId)
-        q.add("content", content)
+        q.add("contains", contains)
         q.add("start_date", startDate)
         q.add("end_date", endDate)
         q.add("lookback_days", lookbackDays)

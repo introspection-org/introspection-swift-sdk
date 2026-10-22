@@ -24,7 +24,7 @@ private let chatSpanJSON = #"""
        {"type":"tool_call","id":"call-1","name":"search","arguments":{"q":"x"}},
        {"type":"image-url","url":"https://x/y.png"},{"type":"hologram","depth":3}]}]}},
       "introspection":{"conversation":{"client_message_id":"cm-1"},
-      "content":{"version":1,"user_text":1,"assistant_text":0,"tool_calls":["message_user"],"tool_results":[]}},"custom.attr":"kept"}}
+      "contains":{"version":1,"input_user_parts":1,"output_text_parts":0,"output_tool_names":["message_user"],"input_tool_response_names":[]}},"custom.attr":"kept"}}
     """#
 
 private let toolSpanJSON = #"""
@@ -96,9 +96,9 @@ private let toolSpanJSON = #"""
         #expect(span.operationName == "chat")
         #expect(span.responseId == "resp-1")
         #expect(span.clientMessageId == "cm-1")
-        #expect(span.contentSummary?.userText == 1)
-        #expect(span.contentSummary?.toolCalls == ["message_user"])
-        #expect(span.contentSummary?.toolResults == [])
+        #expect(span.contains?.inputUserParts == 1)
+        #expect(span.contains?.outputToolNames == ["message_user"])
+        #expect(span.contains?.inputToolResponseNames == [])
         #expect(span.inputTokens == 5)
         #expect(span.kind == .client)
         #expect(span.status?.code == .ok)
@@ -146,7 +146,8 @@ private let toolSpanJSON = #"""
             "conv/1",
             ConversationItemListParams(
                 limit: 1, include: [.events, .toolDefinitions], agent: "root", operationNames: ["chat", "execute_tool"],
-                content: [.userText, .tool("message_user"), .toolResult("react"), .anyToolCall], fromCompaction: true)
+                contains: [.inputUser, .tool("message_user"), .inputToolResponse("react"), .anyOutputToolCall],
+                fromCompaction: true)
         ).collect()
         #expect(items.map(\.spanId) == ["s2", "s1"])
         #expect(transport.requests[0].request.url.absoluteString.contains("/v1/conversations/conv%2F1/items?"))
@@ -154,7 +155,10 @@ private let toolSpanJSON = #"""
         #expect(transport.requests[0].query["agent"] == ["root"])
         #expect(transport.requests[0].query["operation_name"] == ["chat", "execute_tool"])
         #expect(
-            transport.requests[0].query["content"] == ["user_text", "tool:message_user", "tool_result:react", "tool_call"])
+            transport.requests[0].query["contains"] == [
+                "gen_ai.input.messages.role:user", "gen_ai.tool.name:message_user",
+                "gen_ai.input.messages.parts.name:react", "gen_ai.output.messages.parts.type:tool_call",
+            ])
         #expect(transport.requests[0].query["from_compaction"] == ["true"])
         #expect(transport.requests[1].query["next"] == ["n2"])
 

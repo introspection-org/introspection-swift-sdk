@@ -377,7 +377,7 @@ import Testing
         ) { _ = try await $0.conversations.get("c1", annotationId: "an") }
         let items = ConversationItemListParams(
             limit: 1, next: "cursor", include: [.events], agent: "a", serviceName: "svc", operationNames: ["chat"], traceId: "tr",
-            spanId: "sp", content: [.userText], startDate: date, endDate: date, lookbackDays: 7, annotationId: "an",
+            spanId: "sp", contains: [.inputUser], startDate: date, endDate: date, lookbackDays: 7, annotationId: "an",
             fromCompaction: true)
         await filters(
             "conversation item filters: GET /v1/conversations/{id}/items", dp, "GET", "/v1/conversations/{conversation_id}/items",

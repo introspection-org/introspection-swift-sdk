@@ -113,7 +113,7 @@ import Testing
     @Test func introspectionAttributes() {
         #expect(IntrospectionAttributes.agentInvocationId == "introspection.agent.invocation_id")
         #expect(IntrospectionAttributes.conversationClientMessageId == "introspection.conversation.client_message_id")
-        #expect(IntrospectionAttributes.content == "introspection.content")
+        #expect(IntrospectionAttributes.contains == "introspection.contains")
         #expect(IntrospectionAttributes.terminationReason == "introspection.termination_reason")
         #expect(IntrospectionAttributes.llmCostUsd == "introspection.llm.cost_usd")
         #expect(IntrospectionAttributes.llmUpstreamCostUsd == "introspection.llm.upstream_cost_usd")
