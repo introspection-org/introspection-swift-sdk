@@ -315,7 +315,10 @@ private struct ShapeBuilder {
         }
         if !fields.isEmpty {
             let own = Shape.object(name: type.qualified, fields: fields)
-            return delegated.isEmpty ? own : .merged([own] + delegated)
+            guard !delegated.isEmpty else { return own }
+            // A discriminator read before delegating sits beside every delegated alternative, not as one more.
+            guard case let .object(_, shared) = Shape.merged(delegated) else { return .merged([own] + delegated) }
+            return .object(name: type.qualified, fields: shared.merging(fields) { _, direct in direct })
         }
         if let single { return single }
         if !delegated.isEmpty { return .merged(delegated) }

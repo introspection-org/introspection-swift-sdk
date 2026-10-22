@@ -279,4 +279,47 @@ import Testing
                     fields: ["type": ShapeField(shape: .string, required: true), "created_at": ShapeField(shape: .string, required: false)])
         )
     }
+
+    @Test func overlaysADiscriminatorOntoTheTypesItDelegatesTo() {
+        let source = """
+            public struct Folder: Codable {
+                public var path: String
+                public var entries: [String]
+            }
+            public struct Document: Codable {
+                public var path: String
+                public var size: Int?
+            }
+            public enum Content: Codable {
+                case folder(Folder)
+                case document(Document)
+                private enum CodingKeys: String, CodingKey { case type }
+                public init(from decoder: any Decoder) throws {
+                    let container = try decoder.container(keyedBy: CodingKeys.self)
+                    let type = try container.decode(String.self, forKey: .type)
+                    if type == "dir" { self = .folder(try Folder(from: decoder)) } else { self = .document(try Document(from: decoder)) }
+                }
+                public func encode(to encoder: any Encoder) throws {
+                    var container = encoder.container(keyedBy: CodingKeys.self)
+                    switch self {
+                    case let .folder(folder):
+                        try container.encode("dir", forKey: .type)
+                        try folder.encode(to: encoder)
+                    case let .document(document):
+                        try container.encode("file", forKey: .type)
+                        try document.encode(to: encoder)
+                    }
+                }
+            }
+            """
+        let index = SwiftTypeIndex(files: [SwiftFile(path: "Sources/A.swift", source: source)])
+        let expected = Shape.object(
+            name: "Content",
+            fields: [
+                "type": ShapeField(shape: .string, required: true), "path": ShapeField(shape: .string, required: true),
+                "entries": ShapeField(shape: .array(.string), required: false), "size": ShapeField(shape: .integer, required: false),
+            ])
+        #expect(index.shape("Content", .decode) == expected)
+        #expect(index.shape("Content", .encode) == expected)
+    }
 }
