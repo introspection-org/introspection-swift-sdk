@@ -9,6 +9,10 @@
 #   (client_payload.sha is the cloud commit). That run and a manual one fail on both, and tell
 #   #main-build-alerts when the state changes (clean to drift, drift to clean).
 #
+# Only a run on main may post to Slack, and a manual run only with post_for_real set; every other
+# run prints the message instead and records no state. The same rule holds in every introspection
+# repository.
+#
 # A 404 for either document skips the run green, without a post or a recorded state; any other
 # fetch error fails it.
 name: API Contract
@@ -18,6 +22,11 @@ on:
   repository_dispatch:
     types: [api-reference-deployed]
   workflow_dispatch:
+    inputs:
+      post_for_real:
+        description: Post to Slack on a state change, as a deploy-triggered run does. Off prints the message instead.
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -107,7 +116,7 @@ jobs:
           REPORT: ${{ runner.temp }}/check/contract-report.txt
           STATE_DIR: .api-drift-state
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          SLACK_WEBHOOK_URL: ${{ secrets.MAIN_STATUS_SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_URL: ${{ github.ref == 'refs/heads/main' && (github.event_name != 'workflow_dispatch' || inputs.post_for_real) && secrets.MAIN_STATUS_SLACK_WEBHOOK_URL || '' }}
         run: scripts/api-drift-notify.sh
 
       - name: Save the posted state
