@@ -317,8 +317,9 @@ struct ShapeComparison {
 
     private static func compatible(_ sdk: Shape, _ reference: Shape, _ direction: CodingDirection) -> Bool {
         if sdk.basic == reference.basic { return true }
-        // An integer is a number; reading a number into an integer is not safe.
-        if sdk.basic == "number", reference.basic == "integer" { return true }
+        // An integer is a number, so only an integer may stand where a number is expected:
+        // an SDK integer sent as a number, or an API integer read into an SDK number.
+        if sdk.basic == "number", reference.basic == "integer" { return direction == .decode }
         return sdk.basic == "integer" && reference.basic == "number" && direction == .encode
     }
 

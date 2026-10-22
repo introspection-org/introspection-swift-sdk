@@ -234,6 +234,16 @@ import Testing
     }
 
     @Test(arguments: [
+        (Shape.integer, Shape.number, CodingDirection.encode, true), (.number, .integer, .decode, true),
+        (.number, .integer, .encode, false), (.integer, .number, .decode, false),
+    ])
+    func comparesIntegersWithNumbersByDirection(sdk: Shape, reference: Shape, direction: CodingDirection, compatible: Bool) {
+        var comparison = ShapeComparison(direction: direction)
+        comparison.compare(sdk, reference, path: "body.size")
+        #expect(comparison.differences == (compatible ? [] : ["body.size: type: SDK \(sdk.basic), reference \(reference.basic)"]))
+    }
+
+    @Test(arguments: [
         ("[String: Int]", Shape.map(.integer)), ("[Widget]?", Shape.array(.untyped("type `Widget` is not declared in Sources"))),
         ("Optional<Date>", Shape.string), ("JSONObject", Shape.map(.any)),
     ])
