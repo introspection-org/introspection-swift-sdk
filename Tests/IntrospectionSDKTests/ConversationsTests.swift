@@ -144,19 +144,22 @@ private let toolSpanJSON = #"""
         let items = try await client.conversations.items.list(
             "conv/1",
             ConversationItemListParams(
-                limit: 1, include: [.events, .toolDefinitions], agent: "root", operationNames: ["chat", "execute_tool"],
-                contains: [.inputUser, .tool("message_user"), .inputToolResponse("react"), .anyOutputToolCall],
+                limit: 1, include: [.events, .toolDefinitions], agent: "root",
+                contains: [
+                    .inputUser, .tool("message_user"), .inputToolResponse("react"), .anyOutputToolCall, .operation("invoke_agent"),
+                ],
                 fromCompaction: true)
         ).collect()
         #expect(items.map(\.spanId) == ["s2", "s1"])
         #expect(transport.requests[0].request.url.absoluteString.contains("/v1/conversations/conv%2F1/items?"))
         #expect(transport.requests[0].query["include"] == ["events", "gen_ai.tool.definitions"])
         #expect(transport.requests[0].query["agent"] == ["root"])
-        #expect(transport.requests[0].query["operation_name"] == ["chat", "execute_tool"])
+        #expect(transport.requests[0].query["operation_name"] == nil)
         #expect(
             transport.requests[0].query["contains"] == [
                 "gen_ai.input.messages.role:user", "gen_ai.tool.name:message_user",
                 "gen_ai.input.messages.parts.name:react", "gen_ai.output.messages.parts.type:tool_call",
+                "gen_ai.operation.name:invoke_agent",
             ])
         #expect(transport.requests[0].query["from_compaction"] == ["true"])
         #expect(transport.requests[1].query["next"] == ["n2"])
@@ -165,6 +168,33 @@ private let toolSpanJSON = #"""
         let part = messages[1]["parts"]?[0]
         #expect(part?["response"] == ["ok": true])
         #expect(part?["result"] == nil)
+    }
+
+    @Test func containsNamesMatchByTrailingWildcard() async throws {
+        let transport = MockTransport(json: #"{"object":"list","data":[],"has_more":false,"next":null}"#)
+        let client = makeClient(transport)
+        let prefixes: [ConversationContains] = [.outputToolCall("mcp_browserbase_*"), .tool("mcp_*"), .inputToolResponse("*")]
+        _ = try await client.conversations.items.list("c", ConversationItemListParams(contains: prefixes)).collect()
+        #expect(
+            transport.last?.query["contains"] == [
+                "gen_ai.output.messages.parts.name:mcp_browserbase_*", "gen_ai.tool.name:mcp_*",
+                "gen_ai.input.messages.parts.name:*",
+            ])
+        #expect(ConversationContains.outputToolCall("mcp_browserbase_*") == "gen_ai.output.messages.parts.name:mcp_browserbase_*")
+    }
+
+    @available(*, deprecated)
+    @Test func deprecatedOperationNameStillSendsOperationName() async throws {
+        let transport = MockTransport(json: #"{"object":"list","data":[],"has_more":false,"next":null}"#)
+        let client = makeClient(transport)
+        var params = ConversationItemListParams(operationName: "chat", contains: [.inputUser])
+        #expect(params.operationName == "chat")
+        _ = try await client.conversations.items.list("c", params).collect()
+        #expect(transport.last?.query["operation_name"] == ["chat"])
+        #expect(transport.last?.query["contains"] == ["gen_ai.input.messages.role:user"])
+        params.operationName = nil
+        _ = try await client.conversations.items.list("c", params).collect()
+        #expect(transport.last?.query["operation_name"] == nil)
     }
 
     @Test func itemsListRejectsHasMoreWithoutNext() async throws {

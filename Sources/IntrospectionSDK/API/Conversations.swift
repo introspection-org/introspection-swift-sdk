@@ -912,6 +912,10 @@ public struct ConversationListParams: Sendable, Hashable {
 /// the item's new input messages and an output path only its output; `tool(name)` and
 /// `operation(name)` match a span attribute and return the whole item. The set is closed because
 /// every value is resolved from the plaintext `introspection.contains` summary or a plaintext column.
+///
+/// A tool name (`inputToolResponse`, `outputToolCall`, `tool`) may end in one `*` to match by prefix:
+/// `.outputToolCall("mcp_browserbase_*")` matches every Browserbase MCP call, `.tool("*")` any tool.
+/// The server rejects (422) a `*` anywhere else, and on the role, part-type and operation values.
 public struct ConversationContains: RawRepresentable, Codable, Sendable, Hashable, ExpressibleByStringLiteral {
     public let rawValue: String
     public init(rawValue: String) { self.rawValue = rawValue }
@@ -922,6 +926,7 @@ public struct ConversationContains: RawRepresentable, Codable, Sendable, Hashabl
     /// `gen_ai.input.messages.parts.type:tool_call_response`: a chat item whose new input carries any tool's response.
     public static let anyInputToolResponse: ConversationContains = "gen_ai.input.messages.parts.type:tool_call_response"
     /// `gen_ai.input.messages.parts.name:<name>`: a chat item whose new input carries the tool's response.
+    /// A trailing `*` in `name` matches by prefix.
     public static func inputToolResponse(_ name: String) -> ConversationContains {
         ConversationContains(rawValue: "gen_ai.input.messages.parts.name:\(name)")
     }
@@ -930,10 +935,11 @@ public struct ConversationContains: RawRepresentable, Codable, Sendable, Hashabl
     /// `gen_ai.output.messages.parts.type:tool_call`: a chat item whose output calls any tool.
     public static let anyOutputToolCall: ConversationContains = "gen_ai.output.messages.parts.type:tool_call"
     /// `gen_ai.output.messages.parts.name:<name>`: a chat item whose output calls the tool.
+    /// A trailing `*` in `name` matches by prefix, e.g. `mcp_browserbase_*`.
     public static func outputToolCall(_ name: String) -> ConversationContains {
         ConversationContains(rawValue: "gen_ai.output.messages.parts.name:\(name)")
     }
-    /// `gen_ai.tool.name:<name>`: the `execute_tool` item for the tool.
+    /// `gen_ai.tool.name:<name>`: the `execute_tool` item for the tool. A trailing `*` in `name` matches by prefix.
     public static func tool(_ name: String) -> ConversationContains { ConversationContains(rawValue: "gen_ai.tool.name:\(name)") }
     /// `gen_ai.operation.name:<name>`: every item of that operation, e.g. `invoke_agent`.
     public static func operation(_ name: String) -> ConversationContains {
@@ -959,8 +965,14 @@ public struct ConversationItemListParams: Sendable, Hashable {
     /// `root` for the depth-zero transcript, an exact agent id for that invocation, nil for everything.
     public var agent: String?
     public var serviceName: String?
-    /// Operation names to match, any of them: `["chat", "execute_tool"]` leaves out the plumbing spans.
-    public var operationNames: [String]?
+    /// The deprecated `operation_name` filter, which ANDs with `contains`.
+    private var operationNameFilter: String?
+    /// Deprecated `operation_name` filter, kept for older servers.
+    @available(*, deprecated, message: "Use contains: [.operation(name)] instead.")
+    public var operationName: String? {
+        get { operationNameFilter }
+        set { operationNameFilter = newValue }
+    }
     public var traceId: String?
     public var spanId: String?
     /// `contains` values to match, any of them, selected on the server before anything is decrypted
@@ -976,7 +988,7 @@ public struct ConversationItemListParams: Sendable, Hashable {
 
     public init(
         limit: Int? = nil, next: String? = nil, include: [ConversationItemInclude]? = nil, agent: String? = nil,
-        serviceName: String? = nil, operationNames: [String]? = nil, traceId: String? = nil, spanId: String? = nil,
+        serviceName: String? = nil, traceId: String? = nil, spanId: String? = nil,
         contains: [ConversationContains]? = nil, startDate: Date? = nil, endDate: Date? = nil, lookbackDays: Int? = nil,
         annotationId: String? = nil, fromCompaction: Bool? = nil
     ) {
@@ -985,7 +997,6 @@ public struct ConversationItemListParams: Sendable, Hashable {
         self.include = include
         self.agent = agent
         self.serviceName = serviceName
-        self.operationNames = operationNames
         self.traceId = traceId
         self.spanId = spanId
         self.contains = contains
@@ -996,13 +1007,28 @@ public struct ConversationItemListParams: Sendable, Hashable {
         self.fromCompaction = fromCompaction
     }
 
+    /// Filters with the deprecated `operation_name`, which ANDs with `contains`.
+    @available(*, deprecated, message: "Pass contains: [.operation(name)] instead of operationName.")
+    public init(
+        limit: Int? = nil, next: String? = nil, include: [ConversationItemInclude]? = nil, agent: String? = nil,
+        serviceName: String? = nil, operationName: String?, traceId: String? = nil, spanId: String? = nil,
+        contains: [ConversationContains]? = nil, startDate: Date? = nil, endDate: Date? = nil, lookbackDays: Int? = nil,
+        annotationId: String? = nil, fromCompaction: Bool? = nil
+    ) {
+        self.init(
+            limit: limit, next: next, include: include, agent: agent, serviceName: serviceName, traceId: traceId,
+            spanId: spanId, contains: contains, startDate: startDate, endDate: endDate, lookbackDays: lookbackDays,
+            annotationId: annotationId, fromCompaction: fromCompaction)
+        operationNameFilter = operationName
+    }
+
     var query: Query {
         var q = Query()
         q.add("limit", limit)
         q.add("include", include)
         q.add("agent", agent)
         q.add("service_name", serviceName)
-        q.add("operation_name", operationNames)
+        q.add("operation_name", operationNameFilter)
         q.add("trace_id", traceId)
         q.add("span_id", spanId)
         q.add("contains", contains)
