@@ -236,8 +236,13 @@ public struct GenAISpan: Codable, Sendable, Hashable {
     public var costUsd: Double? { attribute(GenAIAttributes.costUsd)?.doubleValue }
     /// `introspection.agent.invocation_id`, the durable child agent-run id on a delegation span.
     public var invocationId: String? { string(IntrospectionAttributes.agentInvocationId) }
-    /// `introspection.conversation.client_message_id`.
-    public var clientMessageId: String? { string(IntrospectionAttributes.conversationClientMessageId) }
+    /// `introspection.turn`, nil where no runtime stamped one.
+    public var turn: Int? { attribute(IntrospectionAttributes.turn)?.intValue }
+    /// `introspection.history`, nil on a span the conversation linker never placed.
+    public var history: GenAIHistory? {
+        guard let value = attribute(IntrospectionAttributes.history), value.objectValue != nil else { return nil }
+        return try? value.decode(GenAIHistory.self)
+    }
     /// `introspection.contains`, nil on a span written before the contains summary existed.
     public var contains: GenAIContainsSummary? {
         guard let value = attribute(IntrospectionAttributes.contains), value.objectValue != nil else { return nil }
@@ -705,12 +710,13 @@ public struct ConversationAgent: Codable, Sendable, Hashable {
 
 /// Aggregated token usage.
 public struct ConversationUsage: Codable, Sendable, Hashable {
-    public var inputTokens: Int?
+    /// Uncached input plus cache reads and writes; not the sum of the items' `gen_ai.usage.input_tokens`.
+    public var totalInputTokens: Int?
     public var outputTokens: Int?
     public var totalTokens: Int?
 
     private enum CodingKeys: String, CodingKey {
-        case inputTokens = "input_tokens"
+        case totalInputTokens = "total_input_tokens"
         case outputTokens = "output_tokens"
         case totalTokens = "total_tokens"
     }
@@ -725,6 +731,8 @@ public struct ConversationCost: Codable, Sendable, Hashable {
 public struct ConversationMetrics: Codable, Sendable, Hashable {
     public var durationMs: Double?
     public var traceCount: Int?
+    /// The highest `introspection.turn` stamped on the conversation's spans, nil where none carries one.
+    public var maxTurn: Int?
     public var spanCount: Int?
     public var toolUseCount: Int?
     public var failedToolUseCount: Int?
@@ -735,6 +743,7 @@ public struct ConversationMetrics: Codable, Sendable, Hashable {
     private enum CodingKeys: String, CodingKey {
         case durationMs = "duration_ms"
         case traceCount = "trace_count"
+        case maxTurn = "max_turn"
         case spanCount = "span_count"
         case toolUseCount = "tool_use_count"
         case failedToolUseCount = "failed_tool_use_count"
@@ -742,6 +751,37 @@ public struct ConversationMetrics: Codable, Sendable, Hashable {
         case failedLlmCallCount = "failed_llm_call_count"
         case hasErrors = "has_errors"
     }
+}
+
+/// The runtime that served a conversation (`introspection.runtime.*` on its items).
+public struct ConversationRuntime: Codable, Sendable, Hashable {
+    public var id: String?
+    public var groupId: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case groupId = "group_id"
+    }
+}
+
+/// The experiment a conversation ran under (`introspection.experiment.*` on its items).
+public struct ConversationExperiment: Codable, Sendable, Hashable {
+    public var id: String?
+}
+
+/// The recipe commit a conversation's runtime was built from (`introspection.recipe.*` on its items).
+public struct ConversationRecipe: Codable, Sendable, Hashable {
+    public var gitCommitSha: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case gitCommitSha = "git_commit_sha"
+    }
+}
+
+/// Who a conversation is attributed to (`introspection.owner.*` on its items).
+public struct ConversationOwner: Codable, Sendable, Hashable {
+    /// Canonical owner key, prefix included (`user:`, `anon:`, `member:`).
+    public var key: String?
 }
 
 /// A conversation summary resource.
@@ -757,25 +797,19 @@ public struct Conversation: Codable, Sendable, Hashable {
     public var metrics: ConversationMetrics?
     public var environment: String?
     public var serviceName: String?
-    public var runtimeId: String?
-    public var runtimeGroupId: String?
-    public var experimentId: String?
-    public var recipeGitCommitSha: String?
-    public var ownerKey: String?
+    public var runtime: ConversationRuntime?
+    public var experiment: ConversationExperiment?
+    public var recipe: ConversationRecipe?
+    public var owner: ConversationOwner?
     /// Customer-defined dimensions stamped via `introspection.metadata.<key>` span attributes.
     public var metadata: [String: String]?
     public var taskTitle: String?
 
     private enum CodingKeys: String, CodingKey {
-        case object, id, agents, usage, cost, metrics, environment, metadata
+        case object, id, agents, usage, cost, metrics, environment, metadata, runtime, experiment, recipe, owner
         case createdAt = "created_at"
         case updatedAt = "updated_at"
         case serviceName = "service_name"
-        case runtimeId = "runtime_id"
-        case runtimeGroupId = "runtime_group_id"
-        case experimentId = "experiment_id"
-        case recipeGitCommitSha = "recipe_git_commit_sha"
-        case ownerKey = "owner_key"
         case taskTitle = "task_title"
     }
 }
@@ -957,6 +991,30 @@ public struct GenAIContainsSummary: Codable, Sendable, Hashable {
     /// The `contains` values this span answers, spelled as a request passes them. A tool-name list the
     /// processor cut at its bound carries `<path>:*`, e.g. `gen_ai.output.messages.parts.name:*`.
     public var values: [ConversationContains]?
+}
+
+/// `introspection.history`: where the conversation linker placed a span. Every field may be absent.
+public struct GenAIHistory: Codable, Sendable, Hashable {
+    /// One-based position of the span in the conversation.
+    public var position: Int?
+    public var isNew: Bool?
+    public var continuationMethod: String?
+    public var hashHit: Bool?
+    public var newMessages: GenAIHistoryRange?
+
+    private enum CodingKeys: String, CodingKey {
+        case position
+        case isNew = "is_new"
+        case continuationMethod = "continuation_method"
+        case hashHit = "hash_hit"
+        case newMessages = "new_messages"
+    }
+}
+
+/// The new input messages' index range in the full history: `start` inclusive, `end` exclusive.
+public struct GenAIHistoryRange: Codable, Sendable, Hashable {
+    public var start: Int?
+    public var end: Int?
 }
 
 /// Filters for `GET /v1/conversations/{id}/items`. Items are always newest first.

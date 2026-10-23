@@ -6,10 +6,12 @@ import Testing
 private let conversationJSON = #"""
     {"object":"conversation","id":"conv-1","created_at":"2026-10-01T12:00:00Z","updated_at":"2026-10-01T12:05:00Z",
      "agents":[{"id":"root"},{"id":"a1","name":"researcher","parent_id":"root","invocation_id":"run-9","depth":1}],
-     "usage":{"input_tokens":10,"output_tokens":20,"total_tokens":30},"cost":{"usd":0.01},
-     "metrics":{"duration_ms":1200.5,"trace_count":2,"span_count":9,"tool_use_count":3,"failed_tool_use_count":1,
+     "usage":{"total_input_tokens":10,"output_tokens":20,"total_tokens":30},"cost":{"usd":0.01},
+     "metrics":{"duration_ms":1200.5,"trace_count":2,"max_turn":3,"span_count":9,"tool_use_count":3,"failed_tool_use_count":1,
      "llm_call_count":4,"failed_llm_call_count":0,"has_errors":true},
-     "environment":"production","service_name":"svc","metadata":{"flow":"company"},"task_title":"Hello"}
+     "environment":"production","service_name":"svc",
+     "runtime":{"id":"rt-1","group_id":"rg-1"},"recipe":{"git_commit_sha":"abc123"},"owner":{"key":"user:u-1"},
+     "metadata":{"flow":"company"},"task_title":"Hello"}
     """#
 
 private let chatSpanJSON = #"""
@@ -23,7 +25,8 @@ private let chatSpanJSON = #"""
        {"type":"reasoning","content":"think"},{"type":"text","content":"hello"},
        {"type":"tool_call","id":"call-1","name":"search","arguments":{"q":"x"}},
        {"type":"image-url","url":"https://x/y.png"},{"type":"hologram","depth":3}]}]}},
-      "introspection":{"conversation":{"client_message_id":"cm-1"},
+      "introspection":{"turn":2,
+      "history":{"position":3,"is_new":false,"continuation_method":"history","hash_hit":true,"new_messages":{"start":4,"end":6}},
       "contains":{"version":1,"values":["gen_ai.input.messages.role:user","gen_ai.output.messages.parts.name:message_user","gen_ai.output.messages.parts.name:*"]}},"custom.attr":"kept"}}
     """#
 
@@ -49,6 +52,12 @@ private let toolSpanJSON = #"""
         #expect(conversation.agents?.last?.invocationId == "run-9")
         #expect(conversation.metadata == ["flow": "company"])
         #expect(conversation.cost?.usd == 0.01)
+        #expect(conversation.usage?.totalInputTokens == 10)
+        #expect(conversation.metrics?.maxTurn == 3)
+        #expect(conversation.runtime == ConversationRuntime(id: "rt-1", groupId: "rg-1"))
+        #expect(conversation.experiment == nil)
+        #expect(conversation.recipe?.gitCommitSha == "abc123")
+        #expect(conversation.owner?.key == "user:u-1")
 
         let q = try #require(transport.last).query
         #expect(transport.last?.path == "/v1/conversations")
@@ -95,7 +104,13 @@ private let toolSpanJSON = #"""
         let span = try JSONCoding.decoder.decode(GenAISpan.self, from: Data(chatSpanJSON.utf8))
         #expect(span.operationName == "chat")
         #expect(span.responseId == "resp-1")
-        #expect(span.clientMessageId == "cm-1")
+        #expect(span.turn == 2)
+        let history = try #require(span.history)
+        #expect(history.position == 3)
+        #expect(history.isNew == false)
+        #expect(history.continuationMethod == "history")
+        #expect(history.hashHit == true)
+        #expect(history.newMessages == GenAIHistoryRange(start: 4, end: 6))
         #expect(span.contains?.version == 1)
         #expect(span.contains?.values == [.inputUser, .outputToolCall("message_user"), .outputToolCall("*")])
         #expect(span.inputTokens == 5)
