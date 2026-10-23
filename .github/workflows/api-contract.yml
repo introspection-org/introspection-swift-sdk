@@ -6,9 +6,10 @@
 # - introspection-cloud sends repository_dispatch api-reference-deployed once staging serves a new
 #   reference. client_payload carries sha (the cloud commit), plane (cp or dp; the check reads both
 #   either way), cp_url and dp_url. There are many Data Planes, so no plane host is written here:
-#   the pair is cached (api-reference-urls-*) for the runs that have no payload. That run and a
-#   manual one fail on both, and tell #main-build-alerts when the state changes (clean to drift,
-#   drift to clean).
+#   the pair is cached (api-reference-urls-*) for the runs that have no payload, but only once the
+#   check has read and parsed both documents (drift or not), so a dispatch with a broken URL keeps
+#   the last good pair. That run and a manual one fail on both, and tell #main-build-alerts when
+#   the state changes (clean to drift, drift to clean).
 # - A pull request and a manual run read the pair from the newest cached post-deploy run; a manual
 #   run's cp_url and dp_url inputs override it. With nothing cached the run fails. On a pull
 #   request, a called /v1 route in neither document fails: that is the SDK's own fault. Operations
@@ -53,8 +54,7 @@ jobs:
       cp_url: ${{ steps.resolve.outputs.cp_url }}
       dp_url: ${{ steps.resolve.outputs.dp_url }}
     steps:
-      # Caches are immutable, so each deploy saves under a new key and the newest one is restored
-      # by prefix. A deploy-triggered run saves from main, where pull requests can read it.
+      # Saved by the save-urls job after a deploy-triggered run; the newest one is restored by prefix.
       - name: Restore the last deploy's URLs
         if: github.event_name != 'repository_dispatch'
         uses: actions/cache/restore@v5
@@ -86,15 +86,6 @@ jobs:
           echo "cp_url=${CP_URL}" >> "${GITHUB_OUTPUT}"
           echo "dp_url=${DP_URL}" >> "${GITHUB_OUTPUT}"
           echo "Control Plane ${CP_URL}, Data Plane ${DP_URL}"
-          mkdir -p .api-reference-urls
-          printf 'CP_URL=%q\nDP_URL=%q\n' "${CP_URL}" "${DP_URL}" > .api-reference-urls/urls
-
-      - name: Save the deploy's URLs
-        if: github.event_name == 'repository_dispatch'
-        uses: actions/cache/save@v5
-        with:
-          path: .api-reference-urls
-          key: api-reference-urls-${{ github.run_id }}-${{ github.run_attempt }}
 
   check:
     name: SDK vs API reference (staging)
@@ -129,6 +120,32 @@ jobs:
           name: contract-report
           path: contract-report.txt
           if-no-files-found: ignore
+
+  save-urls:
+    name: Cache the deploy's URLs
+    needs: [reference, check]
+    # Only a pair whose two documents the check read and parsed (it writes its report only then);
+    # drift still saves. A dispatch with a 404 or invalid-JSON URL keeps the last good pair, so
+    # pull requests do not stay red until the next good deploy. Caches are immutable, so each
+    # deploy saves under a new key; a deploy-triggered run saves from main, where pull requests
+    # can read it.
+    if: >-
+      always() && github.event_name == 'repository_dispatch' && needs.check.outputs.reported == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write the URLs
+        env:
+          CP_URL: ${{ needs.reference.outputs.cp_url }}
+          DP_URL: ${{ needs.reference.outputs.dp_url }}
+        run: |
+          mkdir -p .api-reference-urls
+          printf 'CP_URL=%q\nDP_URL=%q\n' "${CP_URL}" "${DP_URL}" > .api-reference-urls/urls
+
+      - name: Save the URLs
+        uses: actions/cache/save@v5
+        with:
+          path: .api-reference-urls
+          key: api-reference-urls-${{ github.run_id }}-${{ github.run_attempt }}
 
   notify:
     name: Alert on a state change
