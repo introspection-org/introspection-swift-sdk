@@ -41,7 +41,7 @@ import Testing
                 return .response(.json(#"{"task":\#(TasksTests.taskJSON),"run":\#(TasksTests.runJSON)}"#, status: 201))
             case ("POST", _) where path.hasSuffix("/runs"):
                 return .response(.json(#"{"run":\#(TasksTests.runJSON)}"#, status: 201))
-            case ("GET", "/v1/organizations/current"):
+            case ("GET", "/v1/organizations/me"):
                 return .response(.json(#"{"detail":"Customer principals cannot use this route"}"#, status: 403))
             default:
                 return .response(.json(#"{"records":[],"count":0}"#))

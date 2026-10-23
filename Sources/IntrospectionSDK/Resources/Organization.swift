@@ -36,9 +36,9 @@ public struct OrganizationsAPI: Sendable {
 
     public init(http: HTTPClient) { self.http = http }
 
-    /// `GET /v1/organizations/current`.
+    /// `GET /v1/organizations/me`.
     public func current() async throws -> Organization {
-        try await http.json("GET", "/v1/organizations/current")
+        try await http.json("GET", "/v1/organizations/me")
     }
 }
 
