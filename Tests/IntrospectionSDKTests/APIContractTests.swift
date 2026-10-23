@@ -8,29 +8,30 @@ import Testing
 // Contract/ContractCheck.swift for what fails.
 //
 // The sweep reads staging, so it is skipped unless `INTROSPECTION_API_CONTRACT=1`
-// (.github/workflows/api-contract.yml sets it). Each plane serves its own `/openapi.json`: the
-// Control Plane's is on api.staging.introspection.dev, and the Data Plane's is under
-// `STAGING_DP_URL` (an organization variable in CI), since there are many Data Planes and none is
-// the staging one by name. `INTROSPECTION_CP_OPENAPI` / `INTROSPECTION_DP_OPENAPI` name a local file
+// (.github/workflows/api-contract.yml sets it). Each plane serves its own `/openapi.json` under
+// the base URL in `INTROSPECTION_CP_URL` / `INTROSPECTION_DP_URL`: there are many Data Planes, so
+// no host is written here, and CI takes both from the deploy that introspection-cloud reports.
+// `INTROSPECTION_CP_OPENAPI` / `INTROSPECTION_DP_OPENAPI` name a local file
 // to check instead, `INTROSPECTION_API_CONTRACT_REPORT` a file the report is also written to, and
 // `INTROSPECTION_API_CONTRACT_MISSING=report` reports missing operations without failing on them,
 // as pull requests do: a new cloud route must not block an unrelated change. A document that
 // cannot be read fails the test before any report is written.
 //
-// Run: STAGING_DP_URL=<data plane URL> INTROSPECTION_API_CONTRACT=1 swift test --filter APIContractTests
+// Run: INTROSPECTION_CP_URL=<url> INTROSPECTION_DP_URL=<url> INTROSPECTION_API_CONTRACT=1 swift test --filter APIContractTests
 @Suite struct APIContractTests {
-    static let controlPlaneURL = "https://api.staging.introspection.dev/openapi.json"
     static let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
         .deletingLastPathComponent()
 
-    /// `${STAGING_DP_URL}/openapi.json`; only read when no local Data Plane document is named.
-    static func dataPlaneURL() throws -> String {
-        let base = ProcessInfo.processInfo.environment["STAGING_DP_URL"] ?? ""
-        guard !base.isEmpty else {
-            throw IntrospectionError(
-                kind: .invalidRequest, message: "STAGING_DP_URL is not set: it names the staging Data Plane whose /openapi.json is checked")
+    /// `<base>/openapi.json`, the base read from `environmentKey`; only called when no local document is named.
+    static func reference(_ environmentKey: String) -> () throws -> String {
+        {
+            let base = ProcessInfo.processInfo.environment[environmentKey] ?? ""
+            guard !base.isEmpty else {
+                throw IntrospectionError(
+                    kind: .invalidRequest, message: "\(environmentKey) is not set: it is the base URL whose /openapi.json is checked")
+            }
+            return (base.hasSuffix("/") ? String(base.dropLast()) : base) + "/openapi.json"
         }
-        return (base.hasSuffix("/") ? String(base.dropLast()) : base) + "/openapi.json"
     }
 
     @Test(
@@ -39,9 +40,9 @@ import Testing
             "Set INTROSPECTION_API_CONTRACT=1 to compare Sources against the API reference"))
     func sourcesMatchTheReference() async throws {
         let controlPlane = try await OpenAPIDocument.load(
-            plane: "controlplane", environmentKey: "INTROSPECTION_CP_OPENAPI", url: { Self.controlPlaneURL })
+            plane: "controlplane", environmentKey: "INTROSPECTION_CP_OPENAPI", url: Self.reference("INTROSPECTION_CP_URL"))
         let dataPlane = try await OpenAPIDocument.load(
-            plane: "dataplane", environmentKey: "INTROSPECTION_DP_OPENAPI", url: Self.dataPlaneURL)
+            plane: "dataplane", environmentKey: "INTROSPECTION_DP_OPENAPI", url: Self.reference("INTROSPECTION_DP_URL"))
         let report = ContractCheck.run(documents: [controlPlane, dataPlane], sites: try CallSiteScanner.sources(root: Self.root).scan())
         print(report.text)
         if let path = ProcessInfo.processInfo.environment["INTROSPECTION_API_CONTRACT_REPORT"], !path.isEmpty {

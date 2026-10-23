@@ -1,16 +1,19 @@
 # Checks the routes Sources requests against the API reference on staging: the contract check
 # (Tests/IntrospectionSDKTests/APIContractTests.swift) compares them with the x-introspection
-# flags of each plane's own /openapi.json. The Control Plane's is on api.staging.introspection.dev;
-# the Data Plane's is under the organization variable STAGING_DP_URL, which the run requires. An
-# operation without x-introspection is for every client, so the SDK must call it too.
+# flags of each plane's own /openapi.json, at ${cp_url}/openapi.json and ${dp_url}/openapi.json.
+# An operation without x-introspection is for every client, so the SDK must call it too.
 #
-# - On a pull request, a called /v1 route in neither document fails: that is the SDK's own fault.
-#   Operations required for sdk that Sources never calls are only listed in the job summary, so a
-#   new cloud route does not block an unrelated pull request.
 # - introspection-cloud sends repository_dispatch api-reference-deployed once staging serves a new
-#   reference (client_payload.sha is the cloud commit, client_payload.plane cp or dp; the check
-#   reads both planes either way). That run and a manual one fail on both, and tell
-#   #main-build-alerts when the state changes (clean to drift, drift to clean).
+#   reference. client_payload carries sha (the cloud commit), plane (cp or dp; the check reads both
+#   either way), cp_url and dp_url. There are many Data Planes, so no plane host is written here:
+#   the pair is cached (api-reference-urls-*) for the runs that have no payload. That run and a
+#   manual one fail on both, and tell #main-build-alerts when the state changes (clean to drift,
+#   drift to clean).
+# - A pull request and a manual run read the pair from the newest cached post-deploy run; a manual
+#   run's cp_url and dp_url inputs override it. With nothing cached the run fails. On a pull
+#   request, a called /v1 route in neither document fails: that is the SDK's own fault. Operations
+#   required for sdk that Sources never calls are only listed in the job summary, so a new cloud
+#   route does not block an unrelated pull request.
 #
 # Only a run on main may post to Slack, and a manual run only with post_for_real set; every other
 # run prints the message instead and records no state. The same rule holds in every introspection
@@ -30,13 +33,72 @@ on:
         description: Post to Slack on a state change, as a deploy-triggered run does. Off prints the message instead.
         type: boolean
         default: false
+      cp_url:
+        description: Control Plane base URL. Empty uses the one the last deploy sent.
+        type: string
+        default: ""
+      dp_url:
+        description: Data Plane base URL. Empty uses the one the last deploy sent.
+        type: string
+        default: ""
 
 permissions:
   contents: read
 
 jobs:
+  reference:
+    name: API reference URLs
+    runs-on: ubuntu-latest
+    outputs:
+      cp_url: ${{ steps.resolve.outputs.cp_url }}
+      dp_url: ${{ steps.resolve.outputs.dp_url }}
+    steps:
+      # Caches are immutable, so each deploy saves under a new key and the newest one is restored
+      # by prefix. A deploy-triggered run saves from main, where pull requests can read it.
+      - name: Restore the last deploy's URLs
+        if: github.event_name != 'repository_dispatch'
+        uses: actions/cache/restore@v5
+        with:
+          path: .api-reference-urls
+          key: api-reference-urls-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: api-reference-urls-
+
+      - name: Resolve the URLs
+        id: resolve
+        env:
+          CP_URL: ${{ github.event.client_payload.cp_url || inputs.cp_url }}
+          DP_URL: ${{ github.event.client_payload.dp_url || inputs.dp_url }}
+        run: |
+          if [ -z "${CP_URL}" ] && [ -z "${DP_URL}" ] && [ -f .api-reference-urls/urls ]; then
+            # shellcheck disable=SC1091
+            . .api-reference-urls/urls
+          fi
+          if [ -z "${CP_URL}" ] || [ -z "${DP_URL}" ]; then
+            echo "::error::No staging reference URLs recorded yet: run introspection-cloud's \"API Reference Deployed\" workflow by hand (it dispatches here and refills the cache), or run this workflow with cp_url and dp_url"
+            exit 1
+          fi
+          for url in "${CP_URL}" "${DP_URL}"; do
+            case "${url}" in
+              https://*) ;;
+              *) echo "::error::${url} is not an https URL"; exit 1 ;;
+            esac
+          done
+          echo "cp_url=${CP_URL}" >> "${GITHUB_OUTPUT}"
+          echo "dp_url=${DP_URL}" >> "${GITHUB_OUTPUT}"
+          echo "Control Plane ${CP_URL}, Data Plane ${DP_URL}"
+          mkdir -p .api-reference-urls
+          printf 'CP_URL=%q\nDP_URL=%q\n' "${CP_URL}" "${DP_URL}" > .api-reference-urls/urls
+
+      - name: Save the deploy's URLs
+        if: github.event_name == 'repository_dispatch'
+        uses: actions/cache/save@v5
+        with:
+          path: .api-reference-urls
+          key: api-reference-urls-${{ github.run_id }}-${{ github.run_attempt }}
+
   check:
     name: SDK vs API reference (staging)
+    needs: reference
     runs-on: ubuntu-latest
     container: swift:6.4-noble
     outputs:
@@ -46,15 +108,11 @@ jobs:
 
       - name: Run the contract check
         env:
-          STAGING_DP_URL: ${{ vars.STAGING_DP_URL }}
+          INTROSPECTION_CP_URL: ${{ needs.reference.outputs.cp_url }}
+          INTROSPECTION_DP_URL: ${{ needs.reference.outputs.dp_url }}
           INTROSPECTION_API_CONTRACT: "1"
           INTROSPECTION_API_CONTRACT_MISSING: ${{ github.event_name == 'pull_request' && 'report' || 'fail' }}
-        run: |
-          if [ -z "${STAGING_DP_URL}" ]; then
-            echo "::error::The STAGING_DP_URL variable is not set: it names the staging Data Plane whose /openapi.json is checked"
-            exit 1
-          fi
-          INTROSPECTION_API_CONTRACT_REPORT="${PWD}/contract-report.txt" swift test --filter APIContractTests
+        run: INTROSPECTION_API_CONTRACT_REPORT="${PWD}/contract-report.txt" swift test --filter APIContractTests
 
       - name: Job summary
         id: summary
@@ -74,7 +132,7 @@ jobs:
 
   notify:
     name: Alert on a state change
-    needs: check
+    needs: [reference, check]
     # A check that wrote no report (a document unreadable, a crash) already failed the run: an
     # outage is not drift, so it neither posts nor records a state.
     if: >-
