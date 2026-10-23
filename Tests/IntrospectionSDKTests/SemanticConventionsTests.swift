@@ -112,7 +112,9 @@ import Testing
 
     @Test func introspectionAttributes() {
         #expect(IntrospectionAttributes.agentInvocationId == "introspection.agent.invocation_id")
-        #expect(IntrospectionAttributes.conversationClientMessageId == "introspection.conversation.client_message_id")
+        #expect(IntrospectionAttributes.turn == "introspection.turn")
+        #expect(IntrospectionAttributes.history == "introspection.history")
+        #expect(IntrospectionAttributes.contains == "introspection.contains")
         #expect(IntrospectionAttributes.terminationReason == "introspection.termination_reason")
         #expect(IntrospectionAttributes.llmCostUsd == "introspection.llm.cost_usd")
         #expect(IntrospectionAttributes.llmUpstreamCostUsd == "introspection.llm.upstream_cost_usd")
@@ -138,12 +140,13 @@ import Testing
                 "gen_ai": [
                     "operation": ["name": "chat"], "usage": ["input_tokens": 3], "cost": ["usd": 0.5],
                 ],
-                "introspection": ["agent": ["invocation_id": "inv-1"], "conversation": ["client_message_id": "m-1"]],
+                "introspection": ["agent": ["invocation_id": "inv-1"], "turn": 4],
             ])
         #expect(span.operationName == GenAIOperationNames.chat)
         #expect(span.inputTokens == 3)
         #expect(span.costUsd == 0.5)
         #expect(span.invocationId == "inv-1")
-        #expect(span.clientMessageId == "m-1")
+        #expect(span.turn == 4)
+        #expect(span.history == nil)
     }
 }

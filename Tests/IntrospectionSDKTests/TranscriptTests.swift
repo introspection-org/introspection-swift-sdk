@@ -30,8 +30,7 @@ private func event(_ value: JSONValue) -> AGUIEvent { AGUIEvent(raw: value) }
              "attributes":{"gen_ai":{"operation":{"name":"chat"},"response":{"id":"resp-1"},
               "input":{"messages":[{"role":"system","parts":[{"type":"text","content":"sys"}]},{"role":"user","parts":[{"type":"text","content":"find x"}]}]},
               "output":{"messages":[{"role":"assistant","parts":[{"type":"thinking","content":"hmm"},{"type":"text","content":"Searching"},
-               {"type":"tool_call","id":"call-1","name":"search","arguments":{"q":"x"}}]}]}},
-              "introspection":{"conversation":{"client_message_id":"cm-1"}}}}
+               {"type":"tool_call","id":"call-1","name":"search","arguments":{"q":"x"}}]}]}}}}
             """#)
         let delegation = try span(
             #"""
@@ -41,12 +40,11 @@ private func event(_ value: JSONValue) -> AGUIEvent { AGUIEvent(raw: value) }
             """#)
 
         let entries = foldSpans([toolSpan, followUp, delegation, firstChat])
-        #expect(entries.map(\.id) == ["cm-1", "resp-1", "tool:call-1", "span:s4:assistant:0", "span:s5:delegation"])
+        #expect(entries.map(\.id) == ["span:s2:user:1", "resp-1", "tool:call-1", "span:s4:assistant:0", "span:s5:delegation"])
 
         let user = try #require(entries[0].message)
         #expect(user.role == .user)
         #expect(user.text == "find x")
-        #expect(user.clientMessageId == "cm-1")
 
         let assistant = try #require(entries[1].message)
         #expect(assistant.text == "Searching")
@@ -192,7 +190,7 @@ private func event(_ value: JSONValue) -> AGUIEvent { AGUIEvent(raw: value) }
 
     @Test func mergesStoredAndLiveTranscripts() {
         let stored: [TranscriptEntry] = [
-            .message(TranscriptMessageEntry(id: "cm-1", role: .user, text: "hi", clientMessageId: "cm-1")),
+            .message(TranscriptMessageEntry(id: "cm-1", role: .user, text: "hi")),
             .message(TranscriptMessageEntry(id: "resp-1", role: .assistant, text: "hello", responseId: "resp-1")),
             .tool(TranscriptToolEntry(callId: "c1", name: "search", status: .complete)),
             .delegation(

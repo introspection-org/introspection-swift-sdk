@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.10.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.9.1...v0.10.0) (2026-10-23)
+
+
+### ⚠ BREAKING CHANGES
+
+* `ConversationsAPI.turns`, `ConversationTurn`, `ConversationTurnMessage`, `ConversationTurnStatus`, `ChannelReplyDelivery` and `ConversationTurnListParams` are removed, and `ConversationItemListParams.operationName` becomes `operationNames`.
+
+### Features
+
+* select conversation items with contains=&lt;semconv path&gt;:&lt;value&gt; and drop turns ([#55](https://github.com/introspection-org/introspection-swift-sdk/issues/55)) ([97e2177](https://github.com/introspection-org/introspection-swift-sdk/commit/97e217765a1671f354e99b82adb4d63592256f70))
+
 ## [0.9.1](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.9.0...v0.9.1) (2026-10-21)
 
 

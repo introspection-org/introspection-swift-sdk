@@ -236,8 +236,18 @@ public struct GenAISpan: Codable, Sendable, Hashable {
     public var costUsd: Double? { attribute(GenAIAttributes.costUsd)?.doubleValue }
     /// `introspection.agent.invocation_id`, the durable child agent-run id on a delegation span.
     public var invocationId: String? { string(IntrospectionAttributes.agentInvocationId) }
-    /// `introspection.conversation.client_message_id`.
-    public var clientMessageId: String? { string(IntrospectionAttributes.conversationClientMessageId) }
+    /// `introspection.turn`, nil where no runtime stamped one.
+    public var turn: Int? { attribute(IntrospectionAttributes.turn)?.intValue }
+    /// `introspection.history`, nil on a span the conversation linker never placed.
+    public var history: GenAIHistory? {
+        guard let value = attribute(IntrospectionAttributes.history), value.objectValue != nil else { return nil }
+        return try? value.decode(GenAIHistory.self)
+    }
+    /// `introspection.contains`, nil on a span written before the contains summary existed.
+    public var contains: GenAIContainsSummary? {
+        guard let value = attribute(IntrospectionAttributes.contains), value.objectValue != nil else { return nil }
+        return try? value.decode(GenAIContainsSummary.self)
+    }
 
     /// `gen_ai.input.messages`: the turn-local delta on list reads, the full history on item detail.
     public var inputMessages: [GenAIMessage] { Self.messages(attribute(GenAIAttributes.inputMessages)) }
@@ -700,12 +710,13 @@ public struct ConversationAgent: Codable, Sendable, Hashable {
 
 /// Aggregated token usage.
 public struct ConversationUsage: Codable, Sendable, Hashable {
-    public var inputTokens: Int?
+    /// Uncached input plus cache reads and writes; not the sum of the items' `gen_ai.usage.input_tokens`.
+    public var totalInputTokens: Int?
     public var outputTokens: Int?
     public var totalTokens: Int?
 
     private enum CodingKeys: String, CodingKey {
-        case inputTokens = "input_tokens"
+        case totalInputTokens = "total_input_tokens"
         case outputTokens = "output_tokens"
         case totalTokens = "total_tokens"
     }
@@ -720,6 +731,8 @@ public struct ConversationCost: Codable, Sendable, Hashable {
 public struct ConversationMetrics: Codable, Sendable, Hashable {
     public var durationMs: Double?
     public var traceCount: Int?
+    /// The highest `introspection.turn` stamped on the conversation's spans, nil where none carries one.
+    public var maxTurn: Int?
     public var spanCount: Int?
     public var toolUseCount: Int?
     public var failedToolUseCount: Int?
@@ -730,6 +743,7 @@ public struct ConversationMetrics: Codable, Sendable, Hashable {
     private enum CodingKeys: String, CodingKey {
         case durationMs = "duration_ms"
         case traceCount = "trace_count"
+        case maxTurn = "max_turn"
         case spanCount = "span_count"
         case toolUseCount = "tool_use_count"
         case failedToolUseCount = "failed_tool_use_count"
@@ -737,6 +751,37 @@ public struct ConversationMetrics: Codable, Sendable, Hashable {
         case failedLlmCallCount = "failed_llm_call_count"
         case hasErrors = "has_errors"
     }
+}
+
+/// The runtime that served a conversation (`introspection.runtime.*` on its items).
+public struct ConversationRuntime: Codable, Sendable, Hashable {
+    public var id: String?
+    public var groupId: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case groupId = "group_id"
+    }
+}
+
+/// The experiment a conversation ran under (`introspection.experiment.*` on its items).
+public struct ConversationExperiment: Codable, Sendable, Hashable {
+    public var id: String?
+}
+
+/// The recipe commit a conversation's runtime was built from (`introspection.recipe.*` on its items).
+public struct ConversationRecipe: Codable, Sendable, Hashable {
+    public var gitCommitSha: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case gitCommitSha = "git_commit_sha"
+    }
+}
+
+/// Who a conversation is attributed to (`introspection.owner.*` on its items).
+public struct ConversationOwner: Codable, Sendable, Hashable {
+    /// Canonical owner key, prefix included (`user:`, `anon:`, `member:`).
+    public var key: String?
 }
 
 /// A conversation summary resource.
@@ -752,25 +797,19 @@ public struct Conversation: Codable, Sendable, Hashable {
     public var metrics: ConversationMetrics?
     public var environment: String?
     public var serviceName: String?
-    public var runtimeId: String?
-    public var runtimeGroupId: String?
-    public var experimentId: String?
-    public var recipeGitCommitSha: String?
-    public var ownerKey: String?
+    public var runtime: ConversationRuntime?
+    public var experiment: ConversationExperiment?
+    public var recipe: ConversationRecipe?
+    public var owner: ConversationOwner?
     /// Customer-defined dimensions stamped via `introspection.metadata.<key>` span attributes.
     public var metadata: [String: String]?
     public var taskTitle: String?
 
     private enum CodingKeys: String, CodingKey {
-        case object, id, agents, usage, cost, metrics, environment, metadata
+        case object, id, agents, usage, cost, metrics, environment, metadata, runtime, experiment, recipe, owner
         case createdAt = "created_at"
         case updatedAt = "updated_at"
         case serviceName = "service_name"
-        case runtimeId = "runtime_id"
-        case runtimeGroupId = "runtime_group_id"
-        case experimentId = "experiment_id"
-        case recipeGitCommitSha = "recipe_git_commit_sha"
-        case ownerKey = "owner_key"
         case taskTitle = "task_title"
     }
 }
@@ -902,6 +941,82 @@ public struct ConversationListParams: Sendable, Hashable {
     }
 }
 
+/// One `contains` value of an items read: a GenAI semconv path over the sealed payload and the value
+/// it must contain, resolved on the server before anything is decrypted. An input path returns only
+/// the item's new input messages and an output path only its output; `tool(name)` and
+/// `operation(name)` match a span attribute and return the whole item. The set is closed because
+/// every value is resolved from the plaintext `introspection.contains` summary or a plaintext column.
+///
+/// A name (`inputToolResponse`, `outputToolCall`, `tool`, `operation`) may end in one `*` to match by
+/// prefix: `.outputToolCall("mcp_browserbase_*")` matches every Browserbase MCP call, `.tool("*")` any
+/// tool, `.operation("invoke_*")` any invoke operation. The server rejects (422) a `*` anywhere else, and
+/// on the role and part-type values.
+public struct ConversationContains: RawRepresentable, Codable, Sendable, Hashable, ExpressibleByStringLiteral {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+    public init(stringLiteral value: String) { rawValue = value }
+
+    /// `gen_ai.input.messages.role:user`: a chat item whose new input carries a user-authored part.
+    public static let inputUser: ConversationContains = "gen_ai.input.messages.role:user"
+    /// `gen_ai.input.messages.parts.type:tool_call_response`: a chat item whose new input carries any tool's response.
+    public static let anyInputToolResponse: ConversationContains = "gen_ai.input.messages.parts.type:tool_call_response"
+    /// `gen_ai.input.messages.parts.name:<name>`: a chat item whose new input carries the tool's response.
+    /// A trailing `*` in `name` matches by prefix.
+    public static func inputToolResponse(_ name: String) -> ConversationContains {
+        ConversationContains(rawValue: "gen_ai.input.messages.parts.name:\(name)")
+    }
+    /// `gen_ai.output.messages.parts.type:text`: a chat item whose output carries assistant text.
+    public static let outputText: ConversationContains = "gen_ai.output.messages.parts.type:text"
+    /// `gen_ai.output.messages.parts.type:tool_call`: a chat item whose output calls any tool.
+    public static let anyOutputToolCall: ConversationContains = "gen_ai.output.messages.parts.type:tool_call"
+    /// `gen_ai.output.messages.parts.name:<name>`: a chat item whose output calls the tool.
+    /// A trailing `*` in `name` matches by prefix, e.g. `mcp_browserbase_*`.
+    public static func outputToolCall(_ name: String) -> ConversationContains {
+        ConversationContains(rawValue: "gen_ai.output.messages.parts.name:\(name)")
+    }
+    /// `gen_ai.tool.name:<name>`: the `execute_tool` item for the tool. A trailing `*` in `name` matches by prefix.
+    public static func tool(_ name: String) -> ConversationContains { ConversationContains(rawValue: "gen_ai.tool.name:\(name)") }
+    /// `gen_ai.operation.name:<name>`: every item of that operation, e.g. `invoke_agent`.
+    /// A trailing `*` in `name` matches by prefix.
+    public static func operation(_ name: String) -> ConversationContains {
+        ConversationContains(rawValue: "gen_ai.operation.name:\(name)")
+    }
+}
+
+/// `introspection.contains`: the processor's plaintext summary of what a chat span's sealed input
+/// delta and output contain. Absent on a span written before the summary existed.
+public struct GenAIContainsSummary: Codable, Sendable, Hashable {
+    /// Summary schema version; 0 or nil means the span was never summarized.
+    public var version: Int?
+    /// The `contains` values this span answers, spelled as a request passes them. A tool-name list the
+    /// processor cut at its bound carries `<path>:*`, e.g. `gen_ai.output.messages.parts.name:*`.
+    public var values: [ConversationContains]?
+}
+
+/// `introspection.history`: where the conversation linker placed a span. Every field may be absent.
+public struct GenAIHistory: Codable, Sendable, Hashable {
+    /// One-based position of the span in the conversation.
+    public var position: Int?
+    public var isNew: Bool?
+    public var continuationMethod: String?
+    public var hashHit: Bool?
+    public var newMessages: GenAIHistoryRange?
+
+    private enum CodingKeys: String, CodingKey {
+        case position
+        case isNew = "is_new"
+        case continuationMethod = "continuation_method"
+        case hashHit = "hash_hit"
+        case newMessages = "new_messages"
+    }
+}
+
+/// The new input messages' index range in the full history: `start` inclusive, `end` exclusive.
+public struct GenAIHistoryRange: Codable, Sendable, Hashable {
+    public var start: Int?
+    public var end: Int?
+}
+
 /// Filters for `GET /v1/conversations/{id}/items`. Items are always newest first.
 public struct ConversationItemListParams: Sendable, Hashable {
     public var limit: Int?
@@ -910,9 +1025,11 @@ public struct ConversationItemListParams: Sendable, Hashable {
     /// `root` for the depth-zero transcript, an exact agent id for that invocation, nil for everything.
     public var agent: String?
     public var serviceName: String?
-    public var operationName: String?
     public var traceId: String?
     public var spanId: String?
+    /// `contains` values to match, any of them, selected on the server before anything is decrypted
+    /// (`ConversationContains`). A chat item written before the contains summary existed matches whole.
+    public var contains: [ConversationContains]?
     public var startDate: Date?
     public var endDate: Date?
     /// Partition lookback in days (1-365).
@@ -923,18 +1040,18 @@ public struct ConversationItemListParams: Sendable, Hashable {
 
     public init(
         limit: Int? = nil, next: String? = nil, include: [ConversationItemInclude]? = nil, agent: String? = nil,
-        serviceName: String? = nil, operationName: String? = nil, traceId: String? = nil, spanId: String? = nil,
-        startDate: Date? = nil, endDate: Date? = nil, lookbackDays: Int? = nil, annotationId: String? = nil,
-        fromCompaction: Bool? = nil
+        serviceName: String? = nil, traceId: String? = nil, spanId: String? = nil,
+        contains: [ConversationContains]? = nil, startDate: Date? = nil, endDate: Date? = nil, lookbackDays: Int? = nil,
+        annotationId: String? = nil, fromCompaction: Bool? = nil
     ) {
         self.limit = limit
         self.next = next
         self.include = include
         self.agent = agent
         self.serviceName = serviceName
-        self.operationName = operationName
         self.traceId = traceId
         self.spanId = spanId
+        self.contains = contains
         self.startDate = startDate
         self.endDate = endDate
         self.lookbackDays = lookbackDays
@@ -948,9 +1065,9 @@ public struct ConversationItemListParams: Sendable, Hashable {
         q.add("include", include)
         q.add("agent", agent)
         q.add("service_name", serviceName)
-        q.add("operation_name", operationName)
         q.add("trace_id", traceId)
         q.add("span_id", spanId)
+        q.add("contains", contains)
         q.add("start_date", startDate)
         q.add("end_date", endDate)
         q.add("lookback_days", lookbackDays)
@@ -1023,132 +1140,6 @@ public enum ConversationExportFormat: String, Sendable, Hashable, CaseIterable {
     }
 }
 
-// MARK: - Turns
-
-/// Terminal state of a turn.
-public struct ConversationTurnStatus: RawRepresentable, Codable, Sendable, Hashable, ExpressibleByStringLiteral {
-    public let rawValue: String
-    public init(rawValue: String) { self.rawValue = rawValue }
-    public init(stringLiteral value: String) { rawValue = value }
-
-    public static let completed: ConversationTurnStatus = "completed"
-    public static let cancelled: ConversationTurnStatus = "cancelled"
-    public static let error: ConversationTurnStatus = "error"
-}
-
-/// Delivery state of a reply posted back to a channel.
-public struct ChannelReplyDelivery: Codable, Sendable, Hashable {
-    /// `reply` or `send`.
-    public var command: String?
-    /// `sent`, `pending` or `unconfirmed`.
-    public var status: String?
-    public var url: String?
-}
-
-/// One user-visible message of a turn, without tool internals.
-public struct ConversationTurnMessage: Codable, Sendable, Hashable {
-    public var id: String
-    /// `user` or `assistant`.
-    public var role: GenAIMessageRole
-    public var parts: [GenAIMessagePart]
-    public var sourceSpanId: String?
-    public var createdAt: Date?
-    public var channelReply: ChannelReplyDelivery?
-    public var clientMessageId: String?
-    public var responseId: String?
-
-    private enum CodingKeys: String, CodingKey {
-        case id, role, parts
-        case sourceSpanId = "source_span_id"
-        case createdAt = "created_at"
-        case channelReply = "channel_reply"
-        case clientMessageId = "client_message_id"
-        case responseId = "response_id"
-    }
-
-    public init(from decoder: any Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try container.decode(String.self, forKey: .id)
-        role = try container.decodeIfPresent(GenAIMessageRole.self, forKey: .role) ?? ""
-        parts = try container.decodeIfPresent([GenAIMessagePart].self, forKey: .parts) ?? []
-        sourceSpanId = try container.decodeIfPresent(String.self, forKey: .sourceSpanId)
-        createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt)
-        channelReply = try container.decodeIfPresent(ChannelReplyDelivery.self, forKey: .channelReply)
-        clientMessageId = try container.decodeIfPresent(String.self, forKey: .clientMessageId)
-        responseId = try container.decodeIfPresent(String.self, forKey: .responseId)
-    }
-}
-
-/// One agent-scoped, trace-rooted user interaction.
-public struct ConversationTurn: Codable, Sendable, Hashable {
-    public var object: String?
-    public var id: String
-    public var traceId: String?
-    /// One-based position within the agent transcript.
-    public var ordinal: Int?
-    public var agentId: String?
-    public var agentName: String?
-    public var startedAt: Date?
-    public var endedAt: Date?
-    public var status: ConversationTurnStatus?
-    public var messages: [ConversationTurnMessage]?
-    public var responseIds: [String]?
-    public var hasSteps: Bool?
-    public var itemCount: Int?
-    public var toolUseCount: Int?
-    public var failedToolUseCount: Int?
-    public var errorCount: Int?
-    public var inputTokens: Int?
-    public var outputTokens: Int?
-    public var costUsd: Double?
-    public var durationMs: Double?
-
-    private enum CodingKeys: String, CodingKey {
-        case object, id, ordinal, status, messages
-        case traceId = "trace_id"
-        case agentId = "agent_id"
-        case agentName = "agent_name"
-        case startedAt = "started_at"
-        case endedAt = "ended_at"
-        case responseIds = "response_ids"
-        case hasSteps = "has_steps"
-        case itemCount = "item_count"
-        case toolUseCount = "tool_use_count"
-        case failedToolUseCount = "failed_tool_use_count"
-        case errorCount = "error_count"
-        case inputTokens = "input_tokens"
-        case outputTokens = "output_tokens"
-        case costUsd = "cost_usd"
-        case durationMs = "duration_ms"
-    }
-}
-
-/// Filters for `GET /v1/conversations/{id}/turns`. Pages walk from newest to older turns.
-public struct ConversationTurnListParams: Sendable, Hashable {
-    /// 1-100, server default 25.
-    public var limit: Int?
-    public var next: String?
-    /// `root` (server default) or one exact agent id.
-    public var agent: String?
-    public var beforeTraceId: String?
-    public var traceId: String?
-    public var lookbackDays: Int?
-    public var annotationId: String?
-
-    public init(
-        limit: Int? = nil, next: String? = nil, agent: String? = nil, beforeTraceId: String? = nil,
-        traceId: String? = nil, lookbackDays: Int? = nil, annotationId: String? = nil
-    ) {
-        self.limit = limit
-        self.next = next
-        self.agent = agent
-        self.beforeTraceId = beforeTraceId
-        self.traceId = traceId
-        self.lookbackDays = lookbackDays
-        self.annotationId = annotationId
-    }
-}
-
 // MARK: - Trajectory
 
 /// One tool call of a trajectory assistant record. `args` is a JSON-encoded object.
@@ -1209,20 +1200,6 @@ public struct ConversationsAPI: Sendable {
         var query = Query()
         query.add("annotation_id", annotationId)
         return try await http.json("GET", "/v1/conversations/\(pathSegment(conversationId))", query: query)
-    }
-
-    /// List lightweight user/assistant turns, newest first.
-    public func turns(
-        _ conversationId: String, _ params: ConversationTurnListParams = ConversationTurnListParams()
-    ) -> Paginator<ConversationTurn> {
-        var query = Query()
-        query.add("limit", params.limit)
-        query.add("agent", params.agent)
-        query.add("before_trace_id", params.beforeTraceId)
-        query.add("trace_id", params.traceId)
-        query.add("lookback_days", params.lookbackDays)
-        query.add("annotation_id", params.annotationId)
-        return http.paginate("/v1/conversations/\(pathSegment(conversationId))/turns", query: query, start: params.next)
     }
 
     /// Export the complete conversation as one GenAI-span list.

@@ -29,21 +29,18 @@ public struct TranscriptMessageEntry: Codable, Sendable, Hashable {
     public var thinking: String?
     /// `gen_ai.response.id`, when known.
     public var responseId: String?
-    /// `introspection.conversation.client_message_id`, when known.
-    public var clientMessageId: String?
     /// Span the entry was folded from (stored transport only).
     public var spanId: String?
 
     public init(
         id: String, role: TranscriptRole, text: String, thinking: String? = nil, responseId: String? = nil,
-        clientMessageId: String? = nil, spanId: String? = nil
+        spanId: String? = nil
     ) {
         self.id = id
         self.role = role
         self.text = text
         self.thinking = thinking
         self.responseId = responseId
-        self.clientMessageId = clientMessageId
         self.spanId = spanId
     }
 }
@@ -260,19 +257,12 @@ public func foldSpans(_ spans: [GenAISpan]) -> [TranscriptEntry] {
         }
 
         let inputMessages = span.inputMessages
-        let clientMessageId = span.clientMessageId
-        let userCount = inputMessages.filter { $0.role == .user }.count
         for (index, message) in inputMessages.enumerated() {
             if message.role == .user {
                 let text = textOf(message.parts)
                 if text.isEmpty { continue }
-                // client_message_id names the optimistic user message only when the delta has one candidate.
-                let stableId = (clientMessageId != nil && userCount == 1) ? clientMessageId ?? "" : "span:\(spanKey):user:\(index)"
                 entries.append(
-                    .message(
-                        TranscriptMessageEntry(
-                            id: stableId, role: .user, text: text, clientMessageId: clientMessageId, spanId: spanId
-                        )))
+                    .message(TranscriptMessageEntry(id: "span:\(spanKey):user:\(index)", role: .user, text: text, spanId: spanId)))
             } else if message.role == .tool {
                 for part in message.parts {
                     guard case let .toolCallResponse(response) = part, let id = response.id, !id.isEmpty else { continue }
@@ -538,7 +528,7 @@ public func foldAgui<S: Sequence>(_ events: S) -> [TranscriptEntry] where S.Elem
 }
 
 private func messageKeys(_ entry: TranscriptMessageEntry) -> [String] {
-    [entry.id] + [entry.responseId, entry.clientMessageId].compactMap { $0 }.filter { !$0.isEmpty }
+    [entry.id] + [entry.responseId].compactMap { $0 }.filter { !$0.isEmpty }
 }
 
 /// Converge a live transcript onto its stored twin after a refresh. Stored entries win and keep
