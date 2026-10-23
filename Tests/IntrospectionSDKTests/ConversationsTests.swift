@@ -6,10 +6,12 @@ import Testing
 private let conversationJSON = #"""
     {"object":"conversation","id":"conv-1","created_at":"2026-10-01T12:00:00Z","updated_at":"2026-10-01T12:05:00Z",
      "agents":[{"id":"root"},{"id":"a1","name":"researcher","parent_id":"root","invocation_id":"run-9","depth":1}],
-     "usage":{"input_tokens":10,"output_tokens":20,"total_tokens":30},"cost":{"usd":0.01},
-     "metrics":{"duration_ms":1200.5,"trace_count":2,"span_count":9,"tool_use_count":3,"failed_tool_use_count":1,
+     "usage":{"total_input_tokens":10,"output_tokens":20,"total_tokens":30},"cost":{"usd":0.01},
+     "metrics":{"duration_ms":1200.5,"trace_count":2,"max_turn":3,"span_count":9,"tool_use_count":3,"failed_tool_use_count":1,
      "llm_call_count":4,"failed_llm_call_count":0,"has_errors":true},
-     "environment":"production","service_name":"svc","metadata":{"flow":"company"},"task_title":"Hello"}
+     "environment":"production","service_name":"svc",
+     "runtime":{"id":"rt-1","group_id":"rg-1"},"recipe":{"git_commit_sha":"abc123"},"owner":{"key":"user:u-1"},
+     "metadata":{"flow":"company"},"task_title":"Hello"}
     """#
 
 private let chatSpanJSON = #"""
@@ -23,7 +25,9 @@ private let chatSpanJSON = #"""
        {"type":"reasoning","content":"think"},{"type":"text","content":"hello"},
        {"type":"tool_call","id":"call-1","name":"search","arguments":{"q":"x"}},
        {"type":"image-url","url":"https://x/y.png"},{"type":"hologram","depth":3}]}]}},
-      "introspection":{"conversation":{"client_message_id":"cm-1"}},"custom.attr":"kept"}}
+      "introspection":{"turn":2,
+      "history":{"position":3,"is_new":false,"continuation_method":"history","hash_hit":true,"new_messages":{"start":4,"end":6}},
+      "contains":{"version":1,"values":["gen_ai.input.messages.role:user","gen_ai.output.messages.parts.name:message_user","gen_ai.output.messages.parts.name:*"]}},"custom.attr":"kept"}}
     """#
 
 private let toolSpanJSON = #"""
@@ -48,6 +52,12 @@ private let toolSpanJSON = #"""
         #expect(conversation.agents?.last?.invocationId == "run-9")
         #expect(conversation.metadata == ["flow": "company"])
         #expect(conversation.cost?.usd == 0.01)
+        #expect(conversation.usage?.totalInputTokens == 10)
+        #expect(conversation.metrics?.maxTurn == 3)
+        #expect(conversation.runtime == ConversationRuntime(id: "rt-1", groupId: "rg-1"))
+        #expect(conversation.experiment == nil)
+        #expect(conversation.recipe?.gitCommitSha == "abc123")
+        #expect(conversation.owner?.key == "user:u-1")
 
         let q = try #require(transport.last).query
         #expect(transport.last?.path == "/v1/conversations")
@@ -94,7 +104,15 @@ private let toolSpanJSON = #"""
         let span = try JSONCoding.decoder.decode(GenAISpan.self, from: Data(chatSpanJSON.utf8))
         #expect(span.operationName == "chat")
         #expect(span.responseId == "resp-1")
-        #expect(span.clientMessageId == "cm-1")
+        #expect(span.turn == 2)
+        let history = try #require(span.history)
+        #expect(history.position == 3)
+        #expect(history.isNew == false)
+        #expect(history.continuationMethod == "history")
+        #expect(history.hashHit == true)
+        #expect(history.newMessages == GenAIHistoryRange(start: 4, end: 6))
+        #expect(span.contains?.version == 1)
+        #expect(span.contains?.values == [.inputUser, .outputToolCall("message_user"), .outputToolCall("*")])
         #expect(span.inputTokens == 5)
         #expect(span.kind == .client)
         #expect(span.status?.code == .ok)
@@ -139,12 +157,25 @@ private let toolSpanJSON = #"""
         }
         let client = makeClient(transport)
         let items = try await client.conversations.items.list(
-            "conv/1", ConversationItemListParams(limit: 1, include: [.events, .toolDefinitions], agent: "root", fromCompaction: true)
+            "conv/1",
+            ConversationItemListParams(
+                limit: 1, include: [.events, .toolDefinitions], agent: "root",
+                contains: [
+                    .inputUser, .tool("message_user"), .inputToolResponse("react"), .anyOutputToolCall, .operation("invoke_agent"),
+                ],
+                fromCompaction: true)
         ).collect()
         #expect(items.map(\.spanId) == ["s2", "s1"])
         #expect(transport.requests[0].request.url.absoluteString.contains("/v1/conversations/conv%2F1/items?"))
         #expect(transport.requests[0].query["include"] == ["events", "gen_ai.tool.definitions"])
         #expect(transport.requests[0].query["agent"] == ["root"])
+        #expect(transport.requests[0].query["operation_name"] == nil)
+        #expect(
+            transport.requests[0].query["contains"] == [
+                "gen_ai.input.messages.role:user", "gen_ai.tool.name:message_user",
+                "gen_ai.input.messages.parts.name:react", "gen_ai.output.messages.parts.type:tool_call",
+                "gen_ai.operation.name:invoke_agent",
+            ])
         #expect(transport.requests[0].query["from_compaction"] == ["true"])
         #expect(transport.requests[1].query["next"] == ["n2"])
 
@@ -152,6 +183,30 @@ private let toolSpanJSON = #"""
         let part = messages[1]["parts"]?[0]
         #expect(part?["response"] == ["ok": true])
         #expect(part?["result"] == nil)
+    }
+
+    @Test func containsNamesMatchByTrailingWildcard() async throws {
+        let transport = MockTransport(json: #"{"object":"list","data":[],"has_more":false,"next":null}"#)
+        let client = makeClient(transport)
+        let prefixes: [ConversationContains] = [
+            .outputToolCall("mcp_browserbase_*"), .tool("mcp_*"), .inputToolResponse("*"), .operation("invoke_*"),
+        ]
+        _ = try await client.conversations.items.list("c", ConversationItemListParams(contains: prefixes)).collect()
+        #expect(
+            transport.last?.query["contains"] == [
+                "gen_ai.output.messages.parts.name:mcp_browserbase_*", "gen_ai.tool.name:mcp_*",
+                "gen_ai.input.messages.parts.name:*", "gen_ai.operation.name:invoke_*",
+            ])
+        #expect(ConversationContains.outputToolCall("mcp_browserbase_*") == "gen_ai.output.messages.parts.name:mcp_browserbase_*")
+    }
+
+    @Test func operationFilterGoesThroughContains() async throws {
+        let transport = MockTransport(json: #"{"object":"list","data":[],"has_more":false,"next":null}"#)
+        let client = makeClient(transport)
+        let params = ConversationItemListParams(contains: [.operation(GenAIOperationNames.chat)])
+        _ = try await client.conversations.items.list("c", params).collect()
+        #expect(transport.last?.query["contains"] == ["gen_ai.operation.name:chat"])
+        #expect(transport.last?.query["operation_name"] == nil)
     }
 
     @Test func itemsListRejectsHasMoreWithoutNext() async throws {
@@ -178,14 +233,6 @@ private let toolSpanJSON = #"""
     }
 
     @Test func getTurnsAndExports() async throws {
-        let turnJSON = #"""
-            {"object":"list","data":[{"object":"conversation.turn","id":"turn-1","trace_id":"t1","ordinal":1,
-             "started_at":"2026-10-01T12:00:00Z","ended_at":"2026-10-01T12:00:05Z","status":"completed",
-             "messages":[{"id":"m1","role":"user","parts":[{"type":"text","content":"hi"}],"source_span_id":"s1",
-              "created_at":"2026-10-01T12:00:00Z","channel_reply":{"command":"reply","status":"sent"}}],
-             "response_ids":["r1"],"has_steps":true,"item_count":3,"cost_usd":0.5,"duration_ms":5000}],
-             "first_id":"turn-1","last_id":"turn-1","has_more":false,"next":null}
-            """#
         let trajectoryJSON = #"""
             [{"role":"meta","source":"claude-code","cwd":"/w"},{"role":"user","content":"hi","timestamp":"2026-10-01T12:00:00Z"},
              {"role":"assistant","content":null,"timestamp":"2026-10-01T12:00:01Z","tool_calls":[{"id":"c1","name":"ls","args":"{}"}]},
@@ -193,7 +240,6 @@ private let toolSpanJSON = #"""
             """#
         let transport = MockTransport { request, _ in
             let path = request.url.path
-            if path.hasSuffix("/turns") { return .response(.json(turnJSON)) }
             if path.hasSuffix("/export") {
                 let accept = request.headers["Accept"] ?? ""
                 if accept.contains("trajectory") { return .response(.json(trajectoryJSON)) }
@@ -209,14 +255,6 @@ private let toolSpanJSON = #"""
 
         let conversation = try await client.conversations.get("conv-1")
         #expect(conversation.taskTitle == "Hello")
-
-        let turns = try await client.conversations.turns("conv-1", ConversationTurnListParams(limit: 5, agent: "root", lookbackDays: 7))
-            .collect()
-        #expect(turns.first?.status == .completed)
-        #expect(turns.first?.messages?.first?.channelReply?.status == "sent")
-        #expect(turns.first?.messages?.first?.parts.first?.type == "text")
-        #expect(transport.last?.path == "/v1/conversations/conv-1/turns")
-        #expect(transport.last?.query["lookback_days"] == ["7"])
 
         let exported = try await client.conversations.exportJSON("conv-1", ConversationExportParams(agent: "root", fromCompaction: true))
         #expect(exported.data.count == 1)

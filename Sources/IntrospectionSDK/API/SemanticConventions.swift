@@ -46,8 +46,14 @@ public enum GenAIOperationNames {
 public enum IntrospectionAttributes {
     /// The durable child agent-run id on a delegation span.
     public static let agentInvocationId = "introspection.agent.invocation_id"
-    /// The client id of the turn's optimistic user message.
-    public static let conversationClientMessageId = "introspection.conversation.client_message_id"
+    /// The runtime's application-level turn, numbered from 1 per conversation.
+    public static let turn = "introspection.turn"
+    /// Where the conversation linker placed the span (`position`, `is_new`, `continuation_method`,
+    /// `hash_hit`, `new_messages`). Absent on spans the linker never placed.
+    public static let history = "introspection.history"
+    /// The processor's plaintext summary of a chat span's sealed content (`version`, `user_text`,
+    /// `assistant_text`, `tool_calls`, `tool_results`).
+    public static let contains = "introspection.contains"
     /// Why a turn was aborted: `cancelled` or `awaiting_user`.
     public static let terminationReason = "introspection.termination_reason"
     /// Provider-reported cost of the call in USD.
