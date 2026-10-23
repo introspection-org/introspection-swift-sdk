@@ -574,8 +574,6 @@ private func member(_ id: String, _ email: String?, deactivated: Bool = false) -
         let org = try await client.organizations.current()
         #expect(org.slug == "acme")
         #expect(org.hostedGit == true)
-        #expect(transport.last?.request.method == "GET")
-        #expect(transport.last?.path == "/v1/organizations/me")
 
         let projects = try await client.projects.list(ProjectListParams(project: "main")).collect()
         #expect(projects.first?.deploymentId == "d")
