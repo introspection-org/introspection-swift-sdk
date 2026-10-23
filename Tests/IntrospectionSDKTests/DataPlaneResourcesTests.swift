@@ -18,13 +18,14 @@ private func driveEveryNamespace(_ resources: some DataPlaneResources, _ transpo
     _ = try? await resources.shares.get("s1")
     _ = try? await resources.automations.get("a1")
     _ = try? await resources.connections.get("c1")
+    _ = try? await resources.images.get("i1")
     return transport.requests.map { "\($0.request.method) \($0.path)" }
 }
 
 private let everyNamespace = [
     "GET /v1/tasks/t1", "GET /v1/tasks/t1/runs/r1", "GET /v1/files/f1", "GET /v1/conversations/c1", "GET /v1/events/e1",
     "POST /v1/metrics", "GET /v1/shares/s1", "GET /v1/automations/a1",
-    "GET /v1/connections/c1",
+    "GET /v1/connections/c1", "GET /v1/images/i1",
 ]
 
 @Suite struct DataPlaneResourcesTests {
