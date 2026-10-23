@@ -11,10 +11,10 @@
 #   the last good pair. That run and a manual one fail on both, and tell #main-build-alerts when
 #   the state changes (clean to drift, drift to clean).
 # - A pull request and a manual run read the pair from the newest cached post-deploy run; a manual
-#   run's cp_url and dp_url inputs override it. With nothing cached the run fails. On a pull
-#   request, a called /v1 route in neither document fails: that is the SDK's own fault. Operations
-#   required for sdk that Sources never calls are only listed in the job summary, so a new cloud
-#   route does not block an unrelated pull request.
+#   run's cp_url and dp_url inputs each override their own URL. With nothing cached the run fails.
+#   On a pull request, a called /v1 route in neither document fails: that is the SDK's own fault.
+#   Operations required for sdk that Sources never calls are only listed in the job summary, so a
+#   new cloud route does not block an unrelated pull request.
 #
 # Only a run on main may post to Slack, and a manual run only with post_for_real set; every other
 # run prints the message instead and records no state. The same rule holds in every introspection
@@ -69,9 +69,15 @@ jobs:
           CP_URL: ${{ github.event.client_payload.cp_url || inputs.cp_url }}
           DP_URL: ${{ github.event.client_payload.dp_url || inputs.dp_url }}
         run: |
-          if [ -z "${CP_URL}" ] && [ -z "${DP_URL}" ] && [ -f .api-reference-urls/urls ]; then
+          # Each URL left empty falls back to the cached one on its own, so a manual run may override
+          # just one plane.
+          if [ -f .api-reference-urls/urls ]; then
             # shellcheck disable=SC1091
-            . .api-reference-urls/urls
+            cached_cp=$(. .api-reference-urls/urls && printf '%s' "${CP_URL}")
+            # shellcheck disable=SC1091
+            cached_dp=$(. .api-reference-urls/urls && printf '%s' "${DP_URL}")
+            CP_URL="${CP_URL:-${cached_cp}}"
+            DP_URL="${DP_URL:-${cached_dp}}"
           fi
           if [ -z "${CP_URL}" ] || [ -z "${DP_URL}" ]; then
             echo "::error::No staging reference URLs recorded yet: run introspection-cloud's \"API Reference Deployed\" workflow by hand (it dispatches here and refills the cache), or run this workflow with cp_url and dp_url"
