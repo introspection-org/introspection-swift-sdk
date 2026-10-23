@@ -7,16 +7,20 @@ import FoundationNetworking
 #endif
 
 extension OpenAPIDocument {
-    /// The file named by `environmentKey` when set, otherwise the document at `url`.
-    static func load(plane: String, environmentKey: String, url: String) async throws -> OpenAPIDocument {
+    /// The file named by `environmentKey` when set, otherwise the document at `url()`, which is only
+    /// evaluated then.
+    static func load(plane: String, environmentKey: String, url: () throws -> String) async throws -> OpenAPIDocument {
         let data: Data
         let source: String
         if let path = ProcessInfo.processInfo.environment[environmentKey], !path.isEmpty {
             data = try Data(contentsOf: URL(fileURLWithPath: path))
             source = path
         } else {
-            data = try await fetch(URL(string: url)!)
-            source = url
+            source = try url()
+            guard let remote = URL(string: source) else {
+                throw IntrospectionError(kind: .invalidRequest, message: "\(source) is not a URL")
+            }
+            data = try await fetch(remote)
         }
         return try parse(plane: plane, data: data, source: source)
     }

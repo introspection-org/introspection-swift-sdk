@@ -1,20 +1,23 @@
 # Checks the routes Sources requests against the API reference on staging: the contract check
 # (Tests/IntrospectionSDKTests/APIContractTests.swift) compares them with the x-introspection
-# flags of both OpenAPI documents.
+# flags of each plane's own /openapi.json. The Control Plane's is on api.staging.introspection.dev;
+# the Data Plane's is under the organization variable STAGING_DP_URL, which the run requires. An
+# operation without x-introspection is for every client, so the SDK must call it too.
 #
 # - On a pull request, a called /v1 route in neither document fails: that is the SDK's own fault.
-#   Operations flagged for sdk that Sources never calls are only listed in the job summary, so a
+#   Operations required for sdk that Sources never calls are only listed in the job summary, so a
 #   new cloud route does not block an unrelated pull request.
-# - introspection-cloud sends repository_dispatch api-reference-deployed after each staging deploy
-#   (client_payload.sha is the cloud commit). That run and a manual one fail on both, and tell
+# - introspection-cloud sends repository_dispatch api-reference-deployed once staging serves a new
+#   reference (client_payload.sha is the cloud commit, client_payload.plane cp or dp; the check
+#   reads both planes either way). That run and a manual one fail on both, and tell
 #   #main-build-alerts when the state changes (clean to drift, drift to clean).
 #
 # Only a run on main may post to Slack, and a manual run only with post_for_real set; every other
 # run prints the message instead and records no state. The same rule holds in every introspection
 # repository.
 #
-# A 404 for either document skips the run green, without a post or a recorded state; any other
-# fetch error fails it.
+# A document that cannot be read (any HTTP error, a network failure, invalid JSON) fails the run,
+# without a post or a recorded state: the check writes its report only after reading both.
 name: API Contract
 
 on:
@@ -32,49 +35,34 @@ permissions:
   contents: read
 
 jobs:
-  reference:
-    name: API reference on staging
-    runs-on: ubuntu-latest
-    outputs:
-      published: ${{ steps.probe.outputs.published }}
-    steps:
-      - name: Probe both documents
-        id: probe
-        run: |
-          published=true
-          for plane in controlplane dataplane; do
-            url="https://api.staging.introspection.dev/openapi/${plane}.json"
-            code="$(curl -sS -o "${RUNNER_TEMP}/${plane}.json" -w '%{http_code}' --max-time 30 "${url}")"
-            case "${code}" in
-              404) published=false ;;
-              200) jq -e 'type == "object"' "${RUNNER_TEMP}/${plane}.json" >/dev/null \
-                || { echo "::error::${url} is not a JSON object"; exit 1; } ;;
-              *) echo "::error::${url} answered HTTP ${code}"; exit 1 ;;
-            esac
-          done
-          if [ "${published}" = false ]; then echo "reference not published on staging yet, skipping"; fi
-          echo "published=${published}" >> "${GITHUB_OUTPUT}"
-
   check:
     name: SDK vs API reference (staging)
-    needs: reference
-    if: needs.reference.outputs.published == 'true'
     runs-on: ubuntu-latest
     container: swift:6.4-noble
+    outputs:
+      reported: ${{ steps.summary.outputs.reported }}
     steps:
       - uses: actions/checkout@v7
 
       - name: Run the contract check
         env:
+          STAGING_DP_URL: ${{ vars.STAGING_DP_URL }}
           INTROSPECTION_API_CONTRACT: "1"
           INTROSPECTION_API_CONTRACT_MISSING: ${{ github.event_name == 'pull_request' && 'report' || 'fail' }}
-        run: INTROSPECTION_API_CONTRACT_REPORT="${PWD}/contract-report.txt" swift test --filter APIContractTests
+        run: |
+          if [ -z "${STAGING_DP_URL}" ]; then
+            echo "::error::The STAGING_DP_URL variable is not set: it names the staging Data Plane whose /openapi.json is checked"
+            exit 1
+          fi
+          INTROSPECTION_API_CONTRACT_REPORT="${PWD}/contract-report.txt" swift test --filter APIContractTests
 
       - name: Job summary
+        id: summary
         if: always()
         run: |
           if [ -f contract-report.txt ]; then
             { echo '```'; cat contract-report.txt; echo '```'; } >> "${GITHUB_STEP_SUMMARY}"
+            echo "reported=true" >> "${GITHUB_OUTPUT}"
           fi
 
       - uses: actions/upload-artifact@v7
@@ -86,11 +74,11 @@ jobs:
 
   notify:
     name: Alert on a state change
-    needs: [reference, check]
-    # A check that wrote no report (staging down, a crash) makes the download fail: an outage is
-    # not drift, so it neither posts nor records a state.
+    needs: check
+    # A check that wrote no report (a document unreadable, a crash) already failed the run: an
+    # outage is not drift, so it neither posts nor records a state.
     if: >-
-      always() && github.event_name != 'pull_request' && needs.reference.outputs.published == 'true'
+      always() && github.event_name != 'pull_request' && needs.check.outputs.reported == 'true'
       && (needs.check.result == 'success' || needs.check.result == 'failure')
     runs-on: ubuntu-latest
     steps:
