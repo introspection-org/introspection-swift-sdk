@@ -8,7 +8,11 @@ import IntrospectionSDK
 enum WALK {
     static let siblingSuffix = "-walk"
     static let projectName = "SDK end-to-end walk"
-    static let projectSlugPrefix = "sdk-walk-"
+    /// `sdk-walk-swift-<unix time, hex>-<random>`: the SDK, so walks of different SDKs never sweep each other's
+    /// project, and the time, which the projects list does not carry, so a sweep spares a run still going.
+    static let projectSlugPrefix = "sdk-walk-swift-"
+    /// A walk takes about a minute; one this old crashed before its teardown.
+    static let staleAfterSeconds = 3600
     static let applicationName = "sdk-coverage-walk"
     static let tagName = "walk"
     static let apiKeyName = "walk"
@@ -87,6 +91,13 @@ enum WalkMode {
 enum WalkPaths {
     static let repository = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+
+    /// A `recipe-harbor-mcp-agent` checkout beside this repository: the recipe is private, so cloning it needs
+    /// GitHub credentials a local checkout does not.
+    static var siblingRecipe: String? {
+        let dir = repository.deletingLastPathComponent().appendingPathComponent("recipe-harbor-mcp-agent")
+        return FileManager.default.fileExists(atPath: dir.appendingPathComponent(".git").path) ? dir.path : nil
+    }
 
     static var recordingDir: URL {
         if let dir = ProcessInfo.processInfo.environment["WALK_RECORDINGS_DIR"] { return URL(fileURLWithPath: dir) }
@@ -168,9 +179,10 @@ struct WalkSettings: Sendable {
         }
         return WalkSettings(
             baseApiUrl: cpURL, cpSession: cpSession, bootstrapProjectId: project,
-            projectSlug: WALK.projectSlugPrefix + String(format: "%08x", UInt32.random(in: .min ... .max)),
+            projectSlug: WALK.projectSlugPrefix
+                + String(format: "%llx-%04x", UInt64(Date().timeIntervalSince1970), UInt16.random(in: .min ... .max)),
             dpUrl: setting("INTROSPECTION_DP_URL", "dp_url").flatMap(URL.init(string:)),
-            recipeRepositoryUrl: env["RECIPE_DIR"] ?? env["RECIPE_REPOSITORY_URL"]
+            recipeRepositoryUrl: env["RECIPE_DIR"] ?? env["RECIPE_REPOSITORY_URL"] ?? WalkPaths.siblingRecipe
                 ?? "https://github.com/introspection-org/recipe-harbor-mcp-agent",
             recipeGitRef: env["RECIPE_GIT_REF"] ?? "main", agent: env["WALK_AGENT"] ?? "scripted",
             target: env["WALK_TARGET"] ?? "compose")
@@ -388,4 +400,11 @@ func spanEventId(_ traceId: String, _ spanId: String, _ label: String) -> String
             bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]
         ))
     return uuid.uuidString.lowercased()
+}
+
+/// When a walk project was created, from its slug (see `WALK.projectSlugPrefix`); `nil` for anyone else's project.
+func walkProjectBorn(_ slug: String) -> Int? {
+    guard slug.hasPrefix(WALK.projectSlugPrefix) else { return nil }
+    let stamp = slug.dropFirst(WALK.projectSlugPrefix.count).split(separator: "-").first ?? ""
+    return Int(stamp, radix: 16)
 }
