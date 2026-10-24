@@ -69,7 +69,7 @@ let next = try await client.tasks.runs.create(run.run.taskId, TaskRunCreate(text
 
 The member is the same on every sign-in, because it is derived from the federation and the provider's `sub`. The SDK exchanges again before the platform token expires and after a `401`, asking `subjectToken` for a current provider token each time. Sign out with the provider's SDK.
 
-A federated token is not a runner token, so a task runs on your agent only when its create and runs name the runtime version (`runtimeId`). Customer tokens are refused on Control Plane routes, so resolve that id on your backend with a service account (`GET /v1/runtimes`, through ``RuntimesAPI``) and hand it to the app with the session, the same way the JavaScript browser client receives it. A runtime gets a new version id on every deploy, so fetch it per session rather than hard-coding it.
+A federated token is not a runner token, so a task runs on your agent only when its create and runs name the runtime version (`runtimeId`), or when the app runs it through a ``Runner`` opened from the runtime. Customer tokens are refused on Control Plane routes, so resolve a version id on your backend with a service account (`GET /v1/runtimes`, through ``RuntimesAPI``) and hand it to the app with the session, the same way the JavaScript browser client receives it. A runtime gets a new version id on every deploy, so fetch it per session rather than hard-coding it.
 
 The provider must sign with asymmetric keys (ES256 or RS256), and the Application's federation must name its issuer, for Supabase `https://<ref>.supabase.co/auth/v1`.
 
@@ -87,12 +87,37 @@ let auth = AuthClient(configuration: .init(
 ))
 
 let presenter = HostedLoginPresenter(anchor: window)
-try await presenter.signIn(with: auth, redirectURI: "https://app.example.com/auth/callback")
+let session = try await presenter.signIn(
+    with: auth,
+    redirectURI: "https://app.example.com/auth/callback",
+    scope: "tasks:write events:read"
+)
+print(session.user.name ?? session.user.email ?? "")
 
 let client = try await auth.client()
 ```
 
 `HostedLoginPresenter` uses `ASWebAuthenticationSession`, and `KeychainSessionStorage` keeps the session in the Keychain, readable only after first unlock and never synced off the device. Both are available on Apple platforms.
+
+`scope` defaults to `*`, everything the client's ceiling allows. ``AuthUser/name`` is the member's display name from the token response's `member_name`. It is stored with the session, so it is there after a restart, and a refresh that omits it keeps the last one.
+
+The client id is either a customer `spa` Application (`intro_app_...`) or a first-party client registered on the Control Plane, such as ``OAuthClientID/ark``, which signs in `business` members under the client's own scope ceiling.
+
+If you exchange the callback yourself with ``AuthAPI/completeHostedLogin(_:callbackURL:push:)`` and then adopt the token, read ``AuthClient/sessionGeneration`` first and pass it to ``AuthClient/setSession(_:ifUnchangedSince:)``: a sign-out or another sign-in during the exchange then wins, and the late token is refused with `CancellationError`.
+
+## Push notifications
+
+A device registers for push on its session, not as a separate resource: `/v1/oauth/token` takes `push_token`, `push_platform` and `push_environment` on the authorization-code, email-code and refresh grants, and writes them onto the session it creates or rotates. Ending the session (sign-out, revocation, member removal) ends push to that device. An APNs device token is sent with `push_platform` ``PushRegistration/Platform/applePush`` (`apple_push`); `firebase_push` and `web_push` are reserved.
+
+```swift
+// application(_:didRegisterForRemoteNotificationsWithDeviceToken:)
+let push = PushRegistration(deviceToken: deviceToken, environment: .production)
+try await auth.registerPush(push)
+```
+
+``AuthClient/registerPush(_:)`` refreshes at once, because iOS hands over the token after sign-in. ``AuthClient/setPushRegistration(_:)`` only stores it; either way the registration is then sent on every sign-in and refresh, which covers APNs rotating the token. To sign in with a token already in hand, pass it as `push:` to ``HostedLoginPresenter`` or ``AuthClient/completeHostedLogin(_:callbackURL:push:)``.
+
+Pass ``PushRegistration/cleared`` when the user turns notifications off: it sends an empty `push_token`, which clears the session's registration. The environment is the one that issued the token (`sandbox` for a Debug build, `production` for TestFlight and the App Store). ``PushRegistration``'s description never includes the token, and the SDK never logs it.
 
 ## Every grant
 
