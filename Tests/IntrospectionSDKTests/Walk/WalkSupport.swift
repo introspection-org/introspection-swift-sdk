@@ -79,8 +79,8 @@ enum WalkMode {
     }
 }
 
-/// Where the recording lives: `Tests/recordings/walk/`, synced from the JS SDK by
-/// `scripts/sync-walk-recording.sh`. `WALK_RECORDINGS_DIR` redirects a record run.
+/// Where the recording lives: `Tests/recordings/walk/`. `WALK_RECORDINGS_DIR`
+/// redirects a record run.
 enum WalkPaths {
     static let repository = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
