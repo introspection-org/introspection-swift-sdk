@@ -41,6 +41,9 @@ let package = Package(
         .package(url: "https://github.com/open-telemetry/opentelemetry-swift-core.git", from: "2.6.0"),
         .package(url: "https://github.com/open-telemetry/opentelemetry-swift.git", from: "2.6.0"),
         .package(url: "https://github.com/apple/swift-protobuf.git", from: "1.38.1"),
+        // Test-only: the walk's inline snapshots. A dependency used only by a test target is never
+        // resolved for an app that depends on the SDK.
+        .package(url: "https://github.com/pointfreeco/swift-snapshot-testing.git", from: "1.19.0"),
     ],
     targets: [
         .target(
@@ -84,6 +87,7 @@ let package = Package(
                 .product(
                     name: "Configuration", package: "swift-configuration",
                     condition: .when(traits: ["Configuration"])),
+                .product(name: "InlineSnapshotTesting", package: "swift-snapshot-testing"),
             ],
             resources: [.copy("Fixtures")],
             swiftSettings: swiftSettings
