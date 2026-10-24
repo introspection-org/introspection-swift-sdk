@@ -62,6 +62,8 @@ public struct RuntimeImageBuildMetadata: Codable, Sendable, Hashable {
     public var sizeBytes: Int?
     public var externalImageName: String?
     public var externalArtifacts: [String: String]?
+    /// The deadline an accepted warmup bake promised its verdict by.
+    public var verdictBy: Date?
 
     public init(
         imageTag: String? = nil, builtAt: Date? = nil, sizeBytes: Int? = nil, externalImageName: String? = nil,
@@ -80,6 +82,7 @@ public struct RuntimeImageBuildMetadata: Codable, Sendable, Hashable {
         case sizeBytes = "size_bytes"
         case externalImageName = "external_image_name"
         case externalArtifacts = "external_artifacts"
+        case verdictBy = "verdict_by"
     }
 }
 
