@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.1](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.11.0...v0.11.1) (2026-10-24)
+
+
+### Bug Fixes
+
+* **walk:** concurrent walks never sweep each other's project ([#66](https://github.com/introspection-org/introspection-swift-sdk/issues/66)) ([90480c6](https://github.com/introspection-org/introspection-swift-sdk/commit/90480c63f447c38db3714d7ebeadc2cd0368913c))
+
 ## [0.11.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.10.0...v0.11.0) (2026-10-24)
 
 
