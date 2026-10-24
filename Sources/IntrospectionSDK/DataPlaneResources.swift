@@ -3,6 +3,8 @@
 ///
 /// Each namespace sends the conforming type's own credential: the client's, or the runner's session token.
 /// What that credential may do is the platform's to decide; a call it does not allow is refused with a 403.
+/// `images` reaches both through ``DataPlaneConnection`` rather than as a requirement here, so a conforming type
+/// outside the SDK keeps compiling.
 public protocol DataPlaneResources: DataPlaneConnection {
     /// Tasks and their runs (`/v1/tasks`).
     var tasks: TasksAPI { get }

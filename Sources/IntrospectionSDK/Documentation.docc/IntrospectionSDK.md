@@ -137,6 +137,36 @@ their own task-targeted automations.
 - ``ProjectsAPI``
 - ``MembersAPI``
 
+### Project administration
+
+Each needs an org credential (a member session or access token) carrying the resource's `*:read` / `*:write` /
+`*:delete` scope; a project API key carries none of them. A plaintext the API returns once or takes on write is a
+``Secret``, which never prints.
+
+- ``ApiKeysAPI``
+- ``ApplicationsAPI``
+- ``ApplicationIdpsAPI``
+- ``ApplicationSecretsAPI``
+- ``ApplicationKeysAPI``
+- ``CredentialsAPI``
+- ``VariablesAPI``
+- ``IntegrationsAPI``
+- ``JudgesAPI``
+- ``Secret``
+
+### Evals
+
+An eval task (``TaskKind/eval``, created with ``TaskCreate/commands`` set) runs compose services from ``ImagesAPI``
+images and takes ``TaskCommandsAPI`` commands against its live sandbox.
+
+- ``ImagesAPI``
+- ``IntrospectionImage``
+- ``ImageCreate``
+- ``ImageSource``
+- ``TaskCommandsAPI``
+- ``TaskCommandSpec``
+- ``TaskCommand``
+
 ### Transport and pagination
 
 - ``HTTPClient``
