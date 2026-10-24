@@ -112,7 +112,13 @@ private final class NoRedirectTransport: HTTPTransport {
 /// cannot see.
 func prepareRecipe(url: String, ref: String, agent: String) throws -> URL {
     let dir = FileManager.default.temporaryDirectory.appendingPathComponent("sdk-walk-recipe-\(UUID().uuidString)")
-    try run("git", ["clone", "--quiet", "--depth", "1", "--branch", ref, url, dir.path])
+    do {
+        try run("git", ["clone", "--quiet", "--depth", "1", "--branch", ref, url, dir.path])
+    } catch {
+        throw WalkError(
+            "cloning \(url) failed: \(error); set RECIPE_DIR to a recipe-harbor-mcp-agent checkout, or keep one beside this repository"
+        )
+    }
     guard FileManager.default.fileExists(atPath: dir.appendingPathComponent("agents/\(agent).yaml").path) else {
         throw WalkError("\(url) has no agents/\(agent).yaml committed on \(ref)")
     }

@@ -10,11 +10,16 @@ extension Walk {
         // teardown. A record run writes both ids beside the recording, which is all replay needs to send the
         // same calls.
         loginProject = try await owner.projects.get(settings.bootstrapProjectId)
-        // A run that crashed before its teardown left its project behind. todo: the SDK has no projects.create
-        // or delete.
+        // A run that crashed before its teardown left its project behind; one still running is younger than the
+        // cutoff. Measured from this run's own slug, so replay decides as the recording did. todo: the SDK has no
+        // projects.create or delete.
+        guard let now = walkProjectBorn(settings.projectSlug) else {
+            throw WalkError("the walk's own slug carries its time: \(settings.projectSlug)")
+        }
         let cp = raw(owner.controlPlane)
-        for stale in try await owner.projects.list().all() where (stale.slug ?? "").hasPrefix(WALK.projectSlugPrefix) {
-            try await cp.empty("DELETE", "/v1/projects/\(stale.id)")
+        for other in try await owner.projects.list().all() {
+            guard let born = walkProjectBorn(other.slug ?? ""), now - born > WALK.staleAfterSeconds else { continue }
+            try await cp.empty("DELETE", "/v1/projects/\(other.id)")
         }
         project = try await cp.json(
             "POST", "/v1/projects",

@@ -500,7 +500,8 @@ extension Walk {
         try check(exportedTable.starts(with: [0xFF, 0xFF, 0xFF, 0xFF]), "an Arrow IPC stream")
         let streamed = try await sa.conversations.exportStream(conversationId, format: .json).collect()
         let streamedList = try JSONCoding.decoder.decode(GenAISpanList.self, from: streamed)
-        try check(streamedList.data.count == exported.data.count, "the streamed export holds every item")
+        // Spans can still be arriving between two exports, so each is held to the items the step already read.
+        try check(streamedList.data.count >= page.records.count, "the streamed export holds every item")
         let listedTable = try await dp.data("/v1/conversations", query: [("runtime_group_id", runtime.runtimeGroupId ?? "")], accept: arrow)
         try check(!listedTable.isEmpty, "the Arrow list")
         var itemPages = 0
