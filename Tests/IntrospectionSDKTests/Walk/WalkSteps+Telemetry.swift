@@ -64,11 +64,11 @@ extension Walk {
         guard let first = items.records.first, let spanId = first.spanId else { return }
         let traceId = first.traceId
         let span = AnnotationTarget(traceId: traceId, spanId: spanId)
-        // Fixed event ids, so the requests replay; the SDK would mint them.
-        _ = try await member.annotations.create(span, .labels(["walk"]), eventId: "019a1000-0000-7000-8000-0000000000a1")
+        // Event ids derived from the span, so the requests replay; the SDK would mint them.
+        _ = try await member.annotations.create(span, .labels(["walk"]), eventId: spanEventId(traceId, spanId, "labels"))
         // Reviewers by email resolve through the Control Plane's member list, which a member's Data Plane token
         // cannot read; the walk clears them, which needs no lookup, and reaches the check made before any request.
-        _ = try await member.annotations.create(span, .reviewers([]), eventId: "019a1000-0000-7000-8000-0000000000a3")
+        _ = try await member.annotations.create(span, .reviewers([]), eventId: spanEventId(traceId, spanId, "reviewers"))
         do {
             _ = try await member.annotations.create(span, .reviewers([" "]))
             throw WalkError("a blank reviewer email is refused before any request")
@@ -139,7 +139,7 @@ extension Walk {
                 "sandbox_status" : "provisioning"
               },
               "created_at" : "[timestamp]",
-              "display_index" : 5,
+              "display_index" : "[number]",
               "id" : "[uuid]",
               "is_archived" : false,
               "kind" : "eval",

@@ -1,3 +1,4 @@
+import Crypto
 import Foundation
 import IntrospectionSDK
 
@@ -6,6 +7,8 @@ import IntrospectionSDK
 /// snapshots go through, and the one way polling reads are recorded.
 enum WALK {
     static let siblingSuffix = "-walk"
+    static let projectName = "SDK end-to-end walk"
+    static let projectSlugPrefix = "sdk-walk-"
     static let applicationName = "sdk-coverage-walk"
     static let tagName = "walk"
     static let apiKeyName = "walk"
@@ -98,27 +101,34 @@ enum WalkPaths {
         return repository.appendingPathComponent("generated/walk-report.json")
     }
 
-    /// The committed recording, when it reaches the walk's teardown: the application it removed read back
+    /// The committed recording, when it reaches the walk's teardown: the walk's project it deleted read back
     /// (404), then the login's project. A record run that stopped short leaves a partial HAR replay must skip.
     static func completeRecording() -> HAR? {
         guard let data = try? Data(contentsOf: har), let har = try? JSONDecoder().decode(HAR.self, from: data) else {
             return nil
         }
         let tail = har.log.entries.suffix(2)
-        guard tail.count == 2, let app = tail.first, let last = tail.last else { return nil }
+        guard tail.count == 2, let gone = tail.first, let last = tail.last else { return nil }
+        let project = #"/v1/projects/[^/?]+$"#
         let complete =
-            app.response.status == 404 && app.request.url.contains("/v1/applications/")
-            && last.request.method == "GET" && last.request.url.range(of: #"/v1/projects/[^/?]+$"#, options: .regularExpression) != nil
+            gone.request.method == "GET" && gone.response.status == 404
+            && gone.request.url.range(of: project, options: .regularExpression) != nil
+            && last.request.method == "GET" && last.response.status == 200
+            && last.request.url.range(of: project, options: .regularExpression) != nil
         return complete ? har : nil
     }
 }
 
-/// The target's settings. Replay gets the fixed values the JS walk recorded with; a live run reads
+/// The target's settings. Replay gets the fixed values this SDK recorded with; a live run reads
 /// `~/.introspection/credentials.json` (what `introspection login` writes) with the environment over it.
 struct WalkSettings: Sendable {
     var baseApiUrl: URL
     var cpSession: String
+    /// The login's project: read only for the deployment the walk's own project is created on.
     var bootstrapProjectId: String
+    /// The project the walk creates, runs in and deletes: new on every live run, so each starts empty; replay
+    /// sends the recorded one.
+    var projectSlug: String
     var dpUrl: URL?
     var recipeRepositoryUrl: String
     var recipeGitRef: String
@@ -132,16 +142,18 @@ struct WalkSettings: Sendable {
             }
             return WalkSettings(
                 baseApiUrl: URL(string: "http://localhost:8000")!, cpSession: "replay-session",
-                bootstrapProjectId: bootstrap?["project_id"] ?? "", dpUrl: URL(string: "http://localhost:8002"),
+                bootstrapProjectId: bootstrap?["project_id"] ?? "", projectSlug: bootstrap?["project_slug"] ?? "",
+                dpUrl: URL(string: "http://localhost:8002"),
                 recipeRepositoryUrl: "https://github.com/introspection-org/recipe-harbor-mcp-agent", recipeGitRef: "main",
                 agent: "scripted", target: "compose")
         }
         let env = ProcessInfo.processInfo.environment
         let path = env["INTROSPECTION_CREDENTIALS"] ?? "\(NSHomeDirectory())/.introspection/credentials.json"
+        // The file holds numbers too (`expires_at`, `version`), so only its strings are read.
         let file = (try? Data(contentsOf: URL(fileURLWithPath: path))).flatMap {
-            try? JSONDecoder().decode([String: String?].self, from: $0)
+            try? JSONSerialization.jsonObject(with: $0) as? [String: Any]
         }
-        func setting(_ name: String, _ key: String) -> String? { env[name] ?? (file?[key] ?? nil) }
+        func setting(_ name: String, _ key: String) -> String? { env[name] ?? (file?[key] as? String) }
         guard let cpURL = setting("INTROSPECTION_BASE_API_URL", "cp_url").flatMap(URL.init(string:)),
             let cpSession = setting("INTROSPECTION_CP_SESSION", "cp_session")
         else {
@@ -150,10 +162,13 @@ struct WalkSettings: Sendable {
                     + "or set INTROSPECTION_BASE_API_URL and INTROSPECTION_CP_SESSION")
         }
         guard let project = setting("INTROSPECTION_PROJECT_ID", "project_id") else {
-            throw WalkError("the walk runs in the login's project and the login names none: set INTROSPECTION_PROJECT_ID")
+            throw WalkError(
+                "the walk creates its project on the login's deployment and the login names no project: "
+                    + "set INTROSPECTION_PROJECT_ID")
         }
         return WalkSettings(
             baseApiUrl: cpURL, cpSession: cpSession, bootstrapProjectId: project,
+            projectSlug: WALK.projectSlugPrefix + String(format: "%08x", UInt32.random(in: .min ... .max)),
             dpUrl: setting("INTROSPECTION_DP_URL", "dp_url").flatMap(URL.init(string:)),
             recipeRepositoryUrl: env["RECIPE_DIR"] ?? env["RECIPE_REPOSITORY_URL"]
                 ?? "https://github.com/introspection-org/recipe-harbor-mcp-agent",
@@ -188,7 +203,7 @@ enum Stable {
     private static let url = regex(#"^https?://"#)
     private static let idKey = regex(#"_id$"#)
     private static let digit = regex(#"\d"#)
-    private static let measuredKey = regex(#"(_ms$|_count$|_tokens$|^max_turn$)"#)
+    private static let measuredKey = regex(#"(_ms$|_count$|_tokens$|^max_turn$|^display_index$)"#)
     private static let volatileKey = regex(
         #"(^id$|_at$|_sha$|token$|secret$|^key$|_key$|cookie$|^url$|_url$|^expires_in$|^client_id$|_prefix$|_suffix$|^prefix$|^key_display$|image_tag$|_image_name$|_bytes$)"#
     )
@@ -319,7 +334,14 @@ func settled<T>(
     if mode != .replay {
         let deadline = ContinuousClock.now + timeout
         while true {
-            if done(try await poll()) { break }
+            // A conversation reads 404 until its first spans are ingested: not yet, rather than gone.
+            let polled: T?
+            do {
+                polled = try await poll()
+            } catch let error as IntrospectionError where error.kind == .notFound {
+                polled = nil
+            }
+            if let polled, done(polled) { break }
             guard ContinuousClock.now < deadline else { throw WalkError("\(label): not done after \(timeout)") }
             try await Task.sleep(for: interval)
         }
@@ -352,4 +374,18 @@ extension Paginator {
 /// The whole value as JSON text, for a containment check.
 func jsonText(_ value: some Encodable) -> String {
     (try? JSONCoding.encoder.encode(value)).map { String(decoding: $0, as: UTF8.self) } ?? ""
+}
+
+/// A UUIDv7-shaped id derived from the span an event annotates: the same on every replay (the span is recorded),
+/// new on every live run, where a fixed id would collide with the receipt a previous run left in the project.
+func spanEventId(_ traceId: String, _ spanId: String, _ label: String) -> String {
+    var bytes = Array(SHA256.hash(data: Data("\(traceId):\(spanId):\(label)".utf8)).prefix(16))
+    bytes[6] = (bytes[6] & 0x0F) | 0x70
+    bytes[8] = (bytes[8] & 0x3F) | 0x80
+    let uuid = UUID(
+        uuid: (
+            bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+            bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]
+        ))
+    return uuid.uuidString.lowercased()
 }

@@ -6,7 +6,7 @@ import Testing
 
 /// The SDK end-to-end walk: one ordered scenario from a clean project to a graded eval, every step an SDK
 /// call, replaying the recording the JS SDK's walk made against a local stack (introspection-cloud
-/// `docs/design/sdk-end-to-end-walk.md`). The steps, their order and their names are the JS walk's.
+/// `docs/design/sdk-end-to-end-walk.md`). The steps, their order and their names are the design doc's, the same in every SDK.
 ///
 /// Replay (the default `swift test`) needs no stack, keys or network. A live run needs a signed-in
 /// `introspection login` (or `INTROSPECTION_CP_SESSION`) against the target:
@@ -67,6 +67,7 @@ final class Walk {
     var saQuiet: IntrospectionClient!
     var recipeDir: URL?
 
+    var loginProject: Project!
     var project: Project!
     var originalDescription: String?
     var application: Application!
@@ -116,11 +117,11 @@ final class Walk {
 
     var projectId: String { project.id }
 
-    /// Each step in the JS walk's order and with its name. A step after a failed one skips rather than
+    /// Each step in the design doc's order and with its name. A step after a failed one skips rather than
     /// failing on its missing input, so one failure reads as one.
     func run() async throws -> WalkReport {
         let steps: [(Int, String, (() async throws -> Void)?)] = [
-            (0, "the login's project, with a crashed run's leftovers removed", step0CleanSlate),
+            (0, "a project of its own, created empty on the login's deployment", step0CleanSlate),
             (1, "project — read, list, update; a sibling created and deleted", step1Project),
             (2, "application — a service account, its secret, and the token that names the Data Plane", step2Application),
             (3, "repository — a hosted repository the walk pushes the recipe into", step3Repository),

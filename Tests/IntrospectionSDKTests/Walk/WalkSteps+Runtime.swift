@@ -330,7 +330,7 @@ extension Walk {
             #"""
             {
               "created_at" : "[timestamp]",
-              "display_index" : 4,
+              "display_index" : "[number]",
               "id" : "[uuid]",
               "is_archived" : false,
               "kind" : "agent",

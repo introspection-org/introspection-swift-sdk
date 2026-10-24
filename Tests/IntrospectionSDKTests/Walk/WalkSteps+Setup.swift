@@ -6,12 +6,27 @@ import Testing
 // Steps 0–5: the project, the service account, the hosted repository, the recipe, the runtime's settings.
 extension Walk {
     func step0CleanSlate() async throws {
-        // The walk runs in the project the login names and never deletes it; a record run writes the id beside
-        // the recording, which is all replay needs to send the same read.
-        project = try await owner.projects.get(settings.bootstrapProjectId)
+        // Every run starts in a project of its own, created here on the login's deployment and deleted by the
+        // teardown. A record run writes both ids beside the recording, which is all replay needs to send the
+        // same calls.
+        loginProject = try await owner.projects.get(settings.bootstrapProjectId)
+        // A run that crashed before its teardown left its project behind. todo: the SDK has no projects.create
+        // or delete.
+        let cp = raw(owner.controlPlane)
+        for stale in try await owner.projects.list().all() where (stale.slug ?? "").hasPrefix(WALK.projectSlugPrefix) {
+            try await cp.empty("DELETE", "/v1/projects/\(stale.id)")
+        }
+        project = try await cp.json(
+            "POST", "/v1/projects",
+            body: [
+                "name": .string(WALK.projectName), "slug": .string(settings.projectSlug),
+                "deployment_id": .string(loginProject.deploymentId ?? ""),
+            ])
         if mode == .record {
             try FileManager.default.createDirectory(at: WalkPaths.recordingDir, withIntermediateDirectories: true)
-            try Data("{\"project_id\":\"\(project.id)\"}\n".utf8).write(to: WalkPaths.bootstrap)
+            try Data(
+                "{\"project_id\":\"\(loginProject.id)\",\"project_slug\":\"\(settings.projectSlug)\"}\n".utf8
+            ).write(to: WalkPaths.bootstrap)
         }
         // The owner's Data Plane token for the project: it carries `git:push`, which no service account can,
         // and the member-only Data Plane writes (access tags, annotations).
@@ -19,11 +34,10 @@ extension Walk {
         memberToken = minted.accessToken
         try check(minted.projectId == project.id, "the token names the project")
         member = client(token: memberToken, dataPlaneURL: settings.dpUrl)
-        try await removeWalkResources(dataPlane: member)
     }
 
     func step1Project() async throws {
-        // The project's name, slug and description are the login's.
+        // The slug is new on every live run, so the snapshot leaves it out.
         snap(try stable(project, removing: ["name", "slug", "description"])) {
             """
             {
@@ -50,7 +64,7 @@ extension Walk {
             "PATCH", "/v1/projects/\(project.id)", body: ["description": .string(originalDescription ?? "")])
         try check((restored.description ?? "") == (originalDescription ?? ""), "the description is restored")
 
-        // Creating and deleting a project is the one write the login's own project must not see, so a sibling takes it.
+        // A sibling is created and deleted while the walk's project is in use.
         let sibling: Project = try await cp.json(
             "POST", "/v1/projects",
             body: [

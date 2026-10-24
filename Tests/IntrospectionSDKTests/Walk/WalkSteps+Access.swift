@@ -215,9 +215,11 @@ extension Walk {
         try await expectNotFound({ try await sa.connectors.get(connector.id) }, "the connector")
         try await expectNotFound({ try await sa.recipes.get(recipe.id) }, "the recipe")
         try await expectNotFound({ try await owner.applications.get(application.id, project: project.id) }, "the application")
-        // The login's project is untouched: still there, as it was.
-        let after = try await owner.projects.get(project.id)
-        try check((after.description ?? "") == (originalDescription ?? ""), "the project is as it was")
+        // The walk's project goes with it; the login's is untouched.
+        try await raw(owner.controlPlane).empty("DELETE", "/v1/projects/\(project.id)")
+        try await expectNotFound({ try await owner.projects.get(project.id) }, "the walk's project")
+        let after = try await owner.projects.get(loginProject.id)
+        try check(after.id == loginProject.id, "the login's project is untouched")
     }
 
     /// Everything the walk creates, found by its fixed names and removed in reverse, so step 0 clears a crashed

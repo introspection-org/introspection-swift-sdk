@@ -322,7 +322,8 @@ struct RecordedRequest {
             }
             return .form(pairs.sorted { $0.lexicographicallyPrecedes($1) })
         }
-        if type.hasPrefix("multipart/form-data"), let boundary = type.components(separatedBy: "boundary=").last {
+        // The boundary is case-sensitive, so it is read from the header as sent, not the lowercased type.
+        if type.hasPrefix("multipart/form-data"), let boundary = contentType?.components(separatedBy: "boundary=").last {
             return .multipart(multipartFields(text, boundary: boundary))
         }
         if let json = try? JSONCoding.decoder.decode(JSONValue.self, from: Data(text.utf8)) {
