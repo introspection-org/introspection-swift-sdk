@@ -4,7 +4,7 @@
 # it without saying why in the pull request.
 set -eu
 cd "$(dirname "$0")/.."
-THRESHOLD="${COVERAGE_THRESHOLD:-75}"
+THRESHOLD="${COVERAGE_THRESHOLD:-83}"
 
 swift test --enable-code-coverage "$@"
 
