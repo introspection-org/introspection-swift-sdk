@@ -123,6 +123,8 @@ public struct IntrospectionTask: Codable, Sendable, Hashable {
     public var automationId: String?
     /// The runtime the task is bound to.
     public var runtimeId: String?
+    /// The runtime group of the runtime the task was created for.
+    public var runtimeGroupId: String?
     public var isArchived: Bool
     public var startedAt: Date?
     public var completedAt: Date?
@@ -194,6 +196,7 @@ public struct IntrospectionTask: Codable, Sendable, Hashable {
         case memberId = "member_id"
         case automationId = "automation_id"
         case runtimeId = "runtime_id"
+        case runtimeGroupId = "runtime_group_id"
         case isArchived = "is_archived"
         case startedAt = "started_at"
         case completedAt = "completed_at"
@@ -215,6 +218,7 @@ public struct IntrospectionTask: Codable, Sendable, Hashable {
         memberId = try c.decodeIfPresent(String.self, forKey: .memberId)
         automationId = try c.decodeIfPresent(String.self, forKey: .automationId)
         runtimeId = try c.decodeIfPresent(String.self, forKey: .runtimeId)
+        runtimeGroupId = try c.decodeIfPresent(String.self, forKey: .runtimeGroupId)
         isArchived = try c.decodeIfPresent(Bool.self, forKey: .isArchived) ?? false
         startedAt = try c.decodeIfPresent(Date.self, forKey: .startedAt)
         completedAt = try c.decodeIfPresent(Date.self, forKey: .completedAt)
