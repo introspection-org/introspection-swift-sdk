@@ -6,8 +6,7 @@ import Testing
 /// One test per way a caller can authenticate, each driven through the same fake
 /// platform: obtain the credential, open a runner or bind a runtime, create a task
 /// and send a follow-up turn. Interactive flows (hosted login, device code) are
-/// covered in `AuthClientTests` and `AuthTests`; `LiveIdentityTests` runs these
-/// modes against a real deployment.
+/// covered in `AuthClientTests` and `AuthTests`.
 @Suite struct IdentityModesTests {
     private static let runtimeId = "0195c0de-0000-7000-8000-000000000001"
 
