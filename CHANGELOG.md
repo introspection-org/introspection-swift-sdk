@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.11.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.10.0...v0.11.0) (2026-10-24)
+
+
+### Features
+
+* add the project administration and eval resources the CLI calls ([#64](https://github.com/introspection-org/introspection-swift-sdk/issues/64)) ([18d0f65](https://github.com/introspection-org/introspection-swift-sdk/commit/18d0f6592200c813dab15ed0fe62d63ff5182b0b))
+
+
+### Bug Fixes
+
+* request /v1/organizations/me for the caller's organization ([#60](https://github.com/introspection-org/introspection-swift-sdk/issues/60)) ([793ffa3](https://github.com/introspection-org/introspection-swift-sdk/commit/793ffa3247d72168009bda65fa25a200d13e974e))
+
 ## [0.10.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.9.1...v0.10.0) (2026-10-23)
 
 
