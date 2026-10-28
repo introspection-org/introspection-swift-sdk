@@ -532,6 +532,13 @@ public struct EventsAPI: Sendable {
         http.paginate("/v1/events", query: try params.query(now: now), start: params.next)
     }
 
+    /// One page of events as an Apache Arrow IPC stream (raw bytes; this SDK does not decode Arrow).
+    public func listArrow(_ params: EventListParams) async throws -> Data {
+        var query = try params.query(now: Date())
+        query.add("next", params.next)
+        return try await http.data("GET", "/v1/events", query: query, headers: ["Accept": ConversationExportFormat.arrow.accept])
+    }
+
     /// Read one event by id, in any family.
     public func get(_ eventId: String) async throws -> IntrospectionEvent {
         try await http.json("GET", "/v1/events/\(pathSegment(eventId))")

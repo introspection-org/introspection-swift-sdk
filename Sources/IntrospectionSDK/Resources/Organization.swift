@@ -91,7 +91,51 @@ public struct ProjectListParams: Sendable, Hashable {
     }
 }
 
-/// Read access to `/v1/projects`.
+/// The body of `POST /v1/projects`.
+public struct ProjectCreate: Encodable, Sendable, Hashable {
+    public var name: String
+    /// The deployment the project runs on; it must be able to take new projects.
+    public var deploymentId: String
+    /// A stable identifier; the server derives one from `name` when omitted.
+    public var slug: String?
+    public var description: String?
+    public var settings: JSONObject?
+    /// Seed the Ark runtime. Unset, an organization's first project takes it and later ones do not.
+    public var includeArk: Bool?
+
+    public init(
+        name: String, deploymentId: String, slug: String? = nil, description: String? = nil, settings: JSONObject? = nil,
+        includeArk: Bool? = nil
+    ) {
+        self.name = name
+        self.deploymentId = deploymentId
+        self.slug = slug
+        self.description = description
+        self.settings = settings
+        self.includeArk = includeArk
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case name, slug, description, settings
+        case deploymentId = "deployment_id"
+        case includeArk = "include_ark"
+    }
+}
+
+/// The body of `PATCH /v1/projects/{project}`. A body with every field nil is refused as "no fields to update".
+public struct ProjectUpdate: Encodable, Sendable, Hashable {
+    public var name: String?
+    public var description: String?
+    public var settings: JSONObject?
+
+    public init(name: String? = nil, description: String? = nil, settings: JSONObject? = nil) {
+        self.name = name
+        self.description = description
+        self.settings = settings
+    }
+}
+
+/// `/v1/projects`.
 public struct ProjectsAPI: Sendable {
     let http: HTTPClient
 
@@ -108,6 +152,21 @@ public struct ProjectsAPI: Sendable {
     /// Fetch a project by slug or id.
     public func get(_ project: String) async throws -> Project {
         try await http.json("GET", "/v1/projects/\(pathSegment(project))")
+    }
+
+    /// Create a project. A slug already taken in the organization is a conflict.
+    public func create(_ body: ProjectCreate) async throws -> Project {
+        try await http.json("POST", "/v1/projects", body: .encode(body))
+    }
+
+    /// Update a project, by slug or id.
+    public func update(_ project: String, _ body: ProjectUpdate) async throws -> Project {
+        try await http.json("PATCH", "/v1/projects/\(pathSegment(project))", body: .encode(body))
+    }
+
+    /// Soft-delete a project, by slug or id, with its project-scoped resources and credentials.
+    public func delete(_ project: String) async throws {
+        try await http.empty("DELETE", "/v1/projects/\(pathSegment(project))")
     }
 }
 

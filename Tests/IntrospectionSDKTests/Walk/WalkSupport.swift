@@ -286,54 +286,13 @@ struct WalkReport: Encodable {
     var steps: [Step] = []
     var entries = Entries(total: 0, consumed: 0)
     var unconsumed: [Request] = []
-    var rawCalls: [Request] = []
+    /// The matrix's count of routes called around the SDK: the walk has no way to make one, so always empty.
+    let rawCalls: [Request] = []
 
     private enum CodingKeys: String, CodingKey {
         case sdk, steps, entries, unconsumed
         case rawCalls = "raw_calls"
     }
-}
-
-/// A route the SDK has no public method for, called through its own HTTP client so it is recorded and
-/// counted like every other (the JS walk's `raw()`); every call is a gap the report lists.
-struct Raw {
-    let http: HTTPClient
-    let log: @Sendable (String, String) -> Void
-
-    func json<T: Decodable>(
-        _ method: String, _ path: String, query: [(String, String)] = [], body: JSONValue? = nil, as _: T.Type = T.self
-    ) async throws -> T {
-        log(method, path)
-        return try await http.json(method, path, query: Self.query(query), body: body.map { try RequestBody.encode($0) } ?? .none)
-    }
-
-    func empty(_ method: String, _ path: String, query: [(String, String)] = []) async throws {
-        log(method, path)
-        try await http.empty(method, path, query: Self.query(query))
-    }
-
-    func data(_ path: String, query: [(String, String)] = [], accept: String) async throws -> Data {
-        log("GET", path)
-        return try await http.data("GET", path, query: Self.query(query), headers: ["Accept": accept])
-    }
-
-    private static func query(_ items: [(String, String)]) -> Query {
-        var query = Query()
-        for (name, value) in items { query.add(name, value) }
-        return query
-    }
-}
-
-/// The path with each id (a UUID, a 40-hex sha) as `{id}`, so the report names routes, not resources.
-func routeTemplate(_ path: String) -> String {
-    path.split(separator: "/", omittingEmptySubsequences: false).map { segment -> String in
-        let text = String(segment)
-        let isId =
-            UUID(uuidString: text) != nil
-            || (text.count == 40 && text.allSatisfy(\.isHexDigit))
-        return isId ? "{id}" : text
-    }
-    .joined(separator: "/")
 }
 
 /// Poll `poll` (a client the recording never sees) until `done`, then `read` once through the recorded

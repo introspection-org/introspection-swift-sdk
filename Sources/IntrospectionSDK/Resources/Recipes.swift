@@ -170,7 +170,61 @@ public struct RecipeListParams: Sendable, Hashable {
     }
 }
 
-/// Read access to `/v1/recipes`. Authoring recipes is a CLI action.
+/// The body of `POST /v1/recipes`: a pin of one commit of a project's repository.
+public struct RecipeCreate: Encodable, Sendable, Hashable {
+    /// The operator's label, shared across the recipe's versions.
+    public var name: String
+    /// The project slug or id the recipe belongs to.
+    public var project: String
+    public var repositoryId: String?
+    /// The branch, tag or short sha the operator picked.
+    public var gitRef: String?
+    /// The 40-hex commit the recipe pins.
+    public var gitCommitSha: String?
+    /// The commit message's first line, shown with deployments.
+    public var gitCommitSubject: String?
+    public var subPath: String?
+    /// Derived from `name` and the short sha when omitted.
+    public var slug: String?
+    public var description: String?
+
+    public init(
+        name: String, project: String, repositoryId: String? = nil, gitRef: String? = nil, gitCommitSha: String? = nil,
+        gitCommitSubject: String? = nil, subPath: String? = nil, slug: String? = nil, description: String? = nil
+    ) {
+        self.name = name
+        self.project = project
+        self.repositoryId = repositoryId
+        self.gitRef = gitRef
+        self.gitCommitSha = gitCommitSha
+        self.gitCommitSubject = gitCommitSubject
+        self.subPath = subPath
+        self.slug = slug
+        self.description = description
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case name, project, slug, description
+        case repositoryId = "repository_id"
+        case gitRef = "git_ref"
+        case gitCommitSha = "git_commit_sha"
+        case gitCommitSubject = "git_commit_subject"
+        case subPath = "sub_path"
+    }
+}
+
+/// The body of `PATCH /v1/recipes/{id}`. The Git pin is immutable: other content is a new recipe.
+public struct RecipeUpdate: Encodable, Sendable, Hashable {
+    public var name: String?
+    public var description: String?
+
+    public init(name: String? = nil, description: String? = nil) {
+        self.name = name
+        self.description = description
+    }
+}
+
+/// `/v1/recipes`: the immutable pins runtimes and experiment arms reference.
 public struct RecipesAPI: Sendable {
     let http: HTTPClient
 
@@ -192,9 +246,24 @@ public struct RecipesAPI: Sendable {
         query.add("project", project)
         return try await http.json("GET", "/v1/recipes/\(pathSegment(id))", query: query)
     }
+
+    /// Pin a commit. Idempotent: the same repository, name, commit and sub-path return the existing recipe.
+    public func create(_ body: RecipeCreate) async throws -> Recipe {
+        try await http.json("POST", "/v1/recipes", body: .encode(body))
+    }
+
+    /// Update a recipe's name or description.
+    public func update(_ id: String, _ body: RecipeUpdate, project: String? = nil) async throws -> Recipe {
+        try await http.json("PATCH", "/v1/recipes/\(pathSegment(id))", query: cpProjectQuery(project), body: .encode(body))
+    }
+
+    /// Soft-delete a recipe. Runtimes keep referencing it, but no task can start on it any more.
+    public func delete(_ id: String, project: String? = nil) async throws {
+        try await http.empty("DELETE", "/v1/recipes/\(pathSegment(id))", query: cpProjectQuery(project))
+    }
 }
 
 extension IntrospectionClient {
-    /// Recipes: read-only lookup of the immutable pins runtimes and experiment arms reference.
+    /// Recipes: the immutable pins runtimes and experiment arms reference.
     public var recipes: RecipesAPI { RecipesAPI(http: controlPlane) }
 }

@@ -216,7 +216,7 @@ extension Walk {
         try await expectNotFound({ try await sa.recipes.get(recipe.id) }, "the recipe")
         try await expectNotFound({ try await owner.applications.get(application.id, project: project.id) }, "the application")
         // The walk's project goes with it; the login's is untouched.
-        try await raw(owner.controlPlane).empty("DELETE", "/v1/projects/\(project.id)")
+        try await owner.projects.delete(project.id)
         try await expectNotFound({ try await owner.projects.get(project.id) }, "the walk's project")
         let after = try await owner.projects.get(loginProject.id)
         try check(after.id == loginProject.id, "the login's project is untouched")
@@ -249,18 +249,13 @@ extension Walk {
     }
 
     private func removeRuntimeResources() async throws {
-        let cp = raw(owner.controlPlane)
-        let inProject = [("project", project.id)]
-        // Deleting the group's live version takes its siblings with it. todo: the SDK has no runtimes.delete.
+        // Deleting the group's live version takes its siblings with it.
         for runtime in try await owner.runtimes.list(RuntimeListParams(project: project.id, runtime: WALK.runtimeSlug)).all() {
-            try await ignoringNotFound { try await cp.empty("DELETE", "/v1/runtimes/\(runtime.id)", query: inProject) }
+            try await ignoringNotFound { try await owner.runtimes.delete(runtime.id, project: project.id) }
         }
-        // todo: the SDK has no endpoints resource.
-        let endpoints: JSONValue = try await cp.json("GET", "/v1/endpoints", query: inProject + [("mcp_server_id", WALK.mcpServerId)])
-        for endpoint in endpoints["records"]?.arrayValue ?? [] {
-            try await ignoringNotFound {
-                try await cp.empty("DELETE", "/v1/endpoints/\(endpoint["id"]?.stringValue ?? "")", query: inProject)
-            }
+        let endpoints = owner.endpoints.list(EndpointListParams(project: project.id, mcpServerId: WALK.mcpServerId))
+        for endpoint in try await endpoints.firstPage().records {
+            try await ignoringNotFound { try await owner.endpoints.delete(endpoint.id, project: project.id) }
         }
         for connector in try await owner.connectors.list(ConnectorListParams(project: project.id)).all()
         where connector.slug == WALK.connectorName {
@@ -277,12 +272,11 @@ extension Walk {
         where credential.name == WALK.credentialName {
             try await owner.credentials.delete(credential.id, project: project.id)
         }
-        // todo: the SDK has no recipes.delete or repositories.delete.
         for repository in try await owner.repositories.list(project: project.id, slug: WALK.recipeSlug) {
             for recipe in try await owner.recipes.list(RecipeListParams(project: project.id, repositoryId: repository.id)).all() {
-                try await cp.empty("DELETE", "/v1/recipes/\(recipe.id)", query: inProject)
+                try await owner.recipes.delete(recipe.id, project: project.id)
             }
-            try await cp.empty("DELETE", "/v1/repositories/\(repository.id)", query: inProject)
+            try await owner.repositories.delete(repository.id, project: project.id)
         }
         for application in try await owner.applications.list(ApplicationListParams(project: project.id)).all()
         where (application.name ?? "").hasPrefix(WALK.applicationName) || application.name == WALK.adminName {

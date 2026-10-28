@@ -117,21 +117,17 @@ extension Walk {
         }
 
         // A version's identity in its group is its recipe, so the next version pins the walk's own recipe.
-        // todo: the SDK has no runtimes.create or runtimes.update.
-        let created: Runtime = try await raw(sa.controlPlane).json(
-            "POST", "/v1/runtimes",
-            body: [
-                "project": .string(project.id), "recipe_id": pinnedRecipe["id"] ?? .null, "name": .string(WALK.runtimeSlug),
-                "slug": .string(WALK.runtimeSlug), "config_json": ["connectors": [.string(WALK.connectorName)]],
-            ])
+        let created = try await sa.runtimes.create(
+            RuntimeCreate(
+                name: WALK.runtimeSlug, project: project.id, recipeId: pinnedRecipe.id, slug: WALK.runtimeSlug,
+                configJson: ["connectors": [.string(WALK.connectorName)]]))
         try check(created.runtimeGroupId == runtime.runtimeGroupId, "the new version joins the group")
         runtimeV2 = try await settled(
             "runtime bake", mode: mode, timeout: .seconds(1800), interval: .seconds(10),
             read: { try await sa.runtimes.get(created.id) }, poll: { try await saQuiet.runtimes.get(created.id) },
             done: { built($0) })
         try check(runtimeV2.imageBuildStatus == .ready, runtimeV2.imageBuildErrorMessage ?? "the second version baked")
-        let described: Runtime = try await raw(sa.controlPlane).json(
-            "PATCH", "/v1/runtimes/\(runtimeV2.id)", body: ["description": "the walk's own version"])
+        let described = try await sa.runtimes.update(runtimeV2.id, RuntimeUpdate(description: "the walk's own version"))
         try check(described.description == "the walk's own version", "the version's description updates")
         // The list serves the group's live version, the newest one.
         let listed = try await sa.runtimes.list(params).all()
@@ -174,16 +170,12 @@ extension Walk {
         let connections = try await sa.connectors.connections.list(connector.id).all()
         try check(connections.contains { $0.id == connectionId }, "the connection is listed")
 
-        // todo: the SDK has no endpoints resource.
-        let cp = raw(sa.controlPlane)
-        let endpoints: JSONValue = try await cp.json(
-            "GET", "/v1/endpoints", query: [("project", project.id), ("mcp_server_id", WALK.mcpServerId)])
-        endpoint = try #require(endpoints["records"]?[0], "the grant bound an endpoint")
-        snap(Stable.value(endpoint)) {
+        let endpoints = try await sa.endpoints.list(EndpointListParams(project: project.id, mcpServerId: WALK.mcpServerId)).firstPage()
+        let bound = try #require(endpoints.records.first, "the grant bound an endpoint")
+        endpoint = bound
+        snap(try stable(endpoint)) {
             """
             {
-              "assertion_claims" : null,
-              "authorized_application_id" : null,
               "base_url" : "[url]",
               "created_at" : "[timestamp]",
               "created_by_member_id" : "[uuid]",
@@ -200,37 +192,28 @@ extension Walk {
               "host" : "example-server.modelcontextprotocol.io",
               "id" : "[uuid]",
               "kind" : "mcp",
-              "last_verified_at" : null,
               "metadata" : {
-                "auth_audience" : null,
                 "connector_id" : "[uuid]",
                 "extra_hosts" : [
 
                 ],
-                "mcp_server_id" : "hello-mcp",
-                "provider_app" : null
+                "mcp_server_id" : "hello-mcp"
               },
               "name" : "hello-mcp",
               "org_id" : "[uuid]",
               "project_id" : "[uuid]",
               "runtime_group_id" : "[uuid]",
-              "runtime_id" : null,
-              "updated_at" : "[timestamp]",
-              "verify_path" : null
+              "updated_at" : "[timestamp]"
             }
             """
         }
-        let endpointId = endpoint["id"]?.stringValue ?? ""
-        let read: JSONValue = try await cp.json("GET", "/v1/endpoints/\(endpointId)", query: [("project", project.id)])
-        try check(read["kind"] == "mcp", "the endpoint reads back")
-        let renamed: JSONValue = try await cp.json(
-            "PATCH", "/v1/endpoints/\(endpointId)", query: [("project", project.id)], body: ["name": "hello-mcp (walk)"])
-        try check(renamed["name"] == "hello-mcp (walk)", "the endpoint is renamed")
+        let read = try await sa.endpoints.get(endpoint.id, project: project.id)
+        try check(read.kind == .mcp, "the endpoint reads back")
+        let renamed = try await sa.endpoints.update(endpoint.id, EndpointUpdate(name: "hello-mcp (walk)"), project: project.id)
+        try check(renamed.name == "hello-mcp (walk)", "the endpoint is renamed")
 
-        // todo: connections.getToken cannot name the runtime whose grant it releases.
-        let token: ConnectionTokenResult = try await cp.json(
-            "POST", "/v1/oauth/connections/token",
-            body: ["connector_id": .string(connector.id), "runtime": .string(runtime.runtimeGroupId ?? "")])
+        // The broker resolves the grant from the service account's own credential.
+        let token = try await sa.connectors.connections.getToken(connector.id)
         snap(try stable(token)) {
             """
             {
@@ -493,16 +476,13 @@ extension Walk {
         try check(latest?.spanId != nil, "the latest LLM turn")
         let exported = try await sa.conversations.exportJSON(conversationId)
         try check(exported.data.count >= page.records.count, "the export holds every item")
-        // todo: the SDK has no Arrow reads (conversations.exportArrow, conversations.listArrow).
-        let dp = raw(sa.dataPlane)
-        let arrow = "application/vnd.apache.arrow.stream"
-        let exportedTable = try await dp.data("/v1/conversations/\(conversationId)/export", accept: arrow)
+        let exportedTable = try await sa.conversations.exportArrow(conversationId)
         try check(exportedTable.starts(with: [0xFF, 0xFF, 0xFF, 0xFF]), "an Arrow IPC stream")
         let streamed = try await sa.conversations.exportStream(conversationId, format: .json).collect()
         let streamedList = try JSONCoding.decoder.decode(GenAISpanList.self, from: streamed)
         // Spans can still be arriving between two exports, so each is held to the items the step already read.
         try check(streamedList.data.count >= page.records.count, "the streamed export holds every item")
-        let listedTable = try await dp.data("/v1/conversations", query: [("runtime_group_id", runtime.runtimeGroupId ?? "")], accept: arrow)
+        let listedTable = try await sa.conversations.listArrow(ConversationListParams(runtimeGroupId: runtime.runtimeGroupId))
         try check(!listedTable.isEmpty, "the Arrow list")
         var itemPages = 0
         for try await _ in sa.conversations.items.list(conversationId, ConversationItemListParams(limit: 1)) {

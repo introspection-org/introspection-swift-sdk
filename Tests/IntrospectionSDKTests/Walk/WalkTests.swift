@@ -1,7 +1,6 @@
 import Foundation
 import InlineSnapshotTesting
 import IntrospectionSDK
-import Synchronization
 import Testing
 
 /// The SDK end-to-end walk: one ordered scenario from a clean project to a graded eval, every step an SDK
@@ -28,23 +27,6 @@ struct WalkTests {
     }
 }
 
-/// The routes called through ``Raw``.
-final class RawCallLog: Sendable {
-    private let calls = Mutex<[WalkReport.Request]>([])
-
-    func log(_ method: String, _ path: String) {
-        calls.withLock { $0.append(WalkReport.Request(method: method, url: nil, path: routeTemplate(path))) }
-    }
-
-    /// Each route once, in the order first called.
-    var routes: [WalkReport.Request] {
-        calls.withLock { calls in
-            var seen = Set<WalkReport.Request>()
-            return calls.filter { seen.insert($0).inserted }
-        }
-    }
-}
-
 func check(_ condition: Bool, _ message: @autoclosure () -> String) throws {
     if !condition { throw WalkError(message()) }
 }
@@ -54,7 +36,6 @@ final class Walk {
     let mode: HARTransport.Mode
     let settings: WalkSettings
     let transport: HARTransport
-    let rawLog = RawCallLog()
     /// Inline snapshots that did not match in the running step: each records an issue rather than throwing.
     private var snapshotMismatches = 0
     /// The signed-in owner: creates the project and the service account.
@@ -73,11 +54,11 @@ final class Walk {
     var application: Application!
     var repository: Repository!
     var recipe: Recipe!
-    var pinnedRecipe: JSONValue = .null
+    var pinnedRecipe: Recipe!
     var connector: Connector!
     var runtime: Runtime!
     var runtimeV2: Runtime!
-    var endpoint: JSONValue = .null
+    var endpoint: Endpoint!
     var runner: Runner!
     var inputFile: File!
     var task: IntrospectionTask!
@@ -108,11 +89,6 @@ final class Walk {
         IntrospectionClient(
             controlPlaneURL: settings.baseApiUrl, dataPlaneURL: dataPlaneURL, credentials: BearerToken(token),
             transport: quiet ? URLSessionTransport() : transport)
-    }
-
-    func raw(_ http: HTTPClient) -> Raw {
-        let log = rawLog
-        return Raw(http: http) { log.log($0, $1) }
     }
 
     var projectId: String { project.id }
@@ -174,7 +150,6 @@ final class Walk {
         let (total, consumed) = transport.consumption
         report.entries = .init(total: total, consumed: mode == .replay ? consumed : total)
         report.unconsumed = mode == .replay ? transport.unconsumed.map { .init(method: $0.method, url: $0.url, path: nil) } : []
-        report.rawCalls = rawLog.routes
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         let data = try encoder.encode(report)

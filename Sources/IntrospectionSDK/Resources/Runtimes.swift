@@ -264,9 +264,90 @@ public struct RuntimeListParams: Sendable, Hashable {
     }
 }
 
+/// The body of `POST /v1/runtimes`: a new version of the runtime group `slug` names, pinned to a recipe.
+public struct RuntimeCreate: Encodable, Sendable, Hashable {
+    /// The runtime group name, shared across versions.
+    public var name: String
+    /// The project slug or id the runtime belongs to.
+    public var project: String
+    public var recipeId: String
+    /// The runtime group slug: an existing group gains a version, a new one is created.
+    public var slug: String?
+    public var description: String?
+    public var kind: RuntimeKind?
+    public var llmMode: RuntimeLlmMode?
+    public var configJson: JSONObject?
+    /// The template a new runtime group starts from; recorded only when this request creates the group.
+    public var templateRef: String?
+    /// Create only the first live version of the group (zero-to-one setup).
+    public var bootstrap: Bool?
+
+    public init(
+        name: String, project: String, recipeId: String, slug: String? = nil, description: String? = nil, kind: RuntimeKind? = nil,
+        llmMode: RuntimeLlmMode? = nil, configJson: JSONObject? = nil, templateRef: String? = nil, bootstrap: Bool? = nil
+    ) {
+        self.name = name
+        self.project = project
+        self.recipeId = recipeId
+        self.slug = slug
+        self.description = description
+        self.kind = kind
+        self.llmMode = llmMode
+        self.configJson = configJson
+        self.templateRef = templateRef
+        self.bootstrap = bootstrap
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case name, project, slug, description, kind, bootstrap
+        case recipeId = "recipe_id"
+        case llmMode = "llm_mode"
+        case configJson = "config_json"
+        case templateRef = "template_ref"
+    }
+}
+
+/// The body of `PATCH /v1/runtimes/{id}`. The recipe is immutable: another pin is a new version.
+public struct RuntimeUpdate: Encodable, Sendable, Hashable {
+    public var name: String?
+    public var description: String?
+    public var llmMode: RuntimeLlmMode?
+    public var configJson: JSONObject?
+    /// Point an environment at this version; only `staging` may be set by hand.
+    public var environment: RuntimeEnvironment?
+    /// Withdraw (`true`) or restore (`false`) this version.
+    public var yanked: Bool?
+    public var yankedReason: String?
+    /// Merged onto the group's map of the Git ref each environment tracks; a nil value untracks that environment.
+    public var environmentRef: [String: String?]?
+
+    public init(
+        name: String? = nil, description: String? = nil, llmMode: RuntimeLlmMode? = nil, configJson: JSONObject? = nil,
+        environment: RuntimeEnvironment? = nil, yanked: Bool? = nil, yankedReason: String? = nil,
+        environmentRef: [String: String?]? = nil
+    ) {
+        self.name = name
+        self.description = description
+        self.llmMode = llmMode
+        self.configJson = configJson
+        self.environment = environment
+        self.yanked = yanked
+        self.yankedReason = yankedReason
+        self.environmentRef = environmentRef
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case name, description, environment, yanked
+        case llmMode = "llm_mode"
+        case configJson = "config_json"
+        case yankedReason = "yanked_reason"
+        case environmentRef = "environment_ref"
+    }
+}
+
 // MARK: API
 
-/// Read and resolve `/v1/runtimes` and open runners. Runtime lifecycle is managed by the CLI and platform.
+/// `/v1/runtimes`: runtime versions, their lifecycle, and the runners opened on them.
 ///
 /// ```swift
 /// let runner = try await client.runtimes("customer-agent").run(RunRequest(identity: .init(userId: "u_42")))
@@ -295,6 +376,21 @@ public struct RuntimesAPI: Sendable {
         query.add("project", project)
         query.add("include", include)
         return try await http.json("GET", "/v1/runtimes/\(pathSegment(id))", query: query)
+    }
+
+    /// Create a runtime version; it bakes its image asynchronously (`imageBuildStatus`).
+    public func create(_ body: RuntimeCreate) async throws -> Runtime {
+        try await http.json("POST", "/v1/runtimes", body: .encode(body))
+    }
+
+    /// Update a runtime version.
+    public func update(_ id: String, _ body: RuntimeUpdate, project: String? = nil) async throws -> Runtime {
+        try await http.json("PATCH", "/v1/runtimes/\(pathSegment(id))", query: cpProjectQuery(project), body: .encode(body))
+    }
+
+    /// Soft-delete the runtime group a version belongs to, with every version in it.
+    public func delete(_ id: String, project: String? = nil) async throws {
+        try await http.empty("DELETE", "/v1/runtimes/\(pathSegment(id))", query: cpProjectQuery(project))
     }
 
     /// Resolve a runtime group slug or id to the version it currently serves.
