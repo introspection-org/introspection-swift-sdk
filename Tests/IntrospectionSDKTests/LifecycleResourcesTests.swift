@@ -265,6 +265,37 @@ private let approvalJSON = #"""
         #expect(transport.last?.path == "/v1/aauth/approvals/ap-1")
     }
 
+    // MARK: Models
+
+    @Test func modelsBuiltInCodeRoundTripThroughTheirWireNames() throws {
+        let at = try #require(ISO8601.parse(now))
+        let endpoint = Endpoint(
+            id: "e-1", orgId: "o", projectId: "p-1", name: "hello-mcp", host: "mcp.test", baseUrl: "https://mcp.test/mcp", kind: .mcp,
+            metadata: EndpointMetadata(
+                mcpServerId: "hello-mcp", connectorId: "c-1", providerApp: "gmail", extraHosts: ["*.mcp.test"], authAudience: "aud"),
+            headers: ["X-Key": "${KEY}"], headerNames: ["X-Key"], credentialRefs: ["KEY"], assertionClaims: ["role": "user"],
+            authorizedApplicationId: "app-1", runtimeId: "rt-1", runtimeGroupId: "g-1", environment: .staging, verifyPath: "/health",
+            lastVerifiedAt: at, createdByMemberId: "m", createdAt: at, updatedAt: at)
+        let mission = Mission(
+            id: "mi-1", orgId: "o", projectId: "p-1", mission: "Book", s256: "abc", agentId: "agent-1", memberId: "m",
+            resources: ["https://travel.test"], budget: ["usd": 5], spent: 1, log: [MissionLogEntry(at: at, entry: "booked")],
+            expiresAt: at, completedAt: at, createdAt: at, updatedAt: at)
+        let approval = Approval(
+            id: "ap-1", orgId: "o", projectId: "p-1", kind: .completion, status: .denied, agentId: "agent-1", memberId: "m",
+            missionId: "mi-1", description: "Done", resource: "https://travel.test", budget: ["usd": 5], summary: "s",
+            decidedBudget: ["usd": 0], decidedByMemberId: "m2", decidedAt: at, expiresAt: at, createdAt: at, updatedAt: at)
+        let branch = RepositoryBranch(name: "main", sha: sha, committedAt: now)
+
+        #expect(try roundTrip(endpoint) == endpoint)
+        #expect(try roundTrip(mission) == mission)
+        #expect(try roundTrip(approval) == approval)
+        #expect(try roundTrip(branch) == branch)
+        let json = try JSONValue.from(endpoint)
+        #expect(json["metadata"]?["extra_hosts"] == ["*.mcp.test"])
+        #expect(json["authorized_application_id"] == "app-1")
+        #expect(try JSONValue.from(approval)["decided_by_member_id"] == "m2")
+    }
+
     // MARK: Arrow reads
 
     @Test func arrowReadsAskForTheArrowStreamAndReturnItsBytes() async throws {
@@ -288,4 +319,8 @@ private let approvalJSON = #"""
         #expect(transport.last?.query == ["event_name": ["introspection.annotation"], "conversation_id": ["conv-1"]])
         #expect(transport.last?.request.headers["Accept"] == "application/vnd.apache.arrow.stream")
     }
+}
+
+private func roundTrip<T: Codable>(_ value: T) throws -> T {
+    try JSONCoding.decoder.decode(T.self, from: JSONCoding.encoder.encode(value))
 }
