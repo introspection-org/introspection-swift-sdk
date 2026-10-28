@@ -152,6 +152,7 @@ Each needs an org credential (a member session or access token) carrying the res
 - ``VariablesAPI``
 - ``IntegrationsAPI``
 - ``JudgesAPI``
+- ``RuntimePeering``
 - ``Secret``
 
 ### Evals

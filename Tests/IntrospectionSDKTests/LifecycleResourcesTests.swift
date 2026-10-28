@@ -19,6 +19,12 @@ private let projectJSON = #"""
      "settings": null, "created_by_member_id": "m"}
     """#
 
+private let peeringJSON = #"""
+    {"id": "pr-1", "org_id": "o", "project_id": "p-1", "runtime_group_id": "g-1", "granted_org_id": null,
+     "granted_project_id": "p-2", "granted_deployment_id": null, "expires_at": null, "created_by_member_id": "m",
+     "created_at": "\#(now)", "updated_at": "\#(now)", "deleted_at": null}
+    """#
+
 private let recipeJSON = #"""
     {"id": "r-1", "org_id": "o", "project_id": "p-1", "repository_id": "repo-1", "name": "hello-mcp", "description": null,
      "git_ref": "main", "git_commit_sha": "\#(sha)", "sub_path": ".", "slug": "hello-mcp-main-543b8db50a83",
@@ -89,6 +95,36 @@ private let approvalJSON = #"""
         try await projects.delete("p/1")
         #expect(transport.last?.request.method == "DELETE")
         #expect(transport.last?.request.url.absoluteString == "https://cp.test/v1/projects/p%2F1")
+    }
+
+    @Test func peeringsAreReadUnderTheProjectAndNarrowByRuntimeOrGrant() async throws {
+        let transport = MockTransport { request, _ in
+            .response(.json(request.url.path.hasSuffix("/peerings") ? page(peeringJSON) : peeringJSON))
+        }
+        let projects = makeClient(transport).projects
+
+        let offered = try await projects.peerings("walk", runtime: "hello-mcp", limit: 10, next: "c1").firstPage()
+        #expect(offered.records.map(\.grantedProjectId) == ["p-2"])
+        #expect(offered.records.first?.runtimeGroupId == "g-1")
+        #expect(offered.records.first?.createdAt != nil)
+        #expect(offered.records.first?.expiresAt == nil)
+        #expect(transport.last?.request.method == "GET")
+        #expect(transport.last?.path == "/v1/projects/walk/peerings")
+        #expect(transport.last?.query == ["runtime": ["hello-mcp"], "limit": ["10"], "next": ["c1"]])
+
+        _ = try await projects.peerings("walk").collect()
+        #expect(transport.last?.query == [:])
+
+        _ = try await projects.peerings("p-2", granted: true).collect()
+        #expect(transport.last?.path == "/v1/projects/p-2/peerings")
+        #expect(transport.last?.query == ["granted": ["true"]])
+
+        let one = try await projects.peering("p/1", "pr-1")
+        #expect(one.id == "pr-1")
+        #expect(RuntimePeering(id: "pr-1").projectId == nil)
+        #expect(one.projectId == "p-1")
+        #expect(transport.last?.request.method == "GET")
+        #expect(transport.last?.request.url.absoluteString == "https://cp.test/v1/projects/p%2F1/peerings/pr-1")
     }
 
     // MARK: Recipes
