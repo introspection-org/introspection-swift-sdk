@@ -176,8 +176,6 @@ extension Walk {
         snap(try stable(endpoint)) {
             """
             {
-              "assertion_claims" : null,
-              "authorized_application_id" : null,
               "base_url" : "[url]",
               "created_at" : "[timestamp]",
               "created_by_member_id" : "[uuid]",
@@ -194,23 +192,18 @@ extension Walk {
               "host" : "example-server.modelcontextprotocol.io",
               "id" : "[uuid]",
               "kind" : "mcp",
-              "last_verified_at" : null,
               "metadata" : {
-                "auth_audience" : null,
                 "connector_id" : "[uuid]",
                 "extra_hosts" : [
 
                 ],
-                "mcp_server_id" : "hello-mcp",
-                "provider_app" : null
+                "mcp_server_id" : "hello-mcp"
               },
               "name" : "hello-mcp",
               "org_id" : "[uuid]",
               "project_id" : "[uuid]",
               "runtime_group_id" : "[uuid]",
-              "runtime_id" : null,
-              "updated_at" : "[timestamp]",
-              "verify_path" : null
+              "updated_at" : "[timestamp]"
             }
             """
         }
