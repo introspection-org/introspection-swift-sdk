@@ -11,22 +11,16 @@ extension Walk {
         // same calls.
         loginProject = try await owner.projects.get(settings.bootstrapProjectId)
         // A run that crashed before its teardown left its project behind; one still running is younger than the
-        // cutoff. Measured from this run's own slug, so replay decides as the recording did. todo: the SDK has no
-        // projects.create or delete.
+        // cutoff. Measured from this run's own slug, so replay decides as the recording did.
         guard let now = walkProjectBorn(settings.projectSlug) else {
             throw WalkError("the walk's own slug carries its time: \(settings.projectSlug)")
         }
-        let cp = raw(owner.controlPlane)
         for other in try await owner.projects.list().all() {
             guard let born = walkProjectBorn(other.slug ?? ""), now - born > WALK.staleAfterSeconds else { continue }
-            try await cp.empty("DELETE", "/v1/projects/\(other.id)")
+            try await owner.projects.delete(other.id)
         }
-        project = try await cp.json(
-            "POST", "/v1/projects",
-            body: [
-                "name": .string(WALK.projectName), "slug": .string(settings.projectSlug),
-                "deployment_id": .string(loginProject.deploymentId ?? ""),
-            ])
+        project = try await owner.projects.create(
+            ProjectCreate(name: WALK.projectName, deploymentId: loginProject.deploymentId ?? "", slug: settings.projectSlug))
         if mode == .record {
             try FileManager.default.createDirectory(at: WalkPaths.recordingDir, withIntermediateDirectories: true)
             try Data(
@@ -59,23 +53,17 @@ extension Walk {
         let listed = try await owner.projects.list().firstPage()
         try check(listed.records.contains { $0.id == project.id }, "the project is listed")
 
-        // todo: the SDK has no projects.update, create or delete.
-        let cp = raw(owner.controlPlane)
-        let updated: Project = try await cp.json(
-            "PATCH", "/v1/projects/\(project.id)", body: ["description": "The SDK end-to-end walk ran here"])
+        let updated = try await owner.projects.update(project.id, ProjectUpdate(description: "The SDK end-to-end walk ran here"))
         try check(updated.description == "The SDK end-to-end walk ran here", "the description updates")
         // A PATCH with only nulls is "no fields to update", so a project that had no description gets an empty one back.
-        let restored: Project = try await cp.json(
-            "PATCH", "/v1/projects/\(project.id)", body: ["description": .string(originalDescription ?? "")])
+        let restored = try await owner.projects.update(project.id, ProjectUpdate(description: originalDescription ?? ""))
         try check((restored.description ?? "") == (originalDescription ?? ""), "the description is restored")
 
         // A sibling is created and deleted while the walk's project is in use.
-        let sibling: Project = try await cp.json(
-            "POST", "/v1/projects",
-            body: [
-                "name": .string("\(project.name ?? "") (walk)"), "slug": .string("\(project.slug ?? "")\(WALK.siblingSuffix)"),
-                "deployment_id": .string(project.deploymentId ?? ""),
-            ])
+        let sibling = try await owner.projects.create(
+            ProjectCreate(
+                name: "\(project.name ?? "") (walk)", deploymentId: project.deploymentId ?? "",
+                slug: "\(project.slug ?? "")\(WALK.siblingSuffix)"))
         try check(sibling.deploymentId == project.deploymentId, "the sibling is on the same deployment")
         snap(try stable(sibling, removing: ["name", "slug"])) {
             """
@@ -87,7 +75,7 @@ extension Walk {
             }
             """
         }
-        try await cp.empty("DELETE", "/v1/projects/\(sibling.id)")
+        try await owner.projects.delete(sibling.id)
         try await expectNotFound({ try await owner.projects.get(sibling.id) }, "the deleted sibling")
     }
 
@@ -236,10 +224,8 @@ extension Walk {
     }
 
     func step3Repository() async throws {
-        // `POST /v1/repositories` is documented for the CLI only, so this is the one write the walk sends by hand.
-        let created: Repository = try await raw(sa.controlPlane).json(
-            "POST", "/v1/repositories", query: [("project", project.id)],
-            body: ["provider": "hosted", "slug": .string(WALK.recipeSlug), "default_branch": "main"])
+        let created = try await sa.repositories.create(
+            HostedRepositoryCreate(slug: WALK.recipeSlug, defaultBranch: "main"), project: project.id)
         let gitURL = try #require(created.url, "the credential-free Git transport URL")
         snap(try stable(created)) {
             """
@@ -273,13 +259,8 @@ extension Walk {
             poll: { try await saQuiet.recipes.list(RecipeListParams(project: project.id)).all() },
             done: { $0.contains { $0.repositoryId == repository.id } })
         let seedRecipe = try #require(seeded.first { $0.repositoryId == repository.id })
-        // todo: the SDK has no runtimes.create.
-        let seedRuntime: Runtime = try await raw(sa.controlPlane).json(
-            "POST", "/v1/runtimes",
-            body: [
-                "project": .string(project.id), "recipe_id": .string(seedRecipe.id), "name": .string(WALK.runtimeSlug),
-                "slug": .string(WALK.runtimeSlug),
-            ])
+        let seedRuntime = try await sa.runtimes.create(
+            RuntimeCreate(name: WALK.runtimeSlug, project: project.id, recipeId: seedRecipe.id, slug: WALK.runtimeSlug))
         try check(seedRuntime.slug == WALK.runtimeSlug, "the seed runtime takes the slug")
 
         if mode != .replay, let recipeDir {
@@ -295,9 +276,8 @@ extension Walk {
         let head = try #require(commits.records.first, "a commit on the hosted main")
         let detail = try await sa.repositories.commit(repository.id, sha: head.sha)
         try check(detail.sha == head.sha, "the commit reads back")
-        // todo: the SDK has no repositories.branches.
-        let branches: JSONValue = try await raw(sa.dataPlane).json("GET", "/v1/repositories/\(repository.id)/branches")
-        try check(branches["records"]?.arrayValue?.contains { $0["name"] == "main" } == true, "main is a branch")
+        let branches = try await sa.repositories.branches(repository.id).firstPage()
+        try check(branches.records.contains { $0.name == "main" }, "main is a branch")
         let entry = try await sa.repositories.contents.get(repository.id, path: "agents/scripted.yaml", ref: head.sha)
         try check(entry.path == "agents/scripted.yaml", "the agent file reads")
         let root = try await sa.repositories.contents.list(repository.id, ref: head.sha).firstPage()
@@ -354,22 +334,17 @@ extension Walk {
             """
         }
         // A second pin of the same commit under the walk's own name: a sibling of the push's, not the same row.
-        // todo: the SDK has no recipes.create or recipes.update.
-        pinnedRecipe = try await raw(sa.controlPlane).json(
-            "POST", "/v1/recipes",
-            body: [
-                "project": .string(project.id), "repository_id": .string(repository.id), "name": "hello-mcp (walk pin)",
-                "git_ref": "main", "git_commit_sha": .string(head.sha),
-            ])
-        try check(pinnedRecipe["git_commit_sha"]?.stringValue == head.sha, "the pin names the commit")
-        try check(pinnedRecipe["id"]?.stringValue != recipe.id, "the pin is its own row")
+        pinnedRecipe = try await sa.recipes.create(
+            RecipeCreate(
+                name: "hello-mcp (walk pin)", project: project.id, repositoryId: repository.id, gitRef: "main", gitCommitSha: head.sha))
+        try check(pinnedRecipe.gitCommitSha == head.sha, "the pin names the commit")
+        try check(pinnedRecipe.id != recipe.id, "the pin is its own row")
 
         let read = try await sa.recipes.get(recipe.id)
         try check(read.slug == recipe.slug, "the recipe reads back")
         let listed = try await sa.recipes.list(RecipeListParams(project: project.id)).all()
         try check(listed.contains { $0.id == recipe.id }, "the recipe is listed")
-        let updated: Recipe = try await raw(sa.controlPlane).json(
-            "PATCH", "/v1/recipes/\(recipe.id)", body: ["description": "The walk's recipe"])
+        let updated = try await sa.recipes.update(recipe.id, RecipeUpdate(description: "The walk's recipe"))
         try check(updated.description == "The walk's recipe", "the recipe's description updates")
     }
 

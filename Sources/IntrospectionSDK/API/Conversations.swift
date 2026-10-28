@@ -1195,6 +1195,13 @@ public struct ConversationsAPI: Sendable {
         http.paginate("/v1/conversations", query: try params.query(now: now), start: params.next)
     }
 
+    /// One page of conversation summaries as an Apache Arrow IPC stream (raw bytes; this SDK does not decode Arrow).
+    public func listArrow(_ params: ConversationListParams = ConversationListParams()) async throws -> Data {
+        var query = try params.query(now: Date())
+        query.add("next", params.next)
+        return try await http.data("GET", "/v1/conversations", query: query, headers: ["Accept": ConversationExportFormat.arrow.accept])
+    }
+
     /// Read one conversation summary with its complete agent index.
     public func get(_ conversationId: String, annotationId: String? = nil) async throws -> Conversation {
         var query = Query()
@@ -1222,6 +1229,16 @@ public struct ConversationsAPI: Sendable {
         try await http.json(
             "GET", "/v1/conversations/\(pathSegment(conversationId))/export",
             query: params.query, headers: ["Accept": ConversationExportFormat.trajectory.accept]
+        )
+    }
+
+    /// Export the complete conversation as an Apache Arrow IPC stream (raw bytes; this SDK does not decode Arrow).
+    public func exportArrow(
+        _ conversationId: String, _ params: ConversationExportParams = ConversationExportParams()
+    ) async throws -> Data {
+        try await http.data(
+            "GET", "/v1/conversations/\(pathSegment(conversationId))/export",
+            query: params.query, headers: ["Accept": ConversationExportFormat.arrow.accept]
         )
     }
 

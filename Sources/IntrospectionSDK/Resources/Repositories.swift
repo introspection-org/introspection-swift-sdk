@@ -333,6 +333,82 @@ public struct RepositoryCommitsParams: Sendable, Hashable {
     }
 }
 
+/// The body of `POST /v1/repositories` for a repository hosted on the project's Data Plane. Idempotent on `slug`;
+/// the hosted copy exists once provisioning lands (`provisioningStatus`). Linking a GitHub repository is a CLI action.
+public struct HostedRepositoryCreate: Encodable, Sendable, Hashable {
+    public var slug: String
+    public var defaultBranch: String?
+    /// A template of the deployment's rendered as the first commit; omitted, the deployment's default.
+    public var seedTemplate: String?
+
+    public init(slug: String, defaultBranch: String? = nil, seedTemplate: String? = nil) {
+        self.slug = slug
+        self.defaultBranch = defaultBranch
+        self.seedTemplate = seedTemplate
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case provider, slug
+        case defaultBranch = "default_branch"
+        case seedTemplate = "seed_template"
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode("introspection", forKey: .provider)
+        try container.encode(slug, forKey: .slug)
+        try container.encodeIfPresent(defaultBranch, forKey: .defaultBranch)
+        try container.encodeIfPresent(seedTemplate, forKey: .seedTemplate)
+    }
+}
+
+/// A branch of a repository and its head commit.
+public struct RepositoryBranch: Codable, Sendable, Hashable {
+    public var name: String
+    public var sha: String
+    /// Only with `sort: .recent`: the Git date as the server formats it.
+    public var committedAt: String?
+
+    public init(name: String, sha: String, committedAt: String? = nil) {
+        self.name = name
+        self.sha = sha
+        self.committedAt = committedAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case name, sha
+        case committedAt = "committed_at"
+    }
+}
+
+/// The order of `repositories.branches`.
+public struct RepositoryBranchSort: RawRepresentable, Codable, Sendable, Hashable, ExpressibleByStringLiteral {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+    public init(stringLiteral value: String) { self.rawValue = value }
+
+    /// Pages by name.
+    public static let name: RepositoryBranchSort = "name"
+    /// One name-sorted page, newest commit first, with `committedAt`; it never has a next page.
+    public static let recent: RepositoryBranchSort = "recent"
+}
+
+/// Filters for `GET /v1/repositories/{id}/branches`.
+public struct RepositoryBranchesParams: Sendable, Hashable {
+    /// Only branches whose name contains this, ignoring case.
+    public var query: String?
+    public var sort: RepositoryBranchSort?
+    public var limit: Int?
+    public var cursor: String?
+
+    public init(query: String? = nil, sort: RepositoryBranchSort? = nil, limit: Int? = nil, cursor: String? = nil) {
+        self.query = query
+        self.sort = sort
+        self.limit = limit
+        self.cursor = cursor
+    }
+}
+
 // MARK: APIs
 
 /// Reads of a repository's files and directories through the Data Plane.
@@ -410,21 +486,48 @@ public struct RepositoriesAPI: Sendable {
         try await controlPlane.json("GET", "/v1/repositories/\(pathSegment(repositoryId))", query: cpProjectQuery(project))
     }
 
+    /// Create a repository hosted on the project's Data Plane.
+    public func create(_ body: HostedRepositoryCreate, project: String? = nil) async throws -> Repository {
+        try await controlPlane.json("POST", "/v1/repositories", query: cpProjectQuery(project), body: .encode(body))
+    }
+
+    /// Unregister a repository. A recipe still pinned in it is a conflict (`repository_in_use`).
+    public func delete(_ repositoryId: String, project: String? = nil) async throws {
+        try await controlPlane.empty("DELETE", "/v1/repositories/\(pathSegment(repositoryId))", query: cpProjectQuery(project))
+    }
+
     /// The commit history from `params.sha`, across pages.
     public func commits(
         _ repositoryId: String, _ params: RepositoryCommitsParams = RepositoryCommitsParams()
     ) -> Paginator<RepositoryCommit> {
-        var base = Query()
-        base.add("sha", params.sha)
-        base.add("path", params.path)
-        base.add("limit", params.limit)
-        let query = base
-        let path = "/v1/repositories/\(pathSegment(repositoryId))/commits"
+        var query = Query()
+        query.add("sha", params.sha)
+        query.add("path", params.path)
+        query.add("limit", params.limit)
+        return cursorPages(repositoryId, "commits", query: query, start: params.cursor)
+    }
+
+    /// The repository's branches, across pages.
+    public func branches(
+        _ repositoryId: String, _ params: RepositoryBranchesParams = RepositoryBranchesParams()
+    ) -> Paginator<RepositoryBranch> {
+        var query = Query()
+        query.add("q", params.query)
+        query.add("sort", params.sort)
+        query.add("limit", params.limit)
+        return cursorPages(repositoryId, "branches", query: query, start: params.cursor)
+    }
+
+    /// A Data Plane list under the repository that pages on `cursor`.
+    private func cursorPages<Item: Decodable & Sendable>(
+        _ repositoryId: String, _ name: String, query: Query, start: String?
+    ) -> Paginator<Item> {
+        let path = "/v1/repositories/\(pathSegment(repositoryId))/\(name)"
         let http = dataPlane
-        return Paginator(start: params.cursor) { cursor in
+        return Paginator(start: start) { cursor in
             var pageQuery = query
             pageQuery.set("cursor", cursor)
-            return try await http.json("GET", path, query: pageQuery, as: Page<RepositoryCommit>.self)
+            return try await http.json("GET", path, query: pageQuery, as: Page<Item>.self)
         }
     }
 

@@ -73,11 +73,11 @@ final class Walk {
     var application: Application!
     var repository: Repository!
     var recipe: Recipe!
-    var pinnedRecipe: JSONValue = .null
+    var pinnedRecipe: Recipe!
     var connector: Connector!
     var runtime: Runtime!
     var runtimeV2: Runtime!
-    var endpoint: JSONValue = .null
+    var endpoint: Endpoint!
     var runner: Runner!
     var inputFile: File!
     var task: IntrospectionTask!

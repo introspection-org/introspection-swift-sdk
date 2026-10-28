@@ -81,24 +81,19 @@ extension Walk {
         let params = EventListParams(eventName: .annotation, conversationId: conversationId)
         let events = try await sa.events.list(params).all()
         if let event = events.first { _ = try await sa.events.get(event.id) }
-        // todo: the SDK has no events.listArrow, and annotations.facets takes no conversation filter.
-        let dp = raw(member.dataPlane)
-        let table = try await raw(sa.dataPlane).data(
-            "/v1/events", query: [("event_name", "introspection.annotation"), ("conversation_id", conversationId)],
-            accept: "application/vnd.apache.arrow.stream")
+        let table = try await sa.events.listArrow(params)
         try check(!table.isEmpty, "the Arrow event list")
-        let facets: JSONValue = try await dp.json("GET", "/v1/annotations/facets", query: [("conversation_id", conversationId)])
-        try check(facets != .null, "the facets")
+        // The facets count the whole project's annotations: the route takes no conversation filter.
+        _ = try await member.annotations.facets()
         _ = try await member.annotations.navigation(span)
     }
 
     private func emptyReads() async throws {
-        // The AAuth surfaces, read empty. todo: the SDK has no AAuth resources.
-        let dp = raw(sa.dataPlane)
-        let missions: JSONValue = try await dp.json("GET", "/v1/aauth/missions")
-        try check(missions["records"] == [], "no missions")
-        let approvals: JSONValue = try await dp.json("GET", "/v1/aauth/approvals")
-        try check(approvals["records"] == [], "no approvals")
+        // The AAuth surfaces, read empty.
+        let missions = try await sa.missions.list().firstPage()
+        try check(missions.records.isEmpty, "no missions")
+        let approvals = try await sa.approvals.list().firstPage()
+        try check(approvals.records.isEmpty, "no approvals")
         // `/v1/connections` is the apps a member connects through an app (Pipedream) connector; with none on the
         // project every route answers 404.
         try await expectNotFound({ try await member.connections.list().firstPage() }, "an app connection list")
