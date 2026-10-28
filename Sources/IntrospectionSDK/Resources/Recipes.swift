@@ -181,6 +181,8 @@ public struct RecipeCreate: Encodable, Sendable, Hashable {
     public var gitRef: String?
     /// The 40-hex commit the recipe pins.
     public var gitCommitSha: String?
+    /// The commit message's first line, shown with deployments.
+    public var gitCommitSubject: String?
     public var subPath: String?
     /// Derived from `name` and the short sha when omitted.
     public var slug: String?
@@ -188,13 +190,14 @@ public struct RecipeCreate: Encodable, Sendable, Hashable {
 
     public init(
         name: String, project: String, repositoryId: String? = nil, gitRef: String? = nil, gitCommitSha: String? = nil,
-        subPath: String? = nil, slug: String? = nil, description: String? = nil
+        gitCommitSubject: String? = nil, subPath: String? = nil, slug: String? = nil, description: String? = nil
     ) {
         self.name = name
         self.project = project
         self.repositoryId = repositoryId
         self.gitRef = gitRef
         self.gitCommitSha = gitCommitSha
+        self.gitCommitSubject = gitCommitSubject
         self.subPath = subPath
         self.slug = slug
         self.description = description
@@ -205,6 +208,7 @@ public struct RecipeCreate: Encodable, Sendable, Hashable {
         case repositoryId = "repository_id"
         case gitRef = "git_ref"
         case gitCommitSha = "git_commit_sha"
+        case gitCommitSubject = "git_commit_subject"
         case subPath = "sub_path"
     }
 }

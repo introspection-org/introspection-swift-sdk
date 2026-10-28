@@ -99,19 +99,24 @@ public struct ProjectCreate: Encodable, Sendable, Hashable {
     /// A stable identifier; the server derives one from `name` when omitted.
     public var slug: String?
     public var description: String?
+    public var settings: JSONObject?
     /// Seed the Ark runtime. Unset, an organization's first project takes it and later ones do not.
     public var includeArk: Bool?
 
-    public init(name: String, deploymentId: String, slug: String? = nil, description: String? = nil, includeArk: Bool? = nil) {
+    public init(
+        name: String, deploymentId: String, slug: String? = nil, description: String? = nil, settings: JSONObject? = nil,
+        includeArk: Bool? = nil
+    ) {
         self.name = name
         self.deploymentId = deploymentId
         self.slug = slug
         self.description = description
+        self.settings = settings
         self.includeArk = includeArk
     }
 
     private enum CodingKeys: String, CodingKey {
-        case name, slug, description
+        case name, slug, description, settings
         case deploymentId = "deployment_id"
         case includeArk = "include_ark"
     }
