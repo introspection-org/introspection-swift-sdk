@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.12.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.11.1...v0.12.0) (2026-10-28)
+
+
+### Features
+
+* read runtime peerings ([#75](https://github.com/introspection-org/introspection-swift-sdk/issues/75)) ([c913c1d](https://github.com/introspection-org/introspection-swift-sdk/commit/c913c1d0c7d0c6916f3a786aa229fd4475836544))
+* the end-to-end walk calls only typed SDK methods ([#73](https://github.com/introspection-org/introspection-swift-sdk/issues/73)) ([2625d3a](https://github.com/introspection-org/introspection-swift-sdk/commit/2625d3ae6d0cbd1d75a796d1e072ea777958d788))
+
 ## [0.11.1](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.11.0...v0.11.1) (2026-10-24)
 
 
