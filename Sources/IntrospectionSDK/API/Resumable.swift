@@ -89,6 +89,8 @@ enum RunStream {
         var deadline = Date().addingTimeInterval(options.timeout)
         // Control frames carry non-numeric `c-...` ids that are not resume cursors.
         var lastEventId = "0"
+        var cursorRunId: String?
+        var attached = false
         var reconnects = 0
         var readinessWaits = 0
 
@@ -98,8 +100,20 @@ enum RunStream {
             // Attach, honouring the 429 readiness contract.
             let response: HTTPStreamResponse
             do {
+                var attachPath = path
+                if runId == "current", attached {
+                    // The alias may now name another run, whose numeric cursors start over.
+                    // Attach to the resolved id so it cannot change between lookup and stream.
+                    let current = try await http.json("GET", runPath, as: TaskRun.self)
+                    if cursorRunId != current.id {
+                        lastEventId = "0"
+                        cursorRunId = current.id
+                    }
+                    attachPath = "/v1/tasks/\(pathSegment(taskId))/runs/\(pathSegment(current.id))/stream"
+                }
                 let headers = ["Last-Event-ID": lastEventId]
-                response = try await http.stream("GET", path, query: query, headers: headers)
+                response = try await http.stream("GET", attachPath, query: query, headers: headers)
+                attached = true
             } catch {
                 if error is CancellationError || Task.isCancelled { throw CancellationError() }
                 let introspectionError = error as? IntrospectionError
@@ -150,6 +164,10 @@ enum RunStream {
                                 kind: .decoding, message: "Invalid AG-UI frame: \(error)",
                                 status: response.status, requestId: response.headers["x-request-id"], underlying: error
                             )
+                        }
+                        if runId == "current", event.eventType == .runStarted, let actualRunId = event.runId {
+                            if cursorRunId != actualRunId { lastEventId = "0" }
+                            cursorRunId = actualRunId
                         }
                         let control = [.runStarted, .runFinished, .runError].contains(event.eventType)
                         if !control, let id = frame.id, isResumeCursor(id), let cursor = UInt64(id) {
