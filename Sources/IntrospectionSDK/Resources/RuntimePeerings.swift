@@ -1,7 +1,7 @@
 import Foundation
 
 /// A project offering one of its runtime groups' configuration to another project. Read-only here: granting,
-/// changing or revoking a peering is a person's act in the web app (`runtime_peerings:write`), which no API key holds.
+/// changing or revoking a peering is a person's act in the web app (`projects:write`), which no API key holds.
 public struct RuntimePeering: Codable, Sendable, Hashable {
     public var id: String
     public var orgId: String?
@@ -41,7 +41,7 @@ public struct RuntimePeering: Codable, Sendable, Hashable {
 extension ProjectsAPI {
     /// List the peerings a project offers, by project slug or id, optionally narrowed to one runtime group (slug or
     /// id). With `granted: true` it lists the peerings other projects grant to this one instead; the server refuses
-    /// `granted` combined with `runtime`. Needs `runtime_peerings:read`.
+    /// `granted` combined with `runtime`. Needs `projects:read`.
     public func peerings(
         _ project: String, runtime: String? = nil, granted: Bool = false, limit: Int? = nil, next: String? = nil
     ) -> Paginator<RuntimePeering> {
