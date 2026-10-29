@@ -87,9 +87,11 @@ public final class HostedLoginPresenter: NSObject, ASWebAuthenticationPresentati
     public func signIn(
         with auth: AuthClient,
         redirectURI: String,
+        scope: String = "*",
+        loginHint: String? = nil,
         prefersEphemeralWebBrowserSession: Bool = false
     ) async throws -> AuthSession {
-        let request = auth.hostedLoginRequest(redirectURI: redirectURI)
+        let request = auth.hostedLoginRequest(redirectURI: redirectURI, scope: scope, loginHint: loginHint)
         guard let redirect = URL(string: redirectURI) else {
             throw IntrospectionError(kind: .invalidRequest, message: "Invalid redirect URI: \(redirectURI)")
         }

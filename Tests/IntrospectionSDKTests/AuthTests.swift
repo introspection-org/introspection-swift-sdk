@@ -296,6 +296,26 @@ private let tokenJSON = #"{"access_token":"AT","token_type":"Bearer","expires_in
         #expect(decoded == login)
     }
 
+    @Test func hostedLoginCarriesALoginHintAndNoProject() throws {
+        let auth = AuthAPI(controlPlaneURL: URL(string: "https://cp.test")!, transport: MockTransport(json: "{}"))
+        let login = auth.hostedLogin(
+            clientID: OAuthClientID.ark, redirectURI: "myapp://callback", project: nil, loginHint: "alice@acme.com",
+            state: "st")
+        let components = try #require(URLComponents(url: login.url, resolvingAgainstBaseURL: false))
+        let items = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).map { ($0.name, $0.value ?? "") })
+        #expect(items["client_id"] == "ark")
+        #expect(items["login_hint"] == "alice@acme.com")
+        #expect(items["project"] == nil)
+    }
+
+    @Test func emailCodeWithoutAProjectIsRefused() async throws {
+        let client = AuthClient(
+            configuration: .init(
+                controlPlaneURL: URL(string: "https://cp.test")!, clientID: "native_1", method: .emailCode,
+                transport: MockTransport(json: "{}")))
+        await #expect(throws: IntrospectionError.self) { try await client.signInWithOTP(email: "a@acme.com") }
+    }
+
     @Test func completeHostedLoginChecksStateAndExchanges() async throws {
         let transport = MockTransport(
             json: #"""

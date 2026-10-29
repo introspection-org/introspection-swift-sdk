@@ -103,8 +103,9 @@ public actor AuthClient {
         public var controlPlaneURL: URL
         /// The Application's client id.
         public var clientID: String
-        /// The project the session is scoped to (slug or id).
-        public var project: String
+        /// The project the session is scoped to (slug or id). Email-code sign-in
+        /// needs one; without one, a hosted login takes the project the token names.
+        public var project: String?
         public var method: AuthMethod
         public var storage: any SessionStorage
         /// Storage key; change it to keep separate sessions per environment.
@@ -116,7 +117,7 @@ public actor AuthClient {
         public init(
             controlPlaneURL: URL,
             clientID: String,
-            project: String,
+            project: String? = nil,
             method: AuthMethod,
             storage: any SessionStorage = InMemorySessionStorage(),
             storageKey: String = "introspection.auth.session",
@@ -159,11 +160,12 @@ public actor AuthClient {
     /// email has an account.
     public func signInWithOTP(email: String) async throws {
         try requireMethod(.emailCode)
+        let project = try requireProject()
         try await api.http.empty(
             "POST", "/v1/oauth/email/code",
             body: .encode(
                 EmailCodeRequest(
-                    clientId: configuration.clientID, email: email, project: configuration.project
+                    clientId: configuration.clientID, email: email, project: project
                 )))
     }
 
@@ -172,19 +174,26 @@ public actor AuthClient {
     @discardableResult
     public func verifyOTP(email: String, token code: String) async throws -> AuthSession {
         try requireMethod(.emailCode)
+        let project = try requireProject()
         let generation = self.generation
         let response = try await api.token(
             grantType: OAuthGrantType.emailCode, clientId: configuration.clientID,
             parameters: [
-                ("email", email), ("code", code), ("project", configuration.project),
+                ("email", email), ("code", code), ("project", project),
             ])
         return try await signedIn(SessionToken(oauth: response, receivedAt: now()), ifCurrent: generation)
     }
 
     /// Start a hosted login: open `request.url` in a browser session and pass the
-    /// callback URL to `completeHostedLogin(_:callbackURL:)`.
-    public nonisolated func hostedLoginRequest(redirectURI: String, scope: String = "*") -> HostedLoginRequest {
-        api.hostedLogin(clientID: configuration.clientID, redirectURI: redirectURI, project: configuration.project, scope: scope)
+    /// callback URL to `completeHostedLogin(_:callbackURL:)`. `loginHint` prefills the
+    /// email and routes a work domain to its organization's sign-in.
+    public nonisolated func hostedLoginRequest(
+        redirectURI: String, scope: String = "*", loginHint: String? = nil
+    ) -> HostedLoginRequest {
+        api.hostedLogin(
+            clientID: configuration.clientID, redirectURI: redirectURI, project: configuration.project, scope: scope,
+            loginHint: loginHint
+        )
     }
 
     /// Finish a hosted login from its callback URL. Throws `CancellationError` when a
@@ -304,6 +313,13 @@ public actor AuthClient {
         guard AuthMethodKind(configuration.method) == expected else {
             throw IntrospectionError(kind: .invalidRequest, message: "This operation requires the \(expected) sign-in method")
         }
+    }
+
+    private func requireProject() throws -> String {
+        guard let project = configuration.project else {
+            throw IntrospectionError(kind: .invalidRequest, message: "Email-code sign-in requires a project")
+        }
+        return project
     }
 
     private func renew(_ token: SessionToken) async throws -> SessionToken {

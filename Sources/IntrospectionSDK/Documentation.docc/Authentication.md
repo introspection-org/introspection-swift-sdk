@@ -94,6 +94,8 @@ let client = try await auth.client()
 
 `HostedLoginPresenter` uses `ASWebAuthenticationSession`, and `KeychainSessionStorage` keeps the session in the Keychain, readable only after first unlock and never synced off the device. Both are available on Apple platforms.
 
+`loginHint:` prefills the email on the hosted login, and the Control Plane uses it to route a work domain to its organization's sign-in. A first-party client that signs in to the member's own organization, such as ``OAuthClientID/ark``, leaves `project` unset: the token response names the project, and ``AuthUser/projectId`` carries it.
+
 ## Every grant
 
 ``AuthAPI`` exposes each OAuth grant directly: client credentials, token exchange, JWT bearer, authorization code with ``PKCE``, refresh, device code and revoke. ``OIDC`` discovers and talks to any external issuer.
