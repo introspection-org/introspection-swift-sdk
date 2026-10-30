@@ -32,6 +32,21 @@ enum Authentication {
         return client
     }
 
+    /// A CLI's sign-in, end to end: the user approves in a browser while the tool polls.
+    static func deviceLogin() async throws -> (login: OAuthToken, development: OAuthToken) {
+        let auth = AuthAPI()
+        let device = try await auth.deviceAuthorization(project: "<project>")
+        print("Open \(device.verificationUriComplete ?? device.verificationUri) and confirm \(device.userCode)")
+        let login = try await auth.pollDeviceToken(device)
+        // The credential `introspection dev` attaches with, minted again when it expires.
+        let development = try await auth.developmentCredential(accessToken: login.accessToken)
+        return (login, development)
+    }
+
+    static func signOut(_ login: OAuthToken) async throws {
+        if let cpSession = login.cpSession { try await AuthAPI().oidcLogout(cpSession: cpSession) }
+    }
+
     #if canImport(AuthenticationServices) && !os(watchOS)
     @MainActor
     static func hostedLogin(anchor: ASPresentationAnchor) async throws -> IntrospectionClient {
