@@ -38,8 +38,7 @@ private final class StubProtocol: URLProtocol {
         default:
             let response = HTTPURLResponse(url: url, statusCode: 201, httpVersion: nil, headerFields: ["X-Echo": request.httpMethod ?? ""])!
             client.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-            client.urlProtocol(self, didLoad: Data("first,".utf8))
-            client.urlProtocol(self, didLoad: Data("second".utf8))
+            client.urlProtocol(self, didLoad: Data("first,second".utf8))
         }
         client.urlProtocolDidFinishLoading(self)
     }

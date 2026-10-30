@@ -563,7 +563,9 @@ public struct RepositoriesAPI: Sendable {
 
     /// Mint a short-lived token for the repository's Git provider. What a session may reach is the grant of the runtime
     /// it runs on, so only a runtime-scoped session gets one; any other caller is refused with a 403.
-    /// - Parameter permissions: What the token should carry, such as `["contents": "read"]`.
+    /// - Parameters:
+    ///   - repositoryId: The repository the token reaches.
+    ///   - permissions: What the token should carry, such as `["contents": "read"]`.
     public func accessToken(_ repositoryId: String, permissions: [String: String]? = nil) async throws -> RepositoryAccessGrant {
         try await dataPlane.json(
             "POST", "/v1/repositories/\(pathSegment(repositoryId))/access-token",
