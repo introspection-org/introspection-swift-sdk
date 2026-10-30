@@ -96,4 +96,4 @@ let client = try await auth.client()
 
 ## Every grant
 
-``AuthAPI`` exposes each OAuth grant directly: client credentials, token exchange, JWT bearer, authorization code with ``PKCE``, refresh, device code and revoke. ``OIDC`` discovers and talks to any external issuer.
+``AuthAPI`` exposes each OAuth grant directly: client credentials, token exchange, JWT bearer, authorization code with ``PKCE``, refresh, device code, the development credential and revoke, plus ``AuthAPI/oidcLogout(cpSession:)`` for a device login's session. ``OIDC`` discovers and talks to any external issuer.

@@ -63,6 +63,36 @@ extension Walk {
         try check(listed.contains { $0.id == connector.id }, "the connector is listed")
         let updated = try await sa.connectors.update(connector.id, ConnectorUpdate(name: "\(WALK.connectorName) (walk)"))
         try check(updated.name == "\(WALK.connectorName) (walk)", "the connector is renamed")
+
+        // The open MCP registry a custom connector picks from; a connector made from an issuer has no catalogue of its own.
+        let listings = try await sa.connectors.searchCustomApps(query: "everything", limit: 5)
+        try check(listings.allSatisfy { $0.name?.isEmpty == false }, "every listing is named")
+        try await refusal(422, "the apps of an issuer connector") { try await sa.connectors.listApps(connector.id, query: "mcp") }
+
+        // A connection registered with a caller-supplied token, read and revoked before the OAuth grant makes the runtime's own.
+        let registered = try await sa.connectors.connections.create(connector.id, ConnectionCreate(accessToken: WALK.registeredToken))
+        snap(try stable(registered)) {
+            """
+            {
+              "connector_id" : "[uuid]",
+              "created_at" : "[timestamp]",
+              "id" : "[uuid]",
+              "org_id" : "[uuid]",
+              "project_id" : "[uuid]",
+              "scopes_granted" : [
+
+              ],
+              "status" : "active",
+              "subject_type" : "app",
+              "updated_at" : "[timestamp]"
+            }
+            """
+        }
+        let readBack = try await sa.connectors.connections.get(connector.id, registered.id)
+        try check(readBack.id == registered.id, "the registered connection reads back")
+        // `connectors:delete` is the owner's.
+        try await owner.connectors.connections.revoke(connector.id, registered.id)
+        try await expectNotFound({ try await sa.connectors.connections.get(connector.id, registered.id) }, "the revoked connection")
     }
 
     func step7Runtime() async throws {
@@ -110,6 +140,7 @@ extension Walk {
               "recipe_kind" : "production",
               "recipe_ref" : "main",
               "runtime_group_id" : "[uuid]",
+              "runtime_group_type" : "custom",
               "slug" : "hello-mcp",
               "updated_at" : "[timestamp]"
             }
@@ -155,7 +186,9 @@ extension Walk {
               "created_at" : "[timestamp]",
               "created_by_member_id" : "[uuid]",
               "id" : "[uuid]",
+              "last_verified_at" : "[timestamp]",
               "org_id" : "[uuid]",
+              "project_id" : "[uuid]",
               "runtime_group_id" : "[uuid]",
               "scopes_granted" : [
 
@@ -173,7 +206,8 @@ extension Walk {
         let endpoints = try await sa.endpoints.list(EndpointListParams(project: project.id, mcpServerId: WALK.mcpServerId)).firstPage()
         let bound = try #require(endpoints.records.first, "the grant bound an endpoint")
         endpoint = bound
-        snap(try stable(endpoint)) {
+        // Tool discovery runs on its own schedule, so its state and verification time are left out.
+        snap(try stable(endpoint, removing: ["mcp_check", "last_verified_at"])) {
             """
             {
               "base_url" : "[url]",
@@ -212,6 +246,8 @@ extension Walk {
         let renamed = try await sa.endpoints.update(endpoint.id, EndpointUpdate(name: "hello-mcp (walk)"), project: project.id)
         try check(renamed.name == "hello-mcp (walk)", "the endpoint is renamed")
 
+        try await apiEndpoint()
+
         // The broker resolves the grant from the service account's own credential.
         let token = try await sa.connectors.connections.getToken(connector.id)
         snap(try stable(token)) {
@@ -235,6 +271,45 @@ extension Walk {
             ]
             """
         }
+    }
+
+    /// A plain upstream API, created and deleted; with no `verifyPath` the Control Plane calls nothing.
+    private func apiEndpoint() async throws {
+        let api = try await sa.endpoints.create(
+            EndpointCreate(
+                name: WALK.apiEndpointName, host: WALK.apiEndpointHost, headers: ["X-Walk": "${\(WALK.credentialName)}"], kind: .api),
+            project: project.id)
+        snap(try stable(api)) {
+            """
+            {
+              "created_at" : "[timestamp]",
+              "created_by_member_id" : "[uuid]",
+              "credential_refs" : [
+                "WALK_SECRET"
+              ],
+              "header_names" : [
+                "X-Walk"
+              ],
+              "headers" : {
+                "X-Walk" : "${WALK_SECRET}"
+              },
+              "host" : "walk-api.example.com",
+              "id" : "[uuid]",
+              "kind" : "api",
+              "metadata" : {
+                "extra_hosts" : [
+
+                ]
+              },
+              "name" : "walk-api",
+              "org_id" : "[uuid]",
+              "project_id" : "[uuid]",
+              "updated_at" : "[timestamp]"
+            }
+            """
+        }
+        try await sa.endpoints.delete(api.id, project: project.id)
+        try await expectNotFound({ try await sa.endpoints.get(api.id, project: project.id) }, "the deleted endpoint")
     }
 
     func step9FilesIn() async throws {

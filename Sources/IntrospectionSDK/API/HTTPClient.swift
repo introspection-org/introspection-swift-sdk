@@ -125,6 +125,19 @@ public final class HTTPClient: Sendable {
         }
     }
 
+    /// Send an unauthenticated request once, returning a redirect as the answer: only a 4xx or 5xx throws.
+    func sendWithoutFollowingRedirects(_ method: String, _ path: String, headers: [String: String]) async throws -> HTTPResponse {
+        var request = HTTPRequest(
+            method: method, url: url(path), headers: try await buildHeaders(extra: headers, contentType: nil, authenticated: false),
+            timeout: options.timeout)
+        request.followRedirects = false
+        let response = try await mapTransportErrors { try await transport.send(request) }
+        guard response.status < 400 else {
+            throw IntrospectionError.fromResponse(status: response.status, headers: response.headers, body: response.body)
+        }
+        return response
+    }
+
     private func sendOnce(
         method: String, url: URL, data: Data?, contentType: String?,
         headers: [String: String], authenticated: Bool

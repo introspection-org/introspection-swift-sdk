@@ -352,6 +352,13 @@ public struct AuthAPI: Sendable {
             ])
     }
 
+    /// Trade a login's access token for the short-lived development credential `introspection dev` attaches with.
+    /// Only a business member's project-scoped login holding `runtimes:write` qualifies; any other is refused with
+    /// `oauthError` set to `unauthorized_client`, `invalid_target` or `invalid_grant`.
+    public func developmentCredential(accessToken: String, clientId: String = OAuthClientID.cli) async throws -> OAuthToken {
+        try await tokenExchange(subjectToken: accessToken, clientId: clientId, subjectTokenType: OAuthTokenType.accessToken)
+    }
+
     /// RFC 7523 `jwt-bearer`: exchange an enterprise IdP's ID-JAG assertion (only on servers with an MCP resource id).
     public func jwtBearer(
         assertion: String,
@@ -415,16 +422,17 @@ public struct AuthAPI: Sendable {
         try await token(grantType: OAuthGrantType.deviceCode, clientId: clientId, parameters: [("device_code", deviceCode)])
     }
 
-    /// Poll until the user approves, honouring `interval` and adding 5 seconds on each `slow_down`.
-    /// Throws `.authentication` on denial or expiry.
+    /// Poll until the user approves, honouring `interval` (kept within 1 to 60 seconds) and adding 5 seconds on each
+    /// `slow_down`; a network failure is polled through. A code lives at most 30 minutes. Throws `.authentication` on
+    /// denial or expiry.
     public func pollDeviceToken(
         _ authorization: DeviceAuthorization,
         clientId: String = OAuthClientID.cli,
         now: @Sendable () -> Date = { Date() },
         sleep: @Sendable (TimeInterval) async throws -> Void = { try await Backoff.sleep($0) }
     ) async throws -> OAuthToken {
-        var interval = TimeInterval(max(1, authorization.interval ?? 5))
-        let deadline = now().addingTimeInterval(TimeInterval(authorization.expiresIn))
+        var interval = TimeInterval(min(max(1, authorization.interval ?? 5), 60))
+        let deadline = now().addingTimeInterval(TimeInterval(min(authorization.expiresIn, 30 * 60)))
         while true {
             try await sleep(interval)
             do {
@@ -440,6 +448,7 @@ public struct AuthAPI: Sendable {
                         status: error.status, code: error.oauthError,
                         requestId: error.requestId, body: error.body, underlying: error
                     )
+                case nil where error.kind == .network: break
                 default: throw error
                 }
             }
@@ -552,6 +561,13 @@ public struct AuthAPI: Sendable {
             body: .form([("client_id", clientId), ("session_id", sessionId), ("org_id", orgId)]),
             authenticated: false, as: RevokeResponse.self
         )
+    }
+
+    /// End the Control Plane session behind a `cp_session` cookie, and its Data Plane tokens with it:
+    /// `GET /v1/oidc/logout`. The redirect starts a browser's sign-out at the identity provider and is not followed. A
+    /// cookie naming no live session revokes nothing and answers the same way.
+    public func oidcLogout(cpSession: String) async throws {
+        _ = try await http.sendWithoutFollowingRedirects("GET", "/v1/oidc/logout", headers: ["Cookie": "intro_cp_session=\(cpSession)"])
     }
 }
 
