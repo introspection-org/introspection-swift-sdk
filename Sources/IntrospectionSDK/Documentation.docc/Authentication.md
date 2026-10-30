@@ -49,6 +49,26 @@ let client = try await auth.client()
 
 A returning user's code is six digits; a new user's first code is six letters and digits, so a code field must accept both. The session is a `customer` member whose scopes are the Application's `allowed_scopes`. ``AuthClient`` persists it, refreshes it before expiry and after a `401`, and discards a sign-in response that a newer request has superseded. The token is accepted on Data Plane routes, so, as with a federated token, each task names its runtime version (`runtimeId`).
 
+## Passkeys
+
+A first-party client that signs in with the email code, such as ``OAuthClientID/ark``, can also sign in with a platform passkey (Face ID or Touch ID), with no web view. ``PasskeyPresenter`` asks the Control Plane for a challenge, has the device sign it, and exchanges the assertion for the same session the email code returns:
+
+```swift
+let passkeys = PasskeyPresenter(anchor: window)
+do {
+    try await passkeys.signIn(with: auth, email: email)
+} catch is PasskeyUnavailable {
+    try await auth.signInWithOTP(email: email)  // no passkey, cancelled, unsupported or turned off
+}
+
+// Signed in: register this device, list, or remove.
+try await passkeys.register(with: auth, name: "iPhone")
+let registered = try await auth.listPasskeys()
+try await auth.removePasskey(id: registered[0].id)
+```
+
+The relying party's domain must be in the app's `webcredentials` associated domains. ``PasskeyUnavailable`` covers every reason to fall back to the email code; a refused assertion or a reused challenge throws with `oauthError == "invalid_grant"`. The lower-level steps are ``AuthClient/passkeyChallenge(email:)``, ``AuthClient/signInWithPasskey(challenge:assertion:)``, ``AuthClient/startPasskeyRegistration(name:)`` and ``AuthClient/finishPasskeyRegistration(_:attestation:name:)``.
+
 ## Federated identity providers
 
 When your app already signs users in with Supabase, Auth0, Okta or another OpenID provider, keep that provider and its SDK. An Introspection Application of type `jwks`, federated to the provider's issuer, exchanges the provider's token for a platform token for a `customer` member. No app backend is involved.
@@ -93,6 +113,8 @@ let client = try await auth.client()
 ```
 
 `HostedLoginPresenter` uses `ASWebAuthenticationSession`, and `KeychainSessionStorage` keeps the session in the Keychain, readable only after first unlock and never synced off the device. Both are available on Apple platforms.
+
+`loginHint:` prefills the email on the hosted login, and the Control Plane uses it to route a work domain to its organization's sign-in. A first-party client that signs in to the member's own organization, such as ``OAuthClientID/ark``, leaves `project` unset: the token response names the project, and ``AuthUser/projectId`` carries it.
 
 ## Every grant
 

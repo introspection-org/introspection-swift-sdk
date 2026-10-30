@@ -12,6 +12,8 @@ public enum OAuthGrantType {
     public static let jwtBearer = "urn:ietf:params:oauth:grant-type:jwt-bearer"
     /// Native email-code sign-in (proposed; see `AuthClient.verifyOTP`).
     public static let emailCode = "urn:introspection:params:oauth:grant-type:email_code"
+    /// Passkey sign-in (see `AuthClient.signInWithPasskey(challenge:assertion:)`).
+    public static let passkey = "urn:introspection:params:oauth:grant-type:passkey"
 }
 
 /// RFC 8693 token type URIs.
@@ -26,6 +28,8 @@ public enum OAuthClientID {
     public static let dataPlane = "dataplane"
     /// The CLI: the only client allowed to drive the device flow.
     public static let cli = "cli"
+    /// Ark, which signs in through the hosted login to the member's own organization.
+    public static let ark = "ark"
 }
 
 extension IntrospectionError {
@@ -462,7 +466,8 @@ public struct AuthAPI: Sendable {
         scope: String = "*",
         state: String,
         codeChallenge: String,
-        codeChallengeMethod: String = "S256"
+        codeChallengeMethod: String = "S256",
+        loginHint: String? = nil
     ) -> URL {
         var query = Query()
         query.add("client_id", clientID)
@@ -473,6 +478,7 @@ public struct AuthAPI: Sendable {
         query.add("project", project)
         query.add("code_challenge", codeChallenge)
         query.add("code_challenge_method", codeChallengeMethod)
+        query.add("login_hint", loginHint)
         return http.url("/v1/oauth/authorize", query: query)
     }
 
@@ -483,13 +489,14 @@ public struct AuthAPI: Sendable {
         redirectURI: String,
         project: String?,
         scope: String = "*",
+        loginHint: String? = nil,
         pkce: PKCE = PKCE(),
         state: String = PKCE.randomURLSafeString()
     ) -> HostedLoginRequest {
         HostedLoginRequest(
             url: authorizeURL(
                 clientID: clientID, redirectURI: redirectURI, project: project, scope: scope,
-                state: state, codeChallenge: pkce.challenge, codeChallengeMethod: pkce.method
+                state: state, codeChallenge: pkce.challenge, codeChallengeMethod: pkce.method, loginHint: loginHint
             ),
             state: state, pkce: pkce, clientID: clientID, redirectURI: redirectURI, project: project
         )
