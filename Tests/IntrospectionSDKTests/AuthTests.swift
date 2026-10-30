@@ -308,14 +308,6 @@ private let tokenJSON = #"{"access_token":"AT","token_type":"Bearer","expires_in
         #expect(items["project"] == nil)
     }
 
-    @Test func emailCodeWithoutAProjectIsRefused() async throws {
-        let client = AuthClient(
-            configuration: .init(
-                controlPlaneURL: URL(string: "https://cp.test")!, clientID: "native_1", method: .emailCode,
-                transport: MockTransport(json: "{}")))
-        await #expect(throws: IntrospectionError.self) { try await client.signInWithOTP(email: "a@acme.com") }
-    }
-
     @Test func completeHostedLoginChecksStateAndExchanges() async throws {
         let transport = MockTransport(
             json: #"""

@@ -72,6 +72,24 @@ import Testing
         #expect(restored?.accessToken == access)
     }
 
+    @Test func emailCodeWithNoProjectSignsInToTheMembersOwnOrganization() async throws {
+        let access = jwt(["member_id": "m1", "org_id": "o1", "member_type": "business", "jti": "s1", "exp": 4_102_444_800])
+        let transport = MockTransport { request, _ in
+            request.url.path == "/v1/oauth/email/code" ? .response(.json("", status: 202)) : .response(.json(self.tokenJSON(access)))
+        }
+        let auth = AuthClient(configuration: .init(
+            controlPlaneURL: URL(string: "https://cp.test")!, clientID: OAuthClientID.ark,
+            method: .emailCode, storage: InMemorySessionStorage(), transport: transport))
+
+        try await auth.signInWithOTP(email: "a@b.co")
+        #expect(transport.requests[0].json == ["client_id": "ark", "email": "a@b.co"])
+
+        _ = try await auth.verifyOTP(email: "a@b.co", token: "123456")
+        let fields = form(transport.requests[1])
+        #expect(fields["project"] == nil)
+        #expect(fields["client_id"] == "ark")
+    }
+
     @Test func expiredSessionRefreshesOnceForConcurrentCallers() async throws {
         let transport = MockTransport { _, _ in .response(.json(self.tokenJSON("fresh", refresh: "r2"))) }
         let storage = InMemorySessionStorage()

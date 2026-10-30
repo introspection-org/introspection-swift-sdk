@@ -157,15 +157,15 @@ public actor AuthClient {
     // MARK: Sign-in
 
     /// Send a one-time code to `email`. The response is the same whether or not the
-    /// email has an account.
+    /// email has an account. With no `project`, a first-party client such as
+    /// ``OAuthClientID/ark`` signs in to the member's own organization.
     public func signInWithOTP(email: String) async throws {
         try requireMethod(.emailCode)
-        let project = try requireProject()
         try await api.http.empty(
             "POST", "/v1/oauth/email/code",
             body: .encode(
                 EmailCodeRequest(
-                    clientId: configuration.clientID, email: email, project: project
+                    clientId: configuration.clientID, email: email, project: configuration.project
                 )))
     }
 
@@ -174,13 +174,13 @@ public actor AuthClient {
     @discardableResult
     public func verifyOTP(email: String, token code: String) async throws -> AuthSession {
         try requireMethod(.emailCode)
-        let project = try requireProject()
         let generation = self.generation
+        var parameters = [("email", email), ("code", code)]
+        if let project = configuration.project {
+            parameters.append(("project", project))
+        }
         let response = try await api.token(
-            grantType: OAuthGrantType.emailCode, clientId: configuration.clientID,
-            parameters: [
-                ("email", email), ("code", code), ("project", project),
-            ])
+            grantType: OAuthGrantType.emailCode, clientId: configuration.clientID, parameters: parameters)
         return try await signedIn(SessionToken(oauth: response, receivedAt: now()), ifCurrent: generation)
     }
 
@@ -315,13 +315,6 @@ public actor AuthClient {
         }
     }
 
-    private func requireProject() throws -> String {
-        guard let project = configuration.project else {
-            throw IntrospectionError(kind: .invalidRequest, message: "Email-code sign-in requires a project")
-        }
-        return project
-    }
-
     private func renew(_ token: SessionToken) async throws -> SessionToken {
         guard let refreshToken = token.refreshToken,
             let sessionId = token.sessionId ?? token.claims?.jti,
@@ -451,7 +444,7 @@ enum AuthMethodKind: String, CustomStringConvertible {
 struct EmailCodeRequest: Encodable {
     let clientId: String
     let email: String
-    let project: String
+    let project: String?
 
     enum CodingKeys: String, CodingKey {
         case clientId = "client_id"
