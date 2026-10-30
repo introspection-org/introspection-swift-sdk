@@ -116,6 +116,14 @@ private func error(_ operation: () async throws -> some Any) async -> Introspect
         #expect(transport.last?.json == ["permissions": ["contents": "read"]])
     }
 
+    @Test func aGrantIsBuiltFromItsFields() {
+        let expiry = Date(timeIntervalSince1970: 0)
+        let grant = RepositoryAccessGrant(provider: "github", token: Secret("t"), expiresAt: expiry, repository: "o/r")
+        #expect(grant.provider == "github")
+        #expect(grant.expiresAt == expiry)
+        #expect(grant.repository == "o/r")
+    }
+
     @Test func noPermissionsSendsAnEmptyObject() async throws {
         let transport = MockTransport(json: #"{"provider": "github", "token": "t", "expires_at": "\#(now)", "repository": "a/b"}"#)
         _ = try await makeClient(transport).repositories.accessToken("r-1")
@@ -147,6 +155,20 @@ private func error(_ operation: () async throws -> some Any) async -> Introspect
         #expect(docs.messageProtocol.cloudToRemote.map(\.frame) == ["attach_response"])
         #expect(transport.last?.request.method == "GET")
         #expect(transport.last?.path == "/v1/remotes/connect")
+    }
+
+    @Test func theProtocolEncodesItsWireNames() throws {
+        let docs = RemotesConnectDocs(
+            endpoint: "/v1/remotes/connect", protocol: "websocket",
+            authentication: WebSocketAuthenticationDocs(method: "bearer", description: "A credential", example: "Bearer ..."),
+            handshake: ["attach_request"], schemaVersion: 3, encoding: "protobuf",
+            messageProtocol: WebSocketMessageProtocolDocs(
+                remoteToCloud: [WebSocketFrameDocs(frame: "attach_request", description: "Attach")], cloudToRemote: []))
+        let data = try JSONEncoder().encode(docs)
+        let wire = try JSONDecoder().decode(JSONValue.self, from: data)
+        #expect(wire["schema_version"] == 3)
+        #expect(wire["message_protocol"]?["remote_to_cloud"]?[0]?["frame"] == "attach_request")
+        #expect(try JSONDecoder().decode(RemotesConnectDocs.self, from: data) == docs)
     }
 
     @Test func anUnauthenticatedReadFails() async {
@@ -239,6 +261,12 @@ private func error(_ operation: () async throws -> some Any) async -> Introspect
         #expect(grant.status == .active)
         #expect(transport.last?.path == "/v1/connections")
         #expect(transport.last?.query == ["connector_id": ["k-1"], "subject_type": ["app"], "peering": ["peer"], "limit": ["5"]])
+    }
+
+    @Test func aConnectorRefIsBuiltFromItsFields() {
+        let connector = AppConnectionConnector(id: "c", slug: "hello-mcp", provider: "hello-mcp", peering: "p")
+        #expect(connector.slug == "hello-mcp")
+        #expect(connector.peering == "p")
     }
 
     @Test func aMissingConnectorIsNotFound() async {

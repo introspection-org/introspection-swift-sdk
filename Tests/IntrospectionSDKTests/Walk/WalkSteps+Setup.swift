@@ -208,7 +208,27 @@ extension Walk {
             ApplicationCreate(name: "\(WALK.applicationName)-federated", applicationType: .jwks), project: project.id)
         let idp = try await owner.applications.idps.create(federated.id, body)
         try check(idp.issuer == WALK.idpIssuer, "the identity provider names the issuer")
-        snap(try stable(idp))
+        snap(try stable(idp)) {
+            """
+            {
+              "application_id" : "[uuid]",
+              "client_id" : "[redacted]",
+              "created_at" : "[timestamp]",
+              "id" : "[uuid]",
+              "idp_provider" : "generic",
+              "is_active" : true,
+              "issuer" : "[url]",
+              "org_id" : "[uuid]",
+              "scopes" : [
+                "openid",
+                "profile",
+                "email"
+              ],
+              "status" : "active",
+              "updated_at" : "[timestamp]"
+            }
+            """
+        }
         let listed = try await owner.applications.idps.list(federated.id).all()
         try check(listed.map(\.id) == [idp.id], "the identity provider is listed")
         try await owner.applications.idps.delete(federated.id, idp.id)
