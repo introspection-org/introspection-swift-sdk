@@ -183,6 +183,38 @@ extension Walk {
         try check(renamed.name == "\(WALK.applicationName)-renamed", "the application is renamed")
 
         try await rotateSecrets(revoking: first.id)
+        try await signingKeys()
+        try await identityProviders()
+    }
+
+    /// The application is created holding one signing key; a second is added and revoked.
+    private func signingKeys() async throws {
+        let keys = try await owner.applications.keys.list(application.id)
+        try check(keys.count == 1, "an application starts with one signing key")
+        let key = try await owner.applications.keys.create(application.id)
+        let both = try await owner.applications.keys.list(application.id)
+        try check(Set(both.map(\.id)) == Set(keys.map(\.id) + [key.id]), "the second key is listed")
+        try await owner.applications.keys.delete(application.id, key.id)
+    }
+
+    /// A service account signs nobody in, so it refuses an identity provider; a federated application takes one,
+    /// checked by its issuer.
+    private func identityProviders() async throws {
+        let body = ApplicationIdpCreate(issuer: WALK.idpIssuer)
+        try await refusal(400, "an identity provider on a service account") {
+            try await owner.applications.idps.create(application.id, body)
+        }
+        let federated = try await owner.applications.create(
+            ApplicationCreate(name: "\(WALK.applicationName)-federated", applicationType: .jwks), project: project.id)
+        let idp = try await owner.applications.idps.create(federated.id, body)
+        try check(idp.issuer == WALK.idpIssuer, "the identity provider names the issuer")
+        snap(try stable(idp))
+        let listed = try await owner.applications.idps.list(federated.id).all()
+        try check(listed.map(\.id) == [idp.id], "the identity provider is listed")
+        try await owner.applications.idps.delete(federated.id, idp.id)
+        let after = try await owner.applications.idps.list(federated.id).all()
+        try check(after.isEmpty, "the identity provider is deleted")
+        try await owner.applications.delete(federated.id, project: project.id)
     }
 
     /// Rotate: a second secret, then the first revoked.
@@ -291,7 +323,8 @@ extension Walk {
             done: { $0 != nil })
         let versionedRecipe = try #require(versioned)
         recipe = versionedRecipe
-        snap(try stable(recipe)) {
+        // The slug carries the commit's hash, new whenever the recipe's repository moves.
+        snap(try stable(recipe, removing: ["slug"])) {
             """
             {
               "created_at" : "[timestamp]",
@@ -318,7 +351,6 @@ extension Walk {
               "org_id" : "[uuid]",
               "project_id" : "[uuid]",
               "repository_id" : "[uuid]",
-              "slug" : "hello-mcp-production-main-543b8db50a83",
               "sub_path" : ".",
               "updated_at" : "[timestamp]",
               "validation" : {
@@ -346,6 +378,22 @@ extension Walk {
         try check(listed.contains { $0.id == recipe.id }, "the recipe is listed")
         let updated = try await sa.recipes.update(recipe.id, RecipeUpdate(description: "The walk's recipe"))
         try check(updated.description == "The walk's recipe", "the recipe's description updates")
+        try await repositoryWrites(head: head.sha)
+    }
+
+    /// A recipe deleted, a merge with nothing to merge, and a Git token the server keeps for a sandbox's session.
+    private func repositoryWrites(head: String) async throws {
+        let doomed = try await sa.recipes.create(
+            RecipeCreate(
+                name: "hello-mcp (walk, deleted)", project: project.id, repositoryId: repository.id, gitRef: "main", gitCommitSha: head))
+        try await owner.recipes.delete(doomed.id, project: project.id)
+        try await expectNotFound({ try await sa.recipes.get(doomed.id) }, "the deleted recipe")
+
+        // The owner's Data Plane token merges as its member.
+        let merged = try await member.repositories.merge(repository.id, RepositoryMergeCreate(base: "main", head: "main"))
+        try check(merged == nil, "main already contains main")
+        // A Git provider token is the grant of the runtime a sandbox runs on, so a session with no runtime is refused.
+        try await refusal(403, "a Git token for a session with no runtime") { try await member.repositories.accessToken(repository.id) }
     }
 
     func step5CredentialAndVariable() async throws {

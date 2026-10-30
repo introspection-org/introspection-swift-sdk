@@ -12,6 +12,8 @@ public struct HTTPRequest: Sendable {
     public var headers: [String: String]
     public var body: Data?
     public var timeout: TimeInterval?
+    /// False returns a redirect as the response. Only ``HTTPTransport/send(_:)`` honours it.
+    public var followRedirects = true
 
     public init(method: String, url: URL, headers: [String: String] = [:], body: Data? = nil, timeout: TimeInterval? = nil) {
         self.method = method
@@ -74,6 +76,10 @@ public final class URLSessionTransport: HTTPTransport, Sendable {
     }
 
     public func send(_ request: HTTPRequest) async throws -> HTTPResponse {
+        let session =
+            request.followRedirects
+            ? self.session : URLSession(configuration: self.session.configuration, delegate: NoRedirectDelegate(), delegateQueue: nil)
+        defer { if !request.followRedirects { session.finishTasksAndInvalidate() } }
         let data: Data
         let response: URLResponse
         do {
@@ -122,6 +128,15 @@ public final class URLSessionTransport: HTTPTransport, Sendable {
             return CancellationError()
         }
         return IntrospectionError(kind: .network, message: error.localizedDescription, underlying: error)
+    }
+}
+
+private final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, Sendable {
+    func urlSession(
+        _: URLSession, task _: URLSessionTask, willPerformHTTPRedirection _: HTTPURLResponse, newRequest _: URLRequest,
+        completionHandler: @escaping @Sendable (URLRequest?) -> Void
+    ) {
+        completionHandler(nil)
     }
 }
 

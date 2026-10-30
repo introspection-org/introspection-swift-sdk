@@ -271,6 +271,31 @@ public struct RepositoryCommitDetail: Codable, Sendable, Hashable {
     }
 }
 
+/// A short-lived token for the repository's Git provider.
+public struct RepositoryAccessGrant: Codable, Sendable, Hashable {
+    public var provider: String
+    public var token: Secret
+    public var expiresAt: Date
+    public var repository: String
+
+    public init(provider: String, token: Secret, expiresAt: Date, repository: String) {
+        self.provider = provider
+        self.token = token
+        self.expiresAt = expiresAt
+        self.repository = repository
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case provider, token, repository
+        case expiresAt = "expires_at"
+    }
+}
+
+/// Body of `POST /v1/repositories/{id}/access-token`.
+struct RepositoryAccessRequest: Encodable, Sendable, Hashable {
+    var permissions: [String: String]?
+}
+
 /// Body of `POST /v1/repositories/{id}/merges`.
 public struct RepositoryMergeCreate: Encodable, Sendable, Hashable {
     /// Branch to merge into.
@@ -534,6 +559,15 @@ public struct RepositoriesAPI: Sendable {
     /// One commit with its changed files and diff.
     public func commit(_ repositoryId: String, sha: String) async throws -> RepositoryCommitDetail {
         try await dataPlane.json("GET", "/v1/repositories/\(pathSegment(repositoryId))/commits/\(pathSegment(sha))")
+    }
+
+    /// Mint a short-lived token for the repository's Git provider. What a session may reach is the grant of the runtime
+    /// it runs on, so only a runtime-scoped session gets one; any other caller is refused with a 403.
+    /// - Parameter permissions: What the token should carry, such as `["contents": "read"]`.
+    public func accessToken(_ repositoryId: String, permissions: [String: String]? = nil) async throws -> RepositoryAccessGrant {
+        try await dataPlane.json(
+            "POST", "/v1/repositories/\(pathSegment(repositoryId))/access-token",
+            body: .encode(RepositoryAccessRequest(permissions: permissions)))
     }
 
     /// Merge `head` into `base`, like GitHub's merges API. Returns nil when `base` already contains `head`.

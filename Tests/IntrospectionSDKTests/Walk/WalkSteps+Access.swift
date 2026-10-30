@@ -151,17 +151,24 @@ extension Walk {
         // An invite outlives the project, so a repeat run finds the one the last run sent; and a person belongs to
         // one organisation, so the address names this one.
         let email = "walk-member@\(org.slug ?? "").example.com"
+        let invite = MemberCreate.business(BusinessMemberCreate(email: email, name: "Walk member", role: "member"))
         let invited: Member
         if let found = members.first(where: { $0.email == email }) {
             invited = found
+            try await refusal(409, "a second invite to one address") { try await owner.members.create(invite) }
         } else {
-            invited = try await owner.members.create(.business(BusinessMemberCreate(email: email, name: "Walk member", role: "member")))
+            invited = try await owner.members.create(invite)
         }
         try check(invited.email == email && invited.role == "member", "the invited member")
         let renamed = try await owner.members.update(invited.id, MemberUpdate(name: "Walk member (renamed)"))
         try check(renamed.name == "Walk member (renamed)", "the member is renamed")
         let me = try await owner.members.me()
         try check(me.orgId == project.orgId, "the caller's organisation")
+        try await signInRoutes()
+        // The project offers no runtime group to another project.
+        let peerings = try await owner.projects.peerings(project.id).firstPage()
+        try check(peerings.records.isEmpty, "no peerings")
+        try await expectNotFound({ try await owner.projects.peering(project.id, WALK.noSuchId) }, "a peering")
         let apiKey = try await sa.apiKeys.create(
             ApiKeyCreate(name: WALK.apiKeyName, environment: .development, allow: [.runtimes]), project: project.id)
         try check(apiKey.apiKey != nil, "the plaintext key is returned once")
@@ -203,6 +210,34 @@ extension Walk {
             }
             """
         }
+    }
+
+    /// What `introspection login`, `logout` and `dev` reach through the SDK, short of a person approving in a browser:
+    /// a device code and one poll that finds it pending, a refresh and a development credential the server refuses
+    /// (only an approved login holds what they take), a revocation and a sign-out that name no session (the owner's own
+    /// would end the walk's), and the remote connection's protocol. The WebSocket is not opened: attaching needs a
+    /// development login.
+    private func signInRoutes() async throws {
+        let auth = AuthAPI(controlPlaneURL: settings.baseApiUrl, transport: transport)
+        let device = try await auth.deviceAuthorization()
+        try check(device.verificationUriComplete?.hasPrefix(device.verificationUri) == true, "the complete URL extends the plain one")
+        let pending = try await refusal(400, "a device code nobody approved") { try await auth.deviceToken(deviceCode: device.deviceCode) }
+        try check(pending.oauthError == "authorization_pending", "the poll finds it pending: \(pending)")
+        let refreshed = try await refusal(400, "a refresh token nobody holds") {
+            try await auth.refresh(
+                refreshToken: "walk-no-refresh-token", clientId: OAuthClientID.cli, sessionId: WALK.noSuchId, orgId: WALK.noSuchId)
+        }
+        try check(refreshed.oauthError == "invalid_grant", "the refresh is refused: \(refreshed)")
+        let exchanged = try await refusal(400, "a development credential for no login") {
+            try await auth.developmentCredential(accessToken: "walk-not-a-login")
+        }
+        try check(exchanged.oauthError == "invalid_grant", "the exchange is refused: \(exchanged)")
+        try await auth.revoke(sessionId: WALK.noSuchId, orgId: WALK.noSuchId, clientId: OAuthClientID.cli)
+        try await auth.oidcLogout(cpSession: "walk-no-session")
+
+        let docs = try await member.remotes.connectDocs()
+        try check(docs.endpoint == "/v1/remotes/connect", "the protocol names its route")
+        try check(docs.messageProtocol.remoteToCloud.contains { $0.frame == "attach_request" }, "the protocol documents attaching")
     }
 
     func step19Teardown() async throws {

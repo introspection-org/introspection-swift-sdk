@@ -32,8 +32,8 @@ extension Walk {
 
         // A tag share's grantor must hold the tag, so the file is shared to the owner member directly.
         let owners = try await owner.members.list().all()
-        let share = try await sa.shares.create(
-            ShareCreate(resourceType: .file, resourceId: outputFile.id, grantedMemberId: try #require(owners.first).id))
+        let ownerId = try #require(owners.first).id
+        let share = try await sa.shares.create(ShareCreate(resourceType: .file, resourceId: outputFile.id, grantedMemberId: ownerId))
         snap(try stable(share)) {
             """
             {
@@ -51,11 +51,14 @@ extension Walk {
             """
         }
         _ = try await sa.shares.get(share.id)
+        // `visible_from` is a conversation share's; a file share takes only a clear.
+        let cleared = try await sa.shares.update(share.id, ShareUpdate(visibleFrom: nil))
+        try check(cleared.id == share.id, "the share updates")
         let shares = try await sa.shares.list(ShareListParams(resourceType: .file)).all()
         try check(shares.contains { $0.id == share.id }, "the share is listed")
 
         try await annotations()
-        try await emptyReads()
+        try await emptyReads(decider: ownerId)
     }
 
     private func annotations() async throws {
@@ -80,7 +83,12 @@ extension Walk {
         }
         let params = EventListParams(eventName: .annotation, conversationId: conversationId)
         let events = try await sa.events.list(params).all()
-        if let event = events.first { _ = try await sa.events.get(event.id) }
+        // The local stack never makes an annotation visible, so its event is read where it landed and is a 404 where not.
+        if let event = events.first {
+            _ = try await sa.events.get(event.id)
+        } else {
+            try await expectNotFound({ try await sa.events.get(spanEventId(traceId, spanId, "labels")) }, "an unlanded annotation's event")
+        }
         let table = try await sa.events.listArrow(params)
         try check(!table.isEmpty, "the Arrow event list")
         // The facets count the whole project's annotations: the route takes no conversation filter.
@@ -88,15 +96,22 @@ extension Walk {
         _ = try await member.annotations.navigation(span)
     }
 
-    private func emptyReads() async throws {
-        // The AAuth surfaces, read empty.
+    private func emptyReads(decider: String) async throws {
+        // The AAuth surfaces, read empty: no agent has asked for anything, so there is no mission or approval to read or decide.
         let missions = try await sa.missions.list().firstPage()
         try check(missions.records.isEmpty, "no missions")
         let approvals = try await sa.approvals.list().firstPage()
         try check(approvals.records.isEmpty, "no approvals")
-        // `/v1/connections` is the apps a member connects through an app (Pipedream) connector; with none on the
-        // project every route answers 404.
-        try await expectNotFound({ try await member.connections.list().firstPage() }, "an app connection list")
+        try await expectNotFound({ try await sa.missions.get(WALK.noSuchId) }, "a mission")
+        try await expectNotFound({ try await sa.approvals.get(WALK.noSuchId) }, "an approval")
+        try await expectNotFound(
+            { try await sa.approvals.decide(WALK.noSuchId, ApprovalDecision(status: .denied, decidedBy: .member(decider))) }, "a decision")
+        // `/v1/connections` holds the project's own grant from step 8, with no member; an app connector is what a member
+        // connects through, which needs that provider's credentials, so with none on the project the other routes answer 404.
+        let held = try await member.connections.list(AppConnectionListParams(connectorId: connector.id)).all()
+        let grant = try #require(held.first { $0.owner == .project }, "the project's grant is listed")
+        try check(grant.memberId == nil && grant.connector?.slug == WALK.connectorName, "the grant is the project's, on the connector")
+        snap(try stable(grant))
         try await expectNotFound({ try await member.connections.get("019a1000-0000-7000-8000-0000000000c1") }, "an app connection")
         try await expectNotFound({ try await member.connections.delete("019a1000-0000-7000-8000-0000000000c1") }, "a deleted connection")
         try await expectNotFound({ try await member.connections.create(app: "gmail", runtime: WALK.runtimeSlug) }, "a new connection")
@@ -111,6 +126,11 @@ extension Walk {
         // What eval compose services run as, and the org's provider installs.
         let images = try await sa.images.list().firstPage()
         if let image = images.records.first { _ = try await sa.images.get(image.id) }
+        // A mirror needs no upload: recording it queues the copy, and a service image is removed whatever its build has reached.
+        let mirror = try await sa.images.create(ImageCreate(name: WALK.imageName, source: .mirror(reference: WALK.imageReference)))
+        let mirrored = try await sa.images.get(mirror.id)
+        try check(mirrored.name == WALK.imageName, "the mirror reads back")
+        try await sa.images.delete(mirror.id)
         _ = try await owner.integrations.list().firstPage()
         let judges = try await sa.judges.list(JudgeListParams(project: project.id, runtimeGroupId: runtime.runtimeGroupId)).firstPage()
         let greeting = try #require(judges.records.first { $0.name == "greeting" }, "the recipe's judge is synced")
