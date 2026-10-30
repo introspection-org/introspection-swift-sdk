@@ -138,10 +138,10 @@ public actor AuthClient {
     public nonisolated let configuration: Configuration
     /// The Control Plane auth endpoints this client uses.
     public nonisolated let api: AuthAPI
-    private let now: @Sendable () -> Date
+    let now: @Sendable () -> Date
 
     private var current: AuthSession?
-    private var generation: UInt64 = 0
+    private(set) var generation: UInt64 = 0
     private var storageWrite: Task<Void, any Error>?
     private var restored = false
     private var restoring: Task<Void, Never>?
@@ -330,7 +330,7 @@ public actor AuthClient {
 
     /// `expected` is the generation read before a sign-in request was sent; a sign-out or
     /// sign-in since then has superseded the response.
-    private func signedIn(_ token: SessionToken, ifCurrent expected: UInt64? = nil) async throws -> AuthSession {
+    func signedIn(_ token: SessionToken, ifCurrent expected: UInt64? = nil) async throws -> AuthSession {
         if let expected, generation != expected { throw CancellationError() }
         generation &+= 1
         let generation = self.generation

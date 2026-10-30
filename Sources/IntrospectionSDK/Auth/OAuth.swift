@@ -12,6 +12,8 @@ public enum OAuthGrantType {
     public static let jwtBearer = "urn:ietf:params:oauth:grant-type:jwt-bearer"
     /// Native email-code sign-in (proposed; see `AuthClient.verifyOTP`).
     public static let emailCode = "urn:introspection:params:oauth:grant-type:email_code"
+    /// Passkey sign-in (see `AuthClient.signInWithPasskey(challenge:assertion:)`).
+    public static let passkey = "urn:introspection:params:oauth:grant-type:passkey"
 }
 
 /// RFC 8693 token type URIs.

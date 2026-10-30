@@ -77,9 +77,10 @@ import Testing
         let transport = MockTransport { request, _ in
             request.url.path == "/v1/oauth/email/code" ? .response(.json("", status: 202)) : .response(.json(self.tokenJSON(access)))
         }
-        let auth = AuthClient(configuration: .init(
-            controlPlaneURL: URL(string: "https://cp.test")!, clientID: OAuthClientID.ark,
-            method: .emailCode, storage: InMemorySessionStorage(), transport: transport))
+        let auth = AuthClient(
+            configuration: .init(
+                controlPlaneURL: URL(string: "https://cp.test")!, clientID: OAuthClientID.ark,
+                method: .emailCode, storage: InMemorySessionStorage(), transport: transport))
 
         try await auth.signInWithOTP(email: "a@b.co")
         #expect(transport.requests[0].json == ["client_id": "ark", "email": "a@b.co"])
