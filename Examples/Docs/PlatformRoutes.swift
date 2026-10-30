@@ -4,7 +4,7 @@ import IntrospectionSDK
 /// The methods the walk reaches that no docs page shows yet.
 enum PlatformRoutes {
     /// A person's answer to what an agent asked for.
-    static func decideApproval(connection: DataPlaneConnection, approvalId: String, memberId: String) async throws -> Approval {
+    static func decideApproval(connection: any DataPlaneConnection, approvalId: String, memberId: String) async throws -> Approval {
         try await connection.approvals.decide(approvalId, ApprovalDecision(status: .denied, decidedBy: .member(memberId)))
     }
 
@@ -21,7 +21,7 @@ enum PlatformRoutes {
     }
 
     /// The frames a remote exchanges with the cloud at `/v1/remotes/connect`.
-    static func remoteProtocol(connection: DataPlaneConnection) async throws -> [String] {
+    static func remoteProtocol(connection: any DataPlaneConnection) async throws -> [String] {
         let docs = try await connection.remotes.connectDocs()
         return docs.messageProtocol.remoteToCloud.map(\.frame)
     }
