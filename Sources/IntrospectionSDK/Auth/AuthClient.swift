@@ -103,8 +103,9 @@ public actor AuthClient {
         public var controlPlaneURL: URL
         /// The Application's client id.
         public var clientID: String
-        /// The project the session is scoped to (slug or id).
-        public var project: String
+        /// The project the session is scoped to (slug or id). Email-code sign-in
+        /// needs one; without one, a hosted login takes the project the token names.
+        public var project: String?
         public var method: AuthMethod
         public var storage: any SessionStorage
         /// Storage key; change it to keep separate sessions per environment.
@@ -116,7 +117,7 @@ public actor AuthClient {
         public init(
             controlPlaneURL: URL,
             clientID: String,
-            project: String,
+            project: String? = nil,
             method: AuthMethod,
             storage: any SessionStorage = InMemorySessionStorage(),
             storageKey: String = "introspection.auth.session",
@@ -137,10 +138,10 @@ public actor AuthClient {
     public nonisolated let configuration: Configuration
     /// The Control Plane auth endpoints this client uses.
     public nonisolated let api: AuthAPI
-    private let now: @Sendable () -> Date
+    let now: @Sendable () -> Date
 
     private var current: AuthSession?
-    private var generation: UInt64 = 0
+    private(set) var generation: UInt64 = 0
     private var storageWrite: Task<Void, any Error>?
     private var restored = false
     private var restoring: Task<Void, Never>?
@@ -156,7 +157,8 @@ public actor AuthClient {
     // MARK: Sign-in
 
     /// Send a one-time code to `email`. The response is the same whether or not the
-    /// email has an account.
+    /// email has an account. With no `project`, a first-party client such as
+    /// ``OAuthClientID/ark`` signs in to the member's own organization.
     public func signInWithOTP(email: String) async throws {
         try requireMethod(.emailCode)
         try await api.http.empty(
@@ -173,18 +175,25 @@ public actor AuthClient {
     public func verifyOTP(email: String, token code: String) async throws -> AuthSession {
         try requireMethod(.emailCode)
         let generation = self.generation
+        var parameters = [("email", email), ("code", code)]
+        if let project = configuration.project {
+            parameters.append(("project", project))
+        }
         let response = try await api.token(
-            grantType: OAuthGrantType.emailCode, clientId: configuration.clientID,
-            parameters: [
-                ("email", email), ("code", code), ("project", configuration.project),
-            ])
+            grantType: OAuthGrantType.emailCode, clientId: configuration.clientID, parameters: parameters)
         return try await signedIn(SessionToken(oauth: response, receivedAt: now()), ifCurrent: generation)
     }
 
     /// Start a hosted login: open `request.url` in a browser session and pass the
-    /// callback URL to `completeHostedLogin(_:callbackURL:)`.
-    public nonisolated func hostedLoginRequest(redirectURI: String, scope: String = "*") -> HostedLoginRequest {
-        api.hostedLogin(clientID: configuration.clientID, redirectURI: redirectURI, project: configuration.project, scope: scope)
+    /// callback URL to `completeHostedLogin(_:callbackURL:)`. `loginHint` prefills the
+    /// email and routes a work domain to its organization's sign-in.
+    public nonisolated func hostedLoginRequest(
+        redirectURI: String, scope: String = "*", loginHint: String? = nil
+    ) -> HostedLoginRequest {
+        api.hostedLogin(
+            clientID: configuration.clientID, redirectURI: redirectURI, project: configuration.project, scope: scope,
+            loginHint: loginHint
+        )
     }
 
     /// Finish a hosted login from its callback URL. Throws `CancellationError` when a
@@ -321,7 +330,7 @@ public actor AuthClient {
 
     /// `expected` is the generation read before a sign-in request was sent; a sign-out or
     /// sign-in since then has superseded the response.
-    private func signedIn(_ token: SessionToken, ifCurrent expected: UInt64? = nil) async throws -> AuthSession {
+    func signedIn(_ token: SessionToken, ifCurrent expected: UInt64? = nil) async throws -> AuthSession {
         if let expected, generation != expected { throw CancellationError() }
         generation &+= 1
         let generation = self.generation
@@ -435,7 +444,7 @@ enum AuthMethodKind: String, CustomStringConvertible {
 struct EmailCodeRequest: Encodable {
     let clientId: String
     let email: String
-    let project: String
+    let project: String?
 
     enum CodingKeys: String, CodingKey {
         case clientId = "client_id"
