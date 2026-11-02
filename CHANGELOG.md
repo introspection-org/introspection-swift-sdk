@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.14.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.13.0...v0.14.0) (2026-11-02)
+
+
+### ⚠ BREAKING CHANGES
+
+* **walk:** AppConnection.memberId is String?; it is nil for a connection the project owns.
+
+### Features
+
+* **walk:** call every platform route through a typed SDK method ([#77](https://github.com/introspection-org/introspection-swift-sdk/issues/77)) ([d992c38](https://github.com/introspection-org/introspection-swift-sdk/commit/d992c382725f759c6edbb0ff1248a4795fb8446c))
+
 ## [0.13.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.12.0...v0.13.0) (2026-11-01)
 
 
