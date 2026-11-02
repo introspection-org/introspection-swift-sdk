@@ -49,6 +49,40 @@ public struct EndpointMetadata: Codable, Sendable, Hashable {
     }
 }
 
+/// Where an MCP endpoint's tool discovery stands.
+public struct McpCheckStatus: RawRepresentable, Codable, Sendable, Hashable, ExpressibleByStringLiteral {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+    public init(stringLiteral value: String) { self.rawValue = value }
+
+    public static let pending: McpCheckStatus = "pending"
+    public static let ok: McpCheckStatus = "ok"
+    public static let failed: McpCheckStatus = "failed"
+    public static let skipped: McpCheckStatus = "skipped"
+}
+
+/// The latest tool discovery of an MCP endpoint.
+public struct EndpointMcpCheck: Codable, Sendable, Hashable {
+    public var checkId: String
+    public var status: McpCheckStatus
+    public var requestedAt: Date
+    public var requestedByMemberId: String?
+    public var checkedAt: Date?
+    public var serverName: String?
+    public var tools: [String]?
+    public var errorMessage: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case status, tools
+        case checkId = "check_id"
+        case requestedAt = "requested_at"
+        case requestedByMemberId = "requested_by_member_id"
+        case checkedAt = "checked_at"
+        case serverName = "server_name"
+        case errorMessage = "error_message"
+    }
+}
+
 /// A project's egress endpoint: an upstream host the sandbox may call, with the headers injected on the way out.
 /// Header values carry credential references (`${NAME}`) unresolved; secrets never appear here.
 public struct Endpoint: Codable, Sendable, Hashable {
@@ -77,6 +111,8 @@ public struct Endpoint: Codable, Sendable, Hashable {
     public var createdByMemberId: String?
     public var createdAt: Date?
     public var updatedAt: Date?
+    /// The latest tool discovery, on an MCP endpoint that has had one.
+    public var mcpCheck: EndpointMcpCheck?
 
     public init(
         id: String, orgId: String? = nil, projectId: String? = nil, name: String? = nil, host: String? = nil, baseUrl: String? = nil,
@@ -126,7 +162,60 @@ public struct Endpoint: Codable, Sendable, Hashable {
         case createdByMemberId = "created_by_member_id"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+        case mcpCheck = "mcp_check"
     }
+}
+
+/// The body of `POST /v1/endpoints`. Header values may reference credentials as `${NAME}`. With a `verifyPath` the
+/// Control Plane calls the upstream first, and refuses the endpoint if the check fails.
+public struct EndpointCreate: Encodable, Sendable, Hashable {
+    /// Display label, not unique.
+    public var name: String
+    /// Hostname: no scheme, path or port.
+    public var host: String
+    public var headers: [String: String]
+    /// Defaults to ``EndpointKind/llm``.
+    public var kind: EndpointKind?
+    public var baseUrl: String?
+    public var metadata: EndpointMetadata?
+    public var assertionClaims: [String: String]?
+    public var runtimeId: String?
+    public var runtimeGroupId: String?
+    public var environment: RuntimeEnvironment?
+    public var verifyPath: String?
+    public var authorizedApplicationId: String?
+
+    // jscpd:ignore-start: memberwise init and CodingKeys of a public type; EndpointUpdate has the same fields, all optional
+    public init(
+        name: String, host: String, headers: [String: String] = [:], kind: EndpointKind? = nil, baseUrl: String? = nil,
+        metadata: EndpointMetadata? = nil, assertionClaims: [String: String]? = nil, runtimeId: String? = nil,
+        runtimeGroupId: String? = nil, environment: RuntimeEnvironment? = nil, verifyPath: String? = nil,
+        authorizedApplicationId: String? = nil
+    ) {
+        self.name = name
+        self.host = host
+        self.headers = headers
+        self.kind = kind
+        self.baseUrl = baseUrl
+        self.metadata = metadata
+        self.assertionClaims = assertionClaims
+        self.runtimeId = runtimeId
+        self.runtimeGroupId = runtimeGroupId
+        self.environment = environment
+        self.verifyPath = verifyPath
+        self.authorizedApplicationId = authorizedApplicationId
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case name, host, headers, kind, metadata, environment
+        case baseUrl = "base_url"
+        case assertionClaims = "assertion_claims"
+        case runtimeId = "runtime_id"
+        case runtimeGroupId = "runtime_group_id"
+        case verifyPath = "verify_path"
+        case authorizedApplicationId = "authorized_application_id"
+    }
+    // jscpd:ignore-end
 }
 
 /// The body of `PATCH /v1/endpoints/{id}`. Changing the host, base URL, headers or verify path of an endpoint
@@ -230,6 +319,11 @@ public struct EndpointsAPI: Sendable {
     /// Fetch one endpoint.
     public func get(_ id: String, project: String? = nil) async throws -> Endpoint {
         try await collection.get(id, project: project)
+    }
+
+    /// Create an endpoint.
+    public func create(_ body: EndpointCreate, project: String? = nil) async throws -> Endpoint {
+        try await collection.create(body, project: project)
     }
 
     /// Update an endpoint.

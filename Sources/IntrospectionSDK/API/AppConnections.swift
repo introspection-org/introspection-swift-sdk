@@ -1,11 +1,63 @@
 import Foundation
 
-/// One app a member connected for themself (`/v1/connections`). Named apart from the Control Plane's
+/// Who holds an app connection.
+public struct AppConnectionOwner: RawRepresentable, Codable, Sendable, Hashable, ExpressibleByStringLiteral {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+    public init(stringLiteral value: String) { self.rawValue = value }
+
+    public static let member: AppConnectionOwner = "member"
+    public static let project: AppConnectionOwner = "project"
+}
+
+/// The connector an app connection is on, as the project sees it.
+public struct AppConnectionConnector: Codable, Sendable, Hashable {
+    public var id: String
+    public var slug: String
+    public var provider: String
+    /// The peering the project reaches the connector through, if any.
+    public var peering: String?
+
+    public init(id: String, slug: String, provider: String, peering: String? = nil) {
+        self.id = id
+        self.slug = slug
+        self.provider = provider
+        self.peering = peering
+    }
+}
+
+/// Filters for `GET /v1/connections`.
+public struct AppConnectionListParams: Sendable, Hashable {
+    /// An administrator's view of another member's connections.
+    public var memberId: String?
+    public var app: String?
+    public var connectorId: String?
+    public var subjectType: ConnectionSubjectType?
+    public var peering: String?
+    public var limit: Int?
+    public var next: String?
+
+    public init(
+        memberId: String? = nil, app: String? = nil, connectorId: String? = nil, subjectType: ConnectionSubjectType? = nil,
+        peering: String? = nil, limit: Int? = nil, next: String? = nil
+    ) {
+        self.memberId = memberId
+        self.app = app
+        self.connectorId = connectorId
+        self.subjectType = subjectType
+        self.peering = peering
+        self.limit = limit
+        self.next = next
+    }
+}
+
+/// One connection a project's members can see (`/v1/connections`): an app a member connected for themself, or a grant
+/// the project holds. Named apart from the Control Plane's
 /// ``Connection``, which is a connector's authorized subject.
 public struct AppConnection: Codable, Sendable, Hashable {
     public var id: String
-    /// The member who connected the app.
-    public var memberId: String
+    /// The member who connected the app; nil for a connection the project owns.
+    public var memberId: String?
     /// Provider application slug, such as `gmail`.
     public var app: String
     /// The provider account the app is connected as, when the provider names one.
@@ -13,8 +65,16 @@ public struct AppConnection: Codable, Sendable, Hashable {
     /// False when the provider no longer accepts the connection; connect the app again.
     public var healthy: Bool
     public var createdAt: Date
+    public var owner: AppConnectionOwner?
+    public var connector: AppConnectionConnector?
+    public var subjectType: ConnectionSubjectType?
+    public var providerAccountId: String?
+    public var status: ConnectionStatus?
+    public var lastVerifiedAt: Date?
+    public var createdByMemberId: String?
+    public var updatedAt: Date?
 
-    public init(id: String, memberId: String, app: String, healthy: Bool, createdAt: Date, accountName: String? = nil) {
+    public init(id: String, memberId: String?, app: String, healthy: Bool, createdAt: Date, accountName: String? = nil) {
         self.id = id
         self.app = app
         self.memberId = memberId
@@ -24,10 +84,15 @@ public struct AppConnection: Codable, Sendable, Hashable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, app, healthy
+        case id, app, healthy, owner, connector, status
         case memberId = "member_id"
         case accountName = "account_name"
         case createdAt = "created_at"
+        case subjectType = "subject_type"
+        case providerAccountId = "provider_account_id"
+        case lastVerifiedAt = "last_verified_at"
+        case createdByMemberId = "created_by_member_id"
+        case updatedAt = "updated_at"
     }
 }
 
@@ -81,11 +146,19 @@ public struct AppConnectionsAPI: Sendable {
     public func list(
         memberId: String? = nil, app: String? = nil, limit: Int? = nil, next: String? = nil
     ) -> Paginator<AppConnection> {
+        list(AppConnectionListParams(memberId: memberId, app: app, limit: limit, next: next))
+    }
+
+    /// List connections matching `params`.
+    public func list(_ params: AppConnectionListParams) -> Paginator<AppConnection> {
         var query = Query()
-        query.add("member_id", memberId)
-        query.add("app", app)
-        query.add("limit", limit)
-        return http.paginate("/v1/connections", query: query, start: next)
+        query.add("member_id", params.memberId)
+        query.add("app", params.app)
+        query.add("connector_id", params.connectorId)
+        query.add("subject_type", params.subjectType)
+        query.add("peering", params.peering)
+        query.add("limit", params.limit)
+        return http.paginate("/v1/connections", query: query, start: params.next)
     }
 
     /// A connect page for one app, for the caller themself.

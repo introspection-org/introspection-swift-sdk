@@ -546,6 +546,9 @@ public struct Connection: Codable, Sendable, Hashable {
     public var tokenExpiresAt: Date?
     public var createdAt: Date?
     public var updatedAt: Date?
+    public var projectId: String?
+    public var providerAccountName: String?
+    public var lastVerifiedAt: Date?
 
     public init(
         id: String, orgId: String? = nil, connectorId: String? = nil, memberId: String? = nil,
@@ -585,6 +588,9 @@ public struct Connection: Codable, Sendable, Hashable {
         case tokenExpiresAt = "token_expires_at"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+        case projectId = "project_id"
+        case providerAccountName = "provider_account_name"
+        case lastVerifiedAt = "last_verified_at"
     }
 }
 

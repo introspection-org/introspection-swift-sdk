@@ -159,6 +159,74 @@ public struct Approval: Codable, Sendable, Hashable {
     }
 }
 
+/// The approver as the customer knows them: the identity a runner takes, less a conversation. Set one of the two.
+public struct ApproverIdentity: Encodable, Sendable, Hashable {
+    public var userId: String?
+    public var anonymousId: String?
+
+    public init(userId: String? = nil, anonymousId: String? = nil) {
+        self.userId = userId
+        self.anonymousId = anonymousId
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case userId = "user_id"
+        case anonymousId = "anonymous_id"
+    }
+}
+
+/// Who decides an approval: a project member or the customer's own identity.
+public enum ApprovalDecider: Encodable, Sendable, Hashable {
+    case member(String)
+    case identity(ApproverIdentity)
+
+    private enum CodingKeys: String, CodingKey {
+        case identity
+        case memberId = "member_id"
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case let .member(id): try container.encode(id, forKey: .memberId)
+        case let .identity(identity): try container.encode(identity, forKey: .identity)
+        }
+    }
+}
+
+/// A budget granted by an approval.
+public struct ApprovalBudget: Encodable, Sendable, Hashable {
+    public var amount: Int
+    public var unit: String
+    public var decimals: Int
+
+    public init(amount: Int, unit: String, decimals: Int) {
+        self.amount = amount
+        self.unit = unit
+        self.decimals = decimals
+    }
+}
+
+/// Body of `PATCH /v1/aauth/approvals/{id}`.
+public struct ApprovalDecision: Encodable, Sendable, Hashable {
+    /// ``ApprovalStatus/approved`` or ``ApprovalStatus/denied``.
+    public var status: ApprovalStatus
+    public var decidedBy: ApprovalDecider
+    /// Grants less than the agent asked for.
+    public var budget: ApprovalBudget?
+
+    public init(status: ApprovalStatus, decidedBy: ApprovalDecider, budget: ApprovalBudget? = nil) {
+        self.status = status
+        self.decidedBy = decidedBy
+        self.budget = budget
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case status, budget
+        case decidedBy = "decided_by"
+    }
+}
+
 /// Filters for `GET /v1/aauth/missions`.
 public struct MissionListParams: Sendable, Hashable {
     /// Only missions for this person.
@@ -221,7 +289,7 @@ public struct MissionsAPI: Sendable {
     }
 }
 
-/// Read-only AAuth approvals (`/v1/aauth/approvals`).
+/// AAuth approvals (`/v1/aauth/approvals`).
 public struct ApprovalsAPI: Sendable {
     let http: HTTPClient
 
@@ -242,6 +310,11 @@ public struct ApprovalsAPI: Sendable {
     /// Fetch one approval.
     public func get(_ id: String) async throws -> Approval {
         try await http.json("GET", "/v1/aauth/approvals/\(pathSegment(id))")
+    }
+
+    /// Record the approver's answer and return the decided approval; approving does what the agent asked.
+    public func decide(_ id: String, _ decision: ApprovalDecision) async throws -> Approval {
+        try await http.json("PATCH", "/v1/aauth/approvals/\(pathSegment(id))", body: .encode(decision))
     }
 }
 

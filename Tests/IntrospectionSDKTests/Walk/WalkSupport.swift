@@ -39,6 +39,15 @@ enum WALK {
     static let groupTag = "group:platform"
     static let adminName = "Drew"
     static let personaFileName = "walk-avery-notes.txt"
+    static let idpIssuer = "https://idp.walk.example.com"
+    static let registeredToken = "walk-registered-token-0001"
+    static let apiEndpointName = "walk-api"
+    static let apiEndpointHost = "walk-api.example.com"
+    static let imageName = "walk/busybox"
+    /// Digest-pinned, as a mirror must be; the copy may fail on a stack with no egress, which the walk does not wait for.
+    static let imageReference = "docker.io/library/busybox@sha256:9ae97d36d26566ff84e8893c64a6dc4fe8ca6d1144bf5b87b2b85a32def253c7"
+    /// An id that names nothing.
+    static let noSuchId = "00000000-0000-0000-0000-000000000000"
     static let echoMessage = "hello from the public MCP"
     static let echoResult = "Echo: hello from the public MCP"
     static let instruction =
@@ -330,6 +339,18 @@ func isNotFound(_ operation: () async throws -> some Any) async throws -> Bool {
     } catch let error as IntrospectionError where error.kind == .notFound {
         return true
     }
+}
+
+/// The refusal `operation` must end in: a request the walk cannot make succeed still reaches the server.
+@discardableResult
+func refusal(_ status: Int, _ what: String, _ operation: () async throws -> some Any) async throws -> IntrospectionError {
+    do {
+        _ = try await operation()
+    } catch let error as IntrospectionError {
+        try check(error.status == status, "\(what): expected \(status), got \(error.status): \(error)")
+        return error
+    }
+    throw WalkError("\(what): expected \(status), but it succeeded")
 }
 
 /// Run `operation`, treating a 404 as done: a teardown removing what may already be gone.

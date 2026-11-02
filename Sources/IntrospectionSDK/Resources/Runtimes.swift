@@ -143,6 +143,17 @@ public struct RuntimeMcpRequirement: Codable, Sendable, Hashable {
 }
 
 /// One runtime version: a recipe pin inside a runtime group, served to one or more environments.
+/// Who a runtime group belongs to.
+public struct RuntimeGroupType: RawRepresentable, Codable, Sendable, Hashable, ExpressibleByStringLiteral {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+    public init(stringLiteral value: String) { self.rawValue = value }
+
+    /// A first-party runtime Introspection owns.
+    public static let managed: RuntimeGroupType = "managed"
+    public static let custom: RuntimeGroupType = "custom"
+}
+
 public struct Runtime: Codable, Sendable, Hashable {
     public var id: String
     public var orgId: String?
@@ -173,6 +184,19 @@ public struct Runtime: Codable, Sendable, Hashable {
     public var mcpRequirements: [RuntimeMcpRequirement]?
     public var createdAt: Date?
     public var updatedAt: Date?
+    public var runtimeGroupType: RuntimeGroupType?
+    /// The template the runtime group was created from.
+    public var templateRef: String?
+    /// The runtime peering this group's sessions take their configuration from.
+    public var peeringId: String?
+    /// The recipe release this image version carries, such as `1.4.0`.
+    public var imageVersion: String?
+    /// The recipe commit this release's image carries.
+    public var imageRevision: String?
+    /// That commit's subject line.
+    public var imageCommitSubject: String?
+    /// The recipe's GitHub repository (`owner/name`).
+    public var imageRepository: String?
 
     public init(
         id: String, orgId: String? = nil, projectId: String? = nil, runtimeGroupId: String? = nil,
@@ -211,6 +235,13 @@ public struct Runtime: Codable, Sendable, Hashable {
     }
 
     private enum CodingKeys: String, CodingKey {
+        case runtimeGroupType = "runtime_group_type"
+        case templateRef = "template_ref"
+        case peeringId = "peering_id"
+        case imageVersion = "image_version"
+        case imageRevision = "image_revision"
+        case imageCommitSubject = "image_commit_subject"
+        case imageRepository = "image_repository"
         case id, name, slug, description, kind, environments
         case orgId = "org_id"
         case projectId = "project_id"

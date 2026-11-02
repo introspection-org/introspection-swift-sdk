@@ -94,6 +94,9 @@ the Control Plane.
 
 - ``AppConnectionsAPI``
 - ``AppConnection``
+- ``AppConnectionListParams``
+- ``AppConnectionOwner``
+- ``AppConnectionConnector``
 - ``ConnectPage``
 
 ### Custom events
@@ -145,6 +148,9 @@ Each needs an org credential (a member session or access token) carrying the res
 
 - ``ApiKeysAPI``
 - ``ApplicationsAPI``
+- ``EndpointsAPI``
+- ``EndpointCreate``
+- ``RemotesAPI``
 - ``ApplicationIdpsAPI``
 - ``ApplicationSecretsAPI``
 - ``ApplicationKeysAPI``
