@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.13.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.12.0...v0.13.0) (2026-11-01)
+
+
+### ⚠ BREAKING CHANGES
+
+* `AuthClient.Configuration.project` is `String?`.
+
+### Features
+
+* sign in to a member's own organization: email code without a project, passkeys, login hint ([#76](https://github.com/introspection-org/introspection-swift-sdk/issues/76)) ([7182d07](https://github.com/introspection-org/introspection-swift-sdk/commit/7182d07c97b01fc52789b90e71d5d021e3251706))
+
 ## [0.12.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.11.1...v0.12.0) (2026-10-28)
 
 
