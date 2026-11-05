@@ -64,6 +64,19 @@ private let integrationJSON = #"""
      "data": {"installation": 7}, "metadata": null}
     """#
 
+private let integrationAccessTokenJSON = #"""
+    {"token": "ghs_live_token", "expires_at": "2026-11-05T11:02:00Z", "type": "github",
+     "permissions": {"metadata": "read"}}
+    """#
+
+private let integrationRepositoriesJSON = #"""
+    {"type": "github", "records": [
+     {"id": 1, "name": "recipes", "full_name": "acme/recipes", "html_url": "https://github.com/acme/recipes",
+      "default_branch": "main", "private": true, "description": null, "pushed_at": "2026-11-01T00:00:00Z"},
+     {"id": 2, "name": "site", "full_name": "acme/site", "html_url": "https://github.com/acme/site",
+      "default_branch": "trunk", "private": false, "description": "Marketing site", "pushed_at": null}]}
+    """#
+
 private let judgeJSON = #"""
     {"id": "judge-1", "org_id": "o", "project_id": "p", "runtime_group_id": "g-1", "created_at": "\#(now)",
      "updated_at": "\#(now)", "name": "helpful", "description": null, "enabled": true, "sample_rate": 0.25,
@@ -323,6 +336,90 @@ private let judgeJSON = #"""
             ])
         try await integrations.delete("int-1")
         #expect(transport.last?.request.method == "DELETE")
+    }
+
+    @Test func integrationAccessTokensSendTheirPermissionsAndNeverPrintTheToken() async throws {
+        let transport = MockTransport { _, _ in .response(.json(integrationAccessTokenJSON, status: 201)) }
+        let integrations = makeClient(transport).integrations
+
+        let minted = try await integrations.createAccessToken("int/1", .github(permissions: [.metadata: .read]))
+        #expect(transport.last?.request.method == "POST")
+        #expect(transport.last?.request.url.absoluteString.hasSuffix("/v1/integrations/int%2F1/access-token") == true)
+        #expect(transport.last?.query == [:])
+        #expect(transport.last?.json == ["type": "github", "permissions": ["metadata": "read"]])
+
+        #expect(minted.token.plaintext == "ghs_live_token")
+        #expect(minted.expiresAt == ISO8601.parse("2026-11-05T11:02:00Z"))
+        #expect(minted.integrationType == .github)
+        #expect(minted.permissions == ["metadata": .read])
+
+        #expect(!"\(minted)".contains("ghs_live_token"))
+        #expect(!String(reflecting: minted).contains("ghs_live_token"))
+        var dumped = ""
+        dump(minted, to: &dumped)
+        #expect(!dumped.contains("ghs_live_token"))
+    }
+
+    @Test func anIntegrationAccessTokenBeyondTheCapIsForbiddenWithItsCode() async throws {
+        let transport = MockTransport { _, _ in
+            .response(
+                .json(
+                    #"""
+                    {"detail": {"code": "integration_token_cap_exceeded",
+                     "message": "GitHub tokens may carry only metadata: read", "allowed": {"metadata": "read"}}}
+                    """#, status: 403))
+        }
+        let error = try await #require(throws: IntrospectionError.self) {
+            try await makeClient(transport).integrations.createAccessToken("int-1", .github(permissions: ["contents": .write]))
+        }
+        #expect(error.kind == .forbidden)
+        #expect(error.status == 403)
+        #expect(error.code == "integration_token_cap_exceeded")
+        #expect(error.message == "GitHub tokens may carry only metadata: read")
+        #expect(error.body?["detail"]?["allowed"] == ["metadata": "read"])
+        #expect(transport.last?.json == ["type": "github", "permissions": ["contents": "write"]])
+    }
+
+    @Test func integrationRepositoriesDecodeByTheirType() async throws {
+        let transport = MockTransport { _, _ in .response(.json(integrationRepositoriesJSON)) }
+        let listed = try await makeClient(transport).integrations.repositories("int/1")
+        #expect(transport.last?.request.method == "GET")
+        #expect(transport.last?.request.url.absoluteString.hasSuffix("/v1/integrations/int%2F1/repositories") == true)
+        #expect(transport.last?.query == [:])
+
+        #expect(listed.integrationType == .github)
+        guard case let .github(repositories) = listed else {
+            Issue.record("expected GitHub repositories, got \(listed)")
+            return
+        }
+        #expect(repositories.count == 2)
+        let recipes = try #require(repositories.first)
+        #expect(recipes.id == 1)
+        #expect(recipes.fullName == "acme/recipes")
+        #expect(recipes.htmlUrl == "https://github.com/acme/recipes")
+        #expect(recipes.defaultBranch == "main")
+        #expect(recipes.isPrivate)
+        #expect(recipes.description == nil)
+        #expect(recipes.pushedAt == ISO8601.parse("2026-11-01T00:00:00Z"))
+        #expect(repositories.last?.isPrivate == false)
+        #expect(repositories.last?.description == "Marketing site")
+        #expect(repositories.last?.pushedAt == nil)
+
+        let unknown = try JSONCoding.decoder.decode(
+            IntegrationRepositories.self, from: Data(#"{"type": "gitlab", "records": [{"id": "p-1"}]}"#.utf8))
+        #expect(unknown == .unknown("gitlab"))
+    }
+
+    @Test func repositoriesOfANonGitHubIntegrationAreAValidationError() async throws {
+        let transport = MockTransport { _, _ in
+            .response(.json(#"{"detail": "repositories are listed for GitHub integrations only"}"#, status: 400))
+        }
+        let error = try await #require(throws: IntrospectionError.self) {
+            try await makeClient(transport).integrations.repositories("int-1")
+        }
+        #expect(error.kind == .validation)
+        #expect(error.status == 400)
+        #expect(error.message == "repositories are listed for GitHub integrations only")
     }
 
     @Test func judgesUpdateOnlyTheirOperationalState() async throws {

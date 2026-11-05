@@ -157,6 +157,10 @@ Each needs an org credential (a member session or access token) carrying the res
 - ``CredentialsAPI``
 - ``VariablesAPI``
 - ``IntegrationsAPI``
+- ``IntegrationAccessTokenRequest``
+- ``IntegrationAccessToken``
+- ``IntegrationRepositories``
+- ``GitHubInstallationRepository``
 - ``JudgesAPI``
 - ``RuntimePeering``
 - ``Secret``
