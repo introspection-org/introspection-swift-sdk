@@ -380,7 +380,7 @@ extension Walk {
                 ],
                 "status" : "valid",
                 "validator_name" : "introspection-recipe-check",
-                "validator_version" : "0.12.0"
+                "validator_version" : "[version]"
               }
             }
             """
