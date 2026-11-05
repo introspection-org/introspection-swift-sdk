@@ -231,8 +231,8 @@ private func annotationValidationError(_ message: String, code: String) -> Intro
     IntrospectionError(kind: .validation, message: message, status: 422, code: code)
 }
 
-/// Mint a time-ordered UUIDv7 for an annotation event.
-func makeAnnotationEventId(now: Date = Date()) -> String {
+/// Mint a time-ordered UUIDv7 (annotation event ids, issue request ids).
+func makeUUIDv7(now: Date = Date()) -> String {
     var generator = SystemRandomNumberGenerator()
     var bytes = (0..<16).map { _ in UInt8.random(in: 0...255, using: &generator) }
     let millis = UInt64(max(0, now.timeIntervalSince1970 * 1000))
@@ -379,7 +379,7 @@ public struct AnnotationsAPI: Sendable {
         if let emails = mutation.reviewerEmails {
             assignees = emails.isEmpty ? [] : try await resolveReviewerIds(emails)
         }
-        let id = eventId ?? makeAnnotationEventId()
+        let id = eventId ?? makeUUIDv7()
         let body = AnnotationCreateBody(
             traceId: target.traceId, spanId: target.spanId, eventId: id,
             labels: mutation.labels, comment: mutation.comment, assigneeMemberIds: assignees

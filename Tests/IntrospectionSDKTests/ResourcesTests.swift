@@ -663,7 +663,7 @@ private func member(_ id: String, _ email: String?, deactivated: Bool = false) -
     }
 
     @Test func annotationEventIdIsUUIDv7() {
-        let id = makeAnnotationEventId(now: Date(timeIntervalSince1970: 1_700_000_000))
+        let id = makeUUIDv7(now: Date(timeIntervalSince1970: 1_700_000_000))
         let parts = id.split(separator: "-")
         #expect(parts.map(\.count) == [8, 4, 4, 4, 12])
         #expect(parts[2].hasPrefix("7"))
