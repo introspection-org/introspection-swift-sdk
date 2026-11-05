@@ -100,7 +100,7 @@ private func issueTransport(status: Int = 200) -> MockTransport {
         let params = IssueListParams(
             limit: 1, status: [.open, .waiting], owner: [.project, .me], assignedToMe: true, hasOpenRequests: false,
             taskStatus: [.running, .awaitingUser], excludeTaskStatus: [.completed, .cancelled], displayIndex: 42,
-            tag: "customer:acme", metadata: ["source": "slack", "env": "prod"], search: "checkout", includeTotal: true
+            tag: "customer:acme", metadata: ["source": "slack", "env": "prod"], includeTotal: true
         )
         let api = makeClient(transport).issues
         let page = try await api.list(params).firstPage()
@@ -116,7 +116,7 @@ private func issueTransport(status: Int = 200) -> MockTransport {
                 "limit": ["1"], "status": ["open", "waiting"], "owner": ["project", "me"], "assigned_to_me": ["true"],
                 "has_open_requests": ["false"], "task_status": ["running", "awaiting_user"],
                 "exclude_task_status": ["completed", "cancelled"], "display_index": ["42"], "tag": ["customer:acme"],
-                "metadata": ["env:prod", "source:slack"], "search": ["checkout"], "include_total": ["true"],
+                "metadata": ["env:prod", "source:slack"], "include_total": ["true"],
             ])
         #expect(transport.requests[2].query["next"] == ["cur-2"])
         #expect(transport.requests[2].query["status"] == ["open", "waiting"])

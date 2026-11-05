@@ -366,8 +366,6 @@ public struct IssueListParams: Sendable, Hashable {
     public var tag: String?
     /// Issues whose metadata holds every pair (at most 16 keys). Sent as repeated `metadata=key:value`.
     public var metadata: [String: String]?
-    /// Case-insensitive substring of the title.
-    public var search: String?
     /// Include `totalCount` for the filtered set.
     public var includeTotal: Bool?
 
@@ -383,7 +381,6 @@ public struct IssueListParams: Sendable, Hashable {
         displayIndex: Int? = nil,
         tag: String? = nil,
         metadata: [String: String]? = nil,
-        search: String? = nil,
         includeTotal: Bool? = nil
     ) {
         // jscpd:ignore-start: memberwise init of a public type; the assignments cannot be shared
@@ -398,7 +395,6 @@ public struct IssueListParams: Sendable, Hashable {
         self.displayIndex = displayIndex
         self.tag = tag
         self.metadata = metadata
-        self.search = search
         self.includeTotal = includeTotal
         // jscpd:ignore-end
     }
@@ -415,7 +411,6 @@ public struct IssueListParams: Sendable, Hashable {
         query.add("display_index", displayIndex)
         query.add("tag", tag)
         query.add("metadata", metadata.map { pairs in pairs.keys.sorted().compactMap { key in pairs[key].map { "\(key):\($0)" } } })
-        query.add("search", search)
         query.add("include_total", includeTotal)
         return query
     }
