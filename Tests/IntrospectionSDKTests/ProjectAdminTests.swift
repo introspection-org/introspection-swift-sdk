@@ -64,6 +64,11 @@ private let integrationJSON = #"""
      "data": {"installation": 7}, "metadata": null}
     """#
 
+private let integrationAccessTokenJSON = #"""
+    {"token": "ghs_live_token", "expires_at": "2026-11-05T11:02:00Z", "type": "github",
+     "permissions": {"metadata": "read"}}
+    """#
+
 private let judgeJSON = #"""
     {"id": "judge-1", "org_id": "o", "project_id": "p", "runtime_group_id": "g-1", "created_at": "\#(now)",
      "updated_at": "\#(now)", "name": "helpful", "description": null, "enabled": true, "sample_rate": 0.25,
@@ -323,6 +328,48 @@ private let judgeJSON = #"""
             ])
         try await integrations.delete("int-1")
         #expect(transport.last?.request.method == "DELETE")
+    }
+
+    @Test func integrationAccessTokensSendTheirPermissionsAndNeverPrintTheToken() async throws {
+        let transport = MockTransport { _, _ in .response(.json(integrationAccessTokenJSON, status: 201)) }
+        let integrations = makeClient(transport).integrations
+
+        let minted = try await integrations.createAccessToken("int/1", .github(permissions: [.metadata: .read]))
+        #expect(transport.last?.request.method == "POST")
+        #expect(transport.last?.request.url.absoluteString.hasSuffix("/v1/integrations/int%2F1/access-token") == true)
+        #expect(transport.last?.query == [:])
+        #expect(transport.last?.json == ["type": "github", "permissions": ["metadata": "read"]])
+
+        #expect(minted.token.plaintext == "ghs_live_token")
+        #expect(minted.expiresAt == ISO8601.parse("2026-11-05T11:02:00Z"))
+        #expect(minted.integrationType == .github)
+        #expect(minted.permissions == ["metadata": .read])
+
+        #expect(!"\(minted)".contains("ghs_live_token"))
+        #expect(!String(reflecting: minted).contains("ghs_live_token"))
+        var dumped = ""
+        dump(minted, to: &dumped)
+        #expect(!dumped.contains("ghs_live_token"))
+    }
+
+    @Test func anIntegrationAccessTokenBeyondTheCapIsForbiddenWithItsCode() async throws {
+        let transport = MockTransport { _, _ in
+            .response(
+                .json(
+                    #"""
+                    {"detail": {"code": "integration_token_cap_exceeded",
+                     "message": "GitHub tokens may carry only metadata: read", "allowed": {"metadata": "read"}}}
+                    """#, status: 403))
+        }
+        let error = try await #require(throws: IntrospectionError.self) {
+            try await makeClient(transport).integrations.createAccessToken("int-1", .github(permissions: ["contents": .write]))
+        }
+        #expect(error.kind == .forbidden)
+        #expect(error.status == 403)
+        #expect(error.code == "integration_token_cap_exceeded")
+        #expect(error.message == "GitHub tokens may carry only metadata: read")
+        #expect(error.body?["detail"]?["allowed"] == ["metadata": "read"])
+        #expect(transport.last?.json == ["type": "github", "permissions": ["contents": "write"]])
     }
 
     @Test func judgesUpdateOnlyTheirOperationalState() async throws {

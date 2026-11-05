@@ -123,6 +123,82 @@ public struct IntegrationUpdate: Encodable, Sendable, Hashable {
     }
 }
 
+/// A level of access to one provider permission.
+public struct IntegrationPermissionLevel: RawRepresentable, Codable, Sendable, Hashable, ExpressibleByStringLiteral {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+    public init(stringLiteral value: String) { self.rawValue = value }
+
+    public static let read: IntegrationPermissionLevel = "read"
+    public static let write: IntegrationPermissionLevel = "write"
+}
+
+/// A GitHub App permission name, as GitHub spells it.
+public struct GitHubPermission: RawRepresentable, Codable, Sendable, Hashable, ExpressibleByStringLiteral {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+    public init(stringLiteral value: String) { self.rawValue = value }
+
+    public static let metadata: GitHubPermission = "metadata"
+}
+
+/// Body of `POST /v1/integrations/{id}/access-token`, one case per provider. The server caps what it mints
+/// (GitHub allows only `metadata: read` today) and answers 403 `integration_token_cap_exceeded` beyond that.
+public enum IntegrationAccessTokenRequest: Encodable, Sendable, Hashable {
+    /// A GitHub App installation token narrowed to `permissions`.
+    case github(permissions: [GitHubPermission: IntegrationPermissionLevel])
+
+    /// The wire's `type`.
+    public var integrationType: IntegrationType {
+        switch self {
+        case .github: .github
+        }
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case type, permissions
+    }
+
+    /// Encode as `{"type": ..., "permissions": {name: level}}`.
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(integrationType, forKey: .type)
+        switch self {
+        case let .github(permissions):
+            let byName = Dictionary(uniqueKeysWithValues: permissions.map { ($0.key.rawValue, $0.value) })
+            try container.encode(byName, forKey: .permissions)
+        }
+    }
+}
+
+/// A short-lived provider token (at most an hour) minted from an integration. The server never stores it;
+/// `token` is a ``Secret``, so printing or dumping this value never shows it.
+public struct IntegrationAccessToken: Codable, Sendable, Hashable {
+    /// The provider token; read it with ``Secret/plaintext``.
+    public var token: Secret
+    public var expiresAt: Date
+    /// The wire's `type`.
+    public var integrationType: IntegrationType?
+    /// The permissions the token carries, by the provider's permission name.
+    public var permissions: [String: IntegrationPermissionLevel]?
+
+    public init(
+        token: Secret, expiresAt: Date, integrationType: IntegrationType? = nil,
+        permissions: [String: IntegrationPermissionLevel]? = nil
+    ) {
+        self.token = token
+        self.expiresAt = expiresAt
+        self.integrationType = integrationType
+        self.permissions = permissions
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case token, permissions
+        case expiresAt = "expires_at"
+        case integrationType = "type"
+    }
+}
+
 /// The org's provider installs (`/v1/integrations`). Org-wide, so there is no project selector. Needs an org
 /// credential carrying `integrations:*`.
 public struct IntegrationsAPI: Sendable {
@@ -154,6 +230,14 @@ public struct IntegrationsAPI: Sendable {
     /// Delete an integration.
     public func delete(_ integrationId: String) async throws {
         try await collection.delete(integrationId, project: nil)
+    }
+
+    /// Mint a short-lived provider token from an active integration. Needs `integrations:token`; an inactive or
+    /// expired integration answers 409.
+    public func createAccessToken(
+        _ integrationId: String, _ body: IntegrationAccessTokenRequest
+    ) async throws -> IntegrationAccessToken {
+        try await collection.child(integrationId, "access-token").create(body, project: nil)
     }
 }
 

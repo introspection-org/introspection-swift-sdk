@@ -86,8 +86,11 @@ public struct IntrospectionError: Error, Sendable, CustomStringConvertible {
         var message = "HTTP \(status)"
         var code: String?
         if let decoded {
-            if let detail = renderDetail(decoded["detail"]) { message = detail }
-            code = decoded["code"]?.stringValue
+            let detail = decoded["detail"]
+            if let text = renderDetail(detail) { message = text }
+            // Some routes nest the envelope: `detail: {code, message, ...}`.
+            code = decoded["code"]?.stringValue ?? detail?["code"]?.stringValue
+            if message == "HTTP \(status)", let text = detail?["message"]?.stringValue { message = text }
             if message == "HTTP \(status)", let text = decoded["message"]?.stringValue { message = text }
             if message == "HTTP \(status)", let text = decoded["error"]?.stringValue { message = text }
         } else if let text = String(data: body, encoding: .utf8), !text.isEmpty {
