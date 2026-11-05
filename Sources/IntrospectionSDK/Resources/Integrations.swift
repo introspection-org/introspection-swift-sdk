@@ -199,6 +199,82 @@ public struct IntegrationAccessToken: Codable, Sendable, Hashable {
     }
 }
 
+/// A repository a GitHub App installation can reach.
+public struct GitHubInstallationRepository: Codable, Sendable, Hashable {
+    /// GitHub's numeric repository id.
+    public var id: Int
+    public var name: String
+    /// `owner/name`.
+    public var fullName: String
+    public var htmlUrl: String
+    public var defaultBranch: String
+    /// The wire's `private`.
+    public var isPrivate: Bool
+    public var description: String?
+    public var pushedAt: Date?
+
+    public init(
+        id: Int, name: String, fullName: String, htmlUrl: String, defaultBranch: String, isPrivate: Bool,
+        description: String? = nil, pushedAt: Date? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.fullName = fullName
+        self.htmlUrl = htmlUrl
+        self.defaultBranch = defaultBranch
+        self.isPrivate = isPrivate
+        self.description = description
+        self.pushedAt = pushedAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, description
+        case fullName = "full_name"
+        case htmlUrl = "html_url"
+        case defaultBranch = "default_branch"
+        case isPrivate = "private"
+        case pushedAt = "pushed_at"
+    }
+}
+
+/// Response of `GET /v1/integrations/{id}/repositories`: every repository the install can reach, in one
+/// response, decoded by the provider's `type`.
+public enum IntegrationRepositories: Codable, Sendable, Hashable {
+    case github([GitHubInstallationRepository])
+    /// A provider this SDK does not know yet; its records are not decoded.
+    case unknown(IntegrationType)
+
+    /// The wire's `type`.
+    public var integrationType: IntegrationType {
+        switch self {
+        case .github: .github
+        case let .unknown(type): type
+        }
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case type, records
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let type = try container.decode(IntegrationType.self, forKey: .type)
+        switch type {
+        case .github: self = .github(try container.decode([GitHubInstallationRepository].self, forKey: .records))
+        default: self = .unknown(type)
+        }
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(integrationType, forKey: .type)
+        switch self {
+        case let .github(records): try container.encode(records, forKey: .records)
+        case .unknown: try container.encode([JSONValue](), forKey: .records)
+        }
+    }
+}
+
 /// The org's provider installs (`/v1/integrations`). Org-wide, so there is no project selector. Needs an org
 /// credential carrying `integrations:*`.
 public struct IntegrationsAPI: Sendable {
@@ -238,6 +314,12 @@ public struct IntegrationsAPI: Sendable {
         _ integrationId: String, _ body: IntegrationAccessTokenRequest
     ) async throws -> IntegrationAccessToken {
         try await collection.child(integrationId, "access-token").create(body, project: nil)
+    }
+
+    /// List the repositories a GitHub integration's install can reach, read with the platform's own credential.
+    /// A non-GitHub integration answers 400.
+    public func repositories(_ integrationId: String) async throws -> IntegrationRepositories {
+        try await collection.http.json("GET", "\(collection.itemPath(integrationId))/repositories")
     }
 }
 
