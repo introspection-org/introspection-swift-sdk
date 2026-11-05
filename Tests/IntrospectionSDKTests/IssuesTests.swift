@@ -129,7 +129,7 @@ private func issueTransport(status: Int = 200) -> MockTransport {
         #expect(transport.last?.query == [:])
     }
 
-    @Test func createEncodesTheBodyAndIdempotencyKey() async throws {
+    @Test func createEncodesTheBody() async throws {
         let transport = issueTransport(status: 201)
         let api = makeClient(transport).issues
         let created = try await api.create(
@@ -138,14 +138,12 @@ private func issueTransport(status: Int = 200) -> MockTransport {
                 files: [IssueFile(fileId: "f-1", sourceEventIds: ["e-1"])], links: [IssueLink(url: "https://example.com/pr/7")],
                 events: [IssueEventReference(eventId: "e-2")], spans: [IssueSpanReference(traceId: "t", spanId: "s")],
                 tags: ["customer:acme"], metadata: ["count": 3, "triaged": false]
-            ),
-            idempotencyKey: "create-1"
-        )
+            ))
         #expect(created.revision == 3)
         let sent = try #require(transport.last)
         #expect(sent.request.method == "POST")
         #expect(sent.path == "/v1/issues")
-        #expect(sent.request.headers["Idempotency-Key"] == "create-1")
+        #expect(sent.request.headers["Idempotency-Key"] == nil)
         #expect(
             sent.json == [
                 "title": "Checkout times out", "description": "Payments retry forever.", "task_id": "task-1",
@@ -157,7 +155,6 @@ private func issueTransport(status: Int = 200) -> MockTransport {
 
         _ = try await api.create(IssueCreate(title: "t", description: "d", taskId: "task-1"))
         #expect(transport.last?.json == ["title": "t", "description": "d", "task_id": "task-1"])
-        #expect(transport.last?.request.headers["Idempotency-Key"] == nil)
     }
 
     @Test func getEscapesTheId() async throws {
@@ -171,37 +168,80 @@ private func issueTransport(status: Int = 200) -> MockTransport {
     @Test func updateOmitsUnsetFieldsAndSendsEmptyListsToClear() async throws {
         let transport = issueTransport()
         let api = makeClient(transport).issues
-        _ = try await api.update("i-1", IssueUpdate(expectedRevision: 3, status: .closed), idempotencyKey: "edit-1")
+        _ = try await api.update("i-1", IssueUpdate(status: .closed))
         let sent = try #require(transport.last)
         #expect(sent.request.method == "PATCH")
         #expect(sent.path == "/v1/issues/i-1")
-        #expect(sent.request.headers["Idempotency-Key"] == "edit-1")
-        #expect(sent.json == ["expected_revision": 3, "status": "closed"])
-        #expect(sent.bodyString == #"{"expected_revision":3,"status":"closed"}"#)
+        #expect(sent.request.headers["If-Match"] == nil)
+        #expect(sent.request.headers["Idempotency-Key"] == nil)
+        #expect(sent.json == ["status": "closed"])
+        #expect(sent.bodyString == #"{"status":"closed"}"#)
 
         _ = try await api.update(
             "i-1",
             IssueUpdate(
-                expectedRevision: 4, title: "New title", description: "New brief", priority: .low, files: [], links: [],
-                events: [], spans: [], tags: [], metadata: [:]
+                title: "New title", description: "New brief", priority: .low, files: [], links: [], events: [], spans: [],
+                tags: [], metadata: [:]
             ))
         #expect(
             transport.last?.json == [
-                "expected_revision": 4, "title": "New title", "description": "New brief", "priority": "low", "files": [],
+                "title": "New title", "description": "New brief", "priority": "low", "files": [],
                 "links": [], "events": [], "spans": [], "tags": [], "metadata": [:],
             ])
-        #expect(transport.last?.request.headers["Idempotency-Key"] == nil)
+    }
+
+    @Test func updateSendsIfMatchOnlyWhenGiven() async throws {
+        let transport = issueTransport()
+        let api = makeClient(transport).issues
+        let issue = try await api.get("i-1")
+        let etag = try #require(issue.etag)
+        _ = try await api.update("i-1", IssueUpdate(title: "New title"), ifMatch: etag)
+        #expect(transport.last?.request.headers["If-Match"] == #""1790940600123""#)
+        #expect(transport.last?.json == ["title": "New title"])
+    }
+
+    @Test(arguments: [
+        ("2026-10-02T11:30:00.123456Z", #""1790940600123""#),
+        ("2026-10-02T11:30:00Z", #""1790940600000""#),
+        ("1970-01-01T00:00:00.001Z", #""1""#),
+        ("2024-11-05T00:00:00.999999Z", #""1730764800999""#),
+    ])
+    func etagIsTheQuotedEpochMilliseconds(updatedAt: String, etag: String) throws {
+        let json = #"{"id":"i","org_id":"o","project_id":"p","title":"t","description":"d","updated_at":"\#(updatedAt)"}"#
+        let issue = try JSONCoding.decoder.decode(Issue.self, from: Data(json.utf8))
+        #expect(issue.etag == etag)
+    }
+
+    @Test func etagIsNilWithoutUpdatedAt() throws {
+        let json = #"{"id":"i","org_id":"o","project_id":"p","title":"t","description":"d"}"#
+        let issue = try JSONCoding.decoder.decode(Issue.self, from: Data(json.utf8))
+        #expect(issue.etag == nil)
+    }
+
+    @Test func staleIfMatchSurfacesAs412() async throws {
+        let transport = MockTransport { _, _ in
+            .response(.json(#"{"detail":"The issue has changed since it was read"}"#, status: 412))
+        }
+        let api = makeClient(transport).issues
+        let error = await #expect(throws: IntrospectionError.self) {
+            try await api.update("i-1", IssueUpdate(status: .closed), ifMatch: #""1""#)
+        }
+        #expect(error?.kind == .http)
+        #expect(error?.hasStatus(412) == true)
+        #expect(error?.message == "The issue has changed since it was read")
+        await #expect(throws: IntrospectionError.self) { try await api.delete("i-1", ifMatch: #""1""#) }
+        #expect(transport.last?.request.headers["If-Match"] == #""1""#)
     }
 
     @Test func updateCreatesAndChangesAHumanRequest() async throws {
         let transport = issueTransport()
         let api = makeClient(transport).issues
         let create = IssueRequestMutation.create(question: "Refund it?", assigneeId: "m-1", id: "r-1")
-        _ = try await api.update("i-1", IssueMutation(request: create), idempotencyKey: "ask-1")
+        _ = try await api.update("i-1", IssueMutation(request: create))
         let sent = try #require(transport.last)
         #expect(sent.request.method == "PATCH")
         #expect(sent.path == "/v1/issues/i-1")
-        #expect(sent.request.headers["Idempotency-Key"] == "ask-1")
+        #expect(sent.request.headers["If-Match"] == nil)
         #expect(
             sent.json == ["request": ["id": "r-1", "expected_revision": 0, "question": "Refund it?", "assignee_id": "m-1"]])
 
@@ -223,16 +263,17 @@ private func issueTransport(status: Int = 200) -> MockTransport {
         #expect(request.status == nil)
     }
 
-    @Test func deleteSendsTheIdempotencyKey() async throws {
+    @Test func deleteSendsIfMatchOnlyWhenGiven() async throws {
         let transport = issueTransport()
         let api = makeClient(transport).issues
-        try await api.delete("i/1", idempotencyKey: "delete-1")
+        try await api.delete("i/1", ifMatch: #""1790940600123""#)
         #expect(transport.last?.request.method == "DELETE")
         #expect(transport.last?.request.url.absoluteString == "https://dp.test/v1/issues/i%2F1")
-        #expect(transport.last?.request.headers["Idempotency-Key"] == "delete-1")
+        #expect(transport.last?.request.headers["If-Match"] == #""1790940600123""#)
         #expect(transport.last?.request.body == nil)
 
         try await api.delete("i-2")
+        #expect(transport.last?.request.headers["If-Match"] == nil)
         #expect(transport.last?.request.headers["Idempotency-Key"] == nil)
     }
 }

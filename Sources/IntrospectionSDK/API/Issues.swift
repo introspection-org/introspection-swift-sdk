@@ -151,7 +151,7 @@ public struct Issue: Codable, Sendable, Hashable {
     public let description: String
     public let priority: IssuePriority?
     public let status: IssueStatus?
-    /// Send it back as `IssueUpdate.expectedRevision`.
+    /// Orders the issue's snapshots on the server; conditional writes use ``etag`` instead.
     public let revision: Int?
     /// Project-scoped display ID.
     public let displayIndex: Int?
@@ -189,6 +189,13 @@ public struct Issue: Codable, Sendable, Hashable {
         case openRequests = "open_requests"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+    }
+
+    /// The `ETag` the server sends for this issue (`updatedAt` in epoch milliseconds, quoted), to pass as `ifMatch`.
+    /// Nil without `updatedAt`.
+    public var etag: String? {
+        // Decoded dates hold whole milliseconds, so rounding undoes the binary floating-point error.
+        updatedAt.map { "\"\(Int64(($0.timeIntervalSince1970 * 1000).rounded()))\"" }
     }
 }
 
@@ -243,8 +250,6 @@ public struct IssueCreate: Encodable, Sendable, Hashable {
 /// An edit to an issue's brief (`PATCH /v1/issues/{id}`). Nil fields are omitted and stay unchanged; each list
 /// and `metadata` replaces its value wholesale, so `[]` (or `[:]`) clears it.
 public struct IssueUpdate: Encodable, Sendable, Hashable {
-    /// The `revision` the edit was made against; a stale one is refused with 409.
-    public var expectedRevision: Int
     public var title: String?
     public var description: String?
     public var priority: IssuePriority?
@@ -257,12 +262,10 @@ public struct IssueUpdate: Encodable, Sendable, Hashable {
     public var metadata: JSONObject?
 
     enum CodingKeys: String, CodingKey {
-        case expectedRevision = "expected_revision"
         case title, description, priority, status, files, links, events, spans, tags, metadata
     }
 
     public init(
-        expectedRevision: Int,
         title: String? = nil,
         description: String? = nil,
         priority: IssuePriority? = nil,
@@ -275,7 +278,6 @@ public struct IssueUpdate: Encodable, Sendable, Hashable {
         metadata: JSONObject? = nil
     ) {
         // jscpd:ignore-start: memberwise init of a public type; the assignments cannot be shared
-        self.expectedRevision = expectedRevision
         self.title = title
         self.description = description
         self.priority = priority
@@ -418,8 +420,8 @@ public struct IssueListParams: Sendable, Hashable {
 
 // MARK: API
 
-/// Data Plane `/v1/issues`. Each write takes an optional `idempotencyKey`, sent as `Idempotency-Key`: one key per
-/// deliberate write, resent unchanged when retrying it so it applies once.
+/// Data Plane `/v1/issues`. An edit applies the fields it names and the last write wins; pass ``Issue/etag`` as
+/// `ifMatch` to have a brief edit or delete refused with 412 when the issue changed since it was read.
 public struct IssuesAPI: Sendable {
     let http: HTTPClient
 
@@ -432,40 +434,37 @@ public struct IssuesAPI: Sendable {
         http.paginate("/v1/issues", query: params.query, start: params.next, as: Issue.self)
     }
 
-    /// Open an issue on its worker task. It starts `open`.
-    public func create(_ body: IssueCreate, idempotencyKey: String? = nil) async throws -> Issue {
-        try await http.json(
-            "POST", "/v1/issues", body: try .encode(body), headers: idempotencyHeaders(idempotencyKey), as: Issue.self)
+    /// Open an issue on its worker task. It starts `open`; repeating it for the same task is safe.
+    public func create(_ body: IssueCreate) async throws -> Issue {
+        try await http.json("POST", "/v1/issues", body: try .encode(body), as: Issue.self)
     }
 
-    /// Read one issue with its evidence, open requests and current `revision`.
+    /// Read one issue with its evidence and open requests.
     public func get(_ issueId: String) async throws -> Issue {
         try await http.json("GET", "/v1/issues/\(pathSegment(issueId))", as: Issue.self)
     }
 
-    /// Edit an issue's brief. A stale `expectedRevision` is refused with 409: read the issue again before retrying.
-    public func update(_ issueId: String, _ body: IssueUpdate, idempotencyKey: String? = nil) async throws -> Issue {
-        try await patch(issueId, body: try .encode(body), idempotencyKey: idempotencyKey)
+    /// Edit an issue's brief. With `ifMatch` (an ``Issue/etag``), a changed issue is refused with 412.
+    public func update(_ issueId: String, _ body: IssueUpdate, ifMatch: String? = nil) async throws -> Issue {
+        try await patch(issueId, body: try .encode(body), headers: ifMatchHeaders(ifMatch))
     }
 
     /// Create or change one human request on an issue. Returns the updated issue.
-    public func update(_ issueId: String, _ body: IssueMutation, idempotencyKey: String? = nil) async throws -> Issue {
-        try await patch(issueId, body: try .encode(body), idempotencyKey: idempotencyKey)
+    public func update(_ issueId: String, _ body: IssueMutation) async throws -> Issue {
+        try await patch(issueId, body: try .encode(body), headers: [:])
     }
 
-    /// Soft-delete an issue. Its activity history is kept.
-    public func delete(_ issueId: String, idempotencyKey: String? = nil) async throws {
-        try await http.empty("DELETE", "/v1/issues/\(pathSegment(issueId))", headers: idempotencyHeaders(idempotencyKey))
+    /// Soft-delete an issue. Its activity history is kept. With `ifMatch`, a changed issue is refused with 412.
+    public func delete(_ issueId: String, ifMatch: String? = nil) async throws {
+        try await http.empty("DELETE", "/v1/issues/\(pathSegment(issueId))", headers: ifMatchHeaders(ifMatch))
     }
 
-    private func patch(_ issueId: String, body: RequestBody, idempotencyKey: String?) async throws -> Issue {
-        try await http.json(
-            "PATCH", "/v1/issues/\(pathSegment(issueId))", body: body, headers: idempotencyHeaders(idempotencyKey),
-            as: Issue.self)
+    private func patch(_ issueId: String, body: RequestBody, headers: [String: String]) async throws -> Issue {
+        try await http.json("PATCH", "/v1/issues/\(pathSegment(issueId))", body: body, headers: headers, as: Issue.self)
     }
 
-    private func idempotencyHeaders(_ key: String?) -> [String: String] {
-        key.map { ["Idempotency-Key": $0] } ?? [:]
+    private func ifMatchHeaders(_ tag: String?) -> [String: String] {
+        tag.map { ["If-Match": $0] } ?? [:]
     }
 }
 

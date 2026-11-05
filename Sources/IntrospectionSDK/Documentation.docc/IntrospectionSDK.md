@@ -131,9 +131,10 @@ their own task-targeted automations.
 ### Issues
 
 Issues at `/v1/issues` on `client.issues` or `runner.issues`: a brief, the evidence it cites (files, links, events,
-spans) and its open human requests. `update` with an ``IssueUpdate`` edits the brief at the ``Issue/revision`` it was
-read at, and a stale revision is refused with 409; `update` with an ``IssueMutation`` creates or changes one human
-request. Each write takes an optional `idempotencyKey`, sent as `Idempotency-Key`.
+spans) and its open human requests. `update` with an ``IssueUpdate`` applies the fields it names, and the last write
+wins; pass ``Issue/etag`` as `ifMatch` to `update` or `delete` to have the write refused with 412 when the issue changed
+since it was read. `update` with an ``IssueMutation`` creates or changes one human request, at the request's own
+``IssueRequestMutation/expectedRevision``.
 
 - ``IssuesAPI``
 - ``Issue``
