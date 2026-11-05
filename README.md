@@ -98,7 +98,7 @@ print(try await followUp.text())
 
 The runner and the client expose the same Data Plane resources (`DataPlaneResources`):
 `tasks`, `files`, `conversations`, `events`, `metrics`, `shares`, `automations`
-and `connections`.
+and `connections`, plus `issues` and `images` on any `DataPlaneConnection`.
 
 ### Member tags and metadata
 

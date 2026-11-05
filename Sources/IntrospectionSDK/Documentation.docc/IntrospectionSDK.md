@@ -128,6 +128,21 @@ their own task-targeted automations.
 - ``AutomationTriggeredPayload``
 - ``AutomationSkippedPayload``
 
+### Issues
+
+Issues at `/v1/issues` on `client.issues` or `runner.issues`: a brief, the evidence it cites (files, links, events,
+spans) and its open human requests. `update` with an ``IssueUpdate`` edits the brief at the ``Issue/revision`` it was
+read at, and a stale revision is refused with 409; `update` with an ``IssueMutation`` creates or changes one human
+request. Each write takes an optional `idempotencyKey`, sent as `Idempotency-Key`.
+
+- ``IssuesAPI``
+- ``Issue``
+- ``IssueCreate``
+- ``IssueUpdate``
+- ``IssueMutation``
+- ``IssueRequestMutation``
+- ``IssueListParams``
+
 ### Control Plane resources
 
 - ``RecipesAPI``
