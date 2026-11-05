@@ -26,7 +26,7 @@ private let chatSpanJSON = #"""
        {"type":"tool_call","id":"call-1","name":"search","arguments":{"q":"x"}},
        {"type":"image-url","url":"https://x/y.png"},{"type":"hologram","depth":3}]}]}},
       "introspection":{"turn":2,
-      "history":{"position":3,"is_new":false,"continuation_method":"history","hash_hit":true,"new_messages":{"start":4,"end":6}},
+      "history":{"position":3,"is_new":false,"continuation_method":"history","new_messages":{"start":4,"end":6}},
       "contains":{"version":1,"values":["gen_ai.input.messages.role:user","gen_ai.output.messages.parts.name:message_user","gen_ai.output.messages.parts.name:*"]}},"custom.attr":"kept"}}
     """#
 
@@ -109,7 +109,6 @@ private let toolSpanJSON = #"""
         #expect(history.position == 3)
         #expect(history.isNew == false)
         #expect(history.continuationMethod == "history")
-        #expect(history.hashHit == true)
         #expect(history.newMessages == GenAIHistoryRange(start: 4, end: 6))
         #expect(span.contains?.version == 1)
         #expect(span.contains?.values == [.inputUser, .outputToolCall("message_user"), .outputToolCall("*")])

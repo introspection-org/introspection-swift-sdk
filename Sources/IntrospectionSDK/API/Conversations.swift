@@ -999,14 +999,12 @@ public struct GenAIHistory: Codable, Sendable, Hashable {
     public var position: Int?
     public var isNew: Bool?
     public var continuationMethod: String?
-    public var hashHit: Bool?
     public var newMessages: GenAIHistoryRange?
 
     private enum CodingKeys: String, CodingKey {
         case position
         case isNew = "is_new"
         case continuationMethod = "continuation_method"
-        case hashHit = "hash_hit"
         case newMessages = "new_messages"
     }
 }

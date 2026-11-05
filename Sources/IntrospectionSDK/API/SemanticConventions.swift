@@ -49,7 +49,7 @@ public enum IntrospectionAttributes {
     /// The runtime's application-level turn, numbered from 1 per conversation.
     public static let turn = "introspection.turn"
     /// Where the conversation linker placed the span (`position`, `is_new`, `continuation_method`,
-    /// `hash_hit`, `new_messages`). Absent on spans the linker never placed.
+    /// `new_messages`). Absent on spans the linker never placed.
     public static let history = "introspection.history"
     /// The processor's plaintext summary of a chat span's sealed content (`version`, `user_text`,
     /// `assistant_text`, `tool_calls`, `tool_results`).
