@@ -196,20 +196,24 @@ private func issueTransport(status: Int = 200) -> MockTransport {
         let issue = try await api.get("i-1")
         let etag = try #require(issue.etag)
         _ = try await api.update("i-1", IssueUpdate(title: "New title"), ifMatch: etag)
-        #expect(transport.last?.request.headers["If-Match"] == #""1790940600123""#)
+        #expect(transport.last?.request.headers["If-Match"] == #""2026-10-02T11:30:00.123456Z""#)
         #expect(transport.last?.json == ["title": "New title"])
     }
 
     @Test(arguments: [
-        ("2026-10-02T11:30:00.123456Z", #""1790940600123""#),
-        ("2026-10-02T11:30:00Z", #""1790940600000""#),
-        ("1970-01-01T00:00:00.001Z", #""1""#),
-        ("2024-11-05T00:00:00.999999Z", #""1730764800999""#),
+        ("2026-11-04T01:00:00.123456Z", #""2026-11-04T01:00:00.123456Z""#),
+        ("2026-11-04T01:00:00Z", #""2026-11-04T01:00:00Z""#),
+        ("2026-11-04T01:00:00.123456+00:00", #""2026-11-04T01:00:00.123456+00:00""#),
     ])
-    func etagIsTheQuotedEpochMilliseconds(updatedAt: String, etag: String) throws {
+    func etagIsUpdatedAtAsReceived(updatedAt: String, etag: String) throws {
         let json = #"{"id":"i","org_id":"o","project_id":"p","title":"t","description":"d","updated_at":"\#(updatedAt)"}"#
         let issue = try JSONCoding.decoder.decode(Issue.self, from: Data(json.utf8))
         #expect(issue.etag == etag)
+        #expect(issue.updatedAt == ISO8601.parse(updatedAt))
+        let encoded = try JSONCoding.encoder.encode(issue)
+        let reencoded = try JSONCoding.decoder.decode(JSONValue.self, from: encoded)
+        #expect(reencoded["updated_at"]?.stringValue == updatedAt)
+        #expect(try JSONCoding.decoder.decode(Issue.self, from: encoded) == issue)
     }
 
     @Test func etagIsNilWithoutUpdatedAt() throws {
@@ -266,10 +270,10 @@ private func issueTransport(status: Int = 200) -> MockTransport {
     @Test func deleteSendsIfMatchOnlyWhenGiven() async throws {
         let transport = issueTransport()
         let api = makeClient(transport).issues
-        try await api.delete("i/1", ifMatch: #""1790940600123""#)
+        try await api.delete("i/1", ifMatch: #""2026-10-02T11:30:00.123456Z""#)
         #expect(transport.last?.request.method == "DELETE")
         #expect(transport.last?.request.url.absoluteString == "https://dp.test/v1/issues/i%2F1")
-        #expect(transport.last?.request.headers["If-Match"] == #""1790940600123""#)
+        #expect(transport.last?.request.headers["If-Match"] == #""2026-10-02T11:30:00.123456Z""#)
         #expect(transport.last?.request.body == nil)
 
         try await api.delete("i-2")

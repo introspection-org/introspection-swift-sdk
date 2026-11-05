@@ -173,7 +173,8 @@ public struct Issue: Codable, Sendable, Hashable {
     /// Oldest first.
     public let openRequests: [IssueOpenRequest]?
     public let createdAt: Date?
-    public let updatedAt: Date?
+    public var updatedAt: Date? { updatedAtStamp?.date }
+    private let updatedAtStamp: WireTimestamp?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -188,14 +189,29 @@ public struct Issue: Codable, Sendable, Hashable {
         case closedAt = "closed_at"
         case openRequests = "open_requests"
         case createdAt = "created_at"
-        case updatedAt = "updated_at"
+        case updatedAtStamp = "updated_at"
     }
 
-    /// The `ETag` the server sends for this issue (`updatedAt` in epoch milliseconds, quoted), to pass as `ifMatch`.
-    /// Nil without `updatedAt`.
-    public var etag: String? {
-        // Decoded dates hold whole milliseconds, so rounding undoes the binary floating-point error.
-        updatedAt.map { "\"\(Int64(($0.timeIntervalSince1970 * 1000).rounded()))\"" }
+    /// The `ETag` the server sends for this issue, to pass as `ifMatch`: `updated_at` exactly as received, quoted.
+    /// Nil without it.
+    public var etag: String? { updatedAtStamp?.text.map { "\"\($0)\"" } }
+}
+
+/// A timestamp that keeps its wire text: the server compares `If-Match` to the microsecond, finer than a `Date`
+/// decoded by ``ISO8601`` keeps.
+private struct WireTimestamp: Codable, Sendable, Hashable {
+    let date: Date
+    let text: String?
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        date = try container.decode(Date.self)
+        text = try? container.decode(String.self)
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.singleValueContainer()
+        if let text { try container.encode(text) } else { try container.encode(date) }
     }
 }
 
