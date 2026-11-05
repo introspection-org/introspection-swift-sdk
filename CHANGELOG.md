@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.15.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.14.0...v0.15.0) (2026-11-05)
+
+
+### Features
+
+* **integrations:** add integration access tokens and repositories ([#84](https://github.com/introspection-org/introspection-swift-sdk/issues/84)) ([db6264a](https://github.com/introspection-org/introspection-swift-sdk/commit/db6264a7838c9ce4aa682cf53c28272eee86e981))
+* **issues:** add the Data Plane issues client ([#85](https://github.com/introspection-org/introspection-swift-sdk/issues/85)) ([b18cd94](https://github.com/introspection-org/introspection-swift-sdk/commit/b18cd947069687c124d54ab1dd7792f074745ffe))
+
 ## [0.14.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.13.0...v0.14.0) (2026-11-02)
 
 
