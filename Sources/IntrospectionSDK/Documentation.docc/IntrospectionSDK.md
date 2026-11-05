@@ -133,8 +133,8 @@ their own task-targeted automations.
 Issues at `/v1/issues` on `client.issues` or `runner.issues`: a brief, the evidence it cites (files, links, events,
 spans) and its open human requests. `update` with an ``IssueUpdate`` applies the fields it names, and the last write
 wins; pass ``Issue/etag`` as `ifMatch` to `update` or `delete` to have the write refused with 412 when the issue changed
-since it was read. `update` with an ``IssueMutation`` creates or changes one human request, at the request's own
-``IssueRequestMutation/expectedRevision``.
+since it was read. `update` with an ``IssueMutation`` creates or changes one human request: a new
+``IssueRequestMutation/id`` creates it, and an existing one changes it.
 
 - ``IssuesAPI``
 - ``Issue``

@@ -247,21 +247,20 @@ private func issueTransport(status: Int = 200) -> MockTransport {
         #expect(sent.path == "/v1/issues/i-1")
         #expect(sent.request.headers["If-Match"] == nil)
         #expect(
-            sent.json == ["request": ["id": "r-1", "expected_revision": 0, "question": "Refund it?", "assignee_id": "m-1"]])
+            sent.json == ["request": ["id": "r-1", "question": "Refund it?", "assignee_id": "m-1"]])
 
         _ = try await api.update(
             "i-1",
             IssueMutation(
-                request: IssueRequestMutation(id: "r-1", expectedRevision: 2, status: .resolved, resolution: "Refunded")))
+                request: IssueRequestMutation(id: "r-1", status: .resolved, resolution: "Refunded")))
         #expect(
             transport.last?.json == [
-                "request": ["id": "r-1", "expected_revision": 2, "status": "resolved", "resolution": "Refunded"]
+                "request": ["id": "r-1", "status": "resolved", "resolution": "Refunded"]
             ])
     }
 
     @Test func newRequestMintsAUUIDv7() {
         let request = IssueRequestMutation.create(question: "q", assigneeId: "m-1")
-        #expect(request.expectedRevision == 0)
         #expect(request.id.count == 36)
         #expect(Array(request.id)[14] == "7")
         #expect(request.status == nil)

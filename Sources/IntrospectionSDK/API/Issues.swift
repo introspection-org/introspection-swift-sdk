@@ -308,12 +308,11 @@ public struct IssueUpdate: Encodable, Sendable, Hashable {
     }
 }
 
-/// Creates one human request on an issue, or changes one.
+/// Creates one human request on an issue, or changes one. An `id` the issue does not have yet creates the request;
+/// an existing one changes it, and the last write wins.
 public struct IssueRequestMutation: Encodable, Sendable, Hashable {
     /// The request's id; a new request takes a client-minted UUIDv7.
     public var id: String
-    /// 0 creates the request; otherwise the request's own current revision (stale is refused with 409).
-    public var expectedRevision: Int
     /// What the assignee is asked; required to create.
     public var question: String?
     /// The member asked; required to create, set again to reassign.
@@ -325,7 +324,6 @@ public struct IssueRequestMutation: Encodable, Sendable, Hashable {
 
     enum CodingKeys: String, CodingKey {
         case id
-        case expectedRevision = "expected_revision"
         case question
         case assigneeId = "assignee_id"
         case status, resolution
@@ -333,23 +331,21 @@ public struct IssueRequestMutation: Encodable, Sendable, Hashable {
 
     public init(
         id: String,
-        expectedRevision: Int,
         question: String? = nil,
         assigneeId: String? = nil,
         status: IssueRequestStatus? = nil,
         resolution: String? = nil
     ) {
         self.id = id
-        self.expectedRevision = expectedRevision
         self.question = question
         self.assigneeId = assigneeId
         self.status = status
         self.resolution = resolution
     }
 
-    /// A new request (`expectedRevision` 0). Without an `id`, one is minted as a UUIDv7.
+    /// A new request. Without an `id`, one is minted as a UUIDv7.
     public static func create(question: String, assigneeId: String, id: String? = nil) -> IssueRequestMutation {
-        IssueRequestMutation(id: id ?? makeUUIDv7(), expectedRevision: 0, question: question, assigneeId: assigneeId)
+        IssueRequestMutation(id: id ?? makeUUIDv7(), question: question, assigneeId: assigneeId)
     }
 }
 
