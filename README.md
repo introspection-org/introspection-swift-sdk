@@ -288,6 +288,26 @@ export INTROSPECTION_TOKEN="intro_xxx"
 export INTROSPECTION_BASE_API_URL="https://api.introspection.dev"   # optional
 ```
 
+### Catch API drift with strict decoding
+
+By default a response field this SDK version does not model is ignored, so a
+server that adds a field never breaks your client. With
+`INTROSPECTION_STRICT_SCHEMA=1` (read with or without the `Configuration`
+trait), or `HTTPClient.Options.strictSchema = true`, the same response throws an
+`IntrospectionError` of kind `.decoding` and code `schema_drift`, naming the
+route and every unmodelled field by its JSON path:
+
+```text
+/v1/tags: response fields this SDK does not model: $.records[0].color, $.cursor_v2
+```
+
+`error.unmodelledFields` lists the paths. The SDK's end-to-end walk decodes
+strictly, and so does the platform's SDK coverage run against a live stack, so a
+field the API adds shows up there before a release ships without it. Open-ended
+values are never reported: a `JSONObject` or `JSONValue` (span `attributes` and
+`resource`, `metadata`, recipe `policies`) and a type that keeps unknown keys,
+such as `GenAIMessagePart.unknown` or `OAuthToken.extra`.
+
 ## Documentation
 
 - DocC articles in [`Sources/IntrospectionSDK/Documentation.docc`](Sources/IntrospectionSDK/Documentation.docc) and [`Sources/IntrospectionTelemetry/Documentation.docc`](Sources/IntrospectionTelemetry/Documentation.docc)

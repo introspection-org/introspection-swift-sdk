@@ -575,11 +575,10 @@ public struct RepositoriesAPI: Sendable {
     /// Merge `head` into `base`, like GitHub's merges API. Returns nil when `base` already contains `head`.
     /// A conflict throws `.conflict`; a 504 means it is still running and resending attaches to it.
     public func merge(_ repositoryId: String, _ body: RepositoryMergeCreate) async throws -> RepositoryMerge? {
-        let response = try await dataPlane.send(
-            "POST", "/v1/repositories/\(pathSegment(repositoryId))/merges", body: .encode(body)
-        )
+        let route = "/v1/repositories/\(pathSegment(repositoryId))/merges"
+        let response = try await dataPlane.send("POST", route, body: .encode(body))
         if response.status == 204 || response.body.isEmpty { return nil }
-        return try HTTPClient.decode(RepositoryMerge.self, from: response)
+        return try dataPlane.decode(RepositoryMerge.self, from: response, route: route)
     }
 }
 

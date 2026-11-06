@@ -20,6 +20,9 @@ public final class HTTPClient: Sendable {
         /// Requests, retries, refreshes and stream reconnects are logged here; silent by default.
         /// Tokens and bodies are never logged.
         public var logger: Logger
+        /// Fail a decode on any response field this SDK does not model (``StrictSchema``). Off unless
+        /// `INTROSPECTION_STRICT_SCHEMA` is set; open-ended `JSONObject` values never fail it.
+        public var strictSchema: Bool = StrictSchema.environmentEnabled
 
         public init(
             maxRetries: Int = 2,
@@ -202,7 +205,14 @@ public final class HTTPClient: Sendable {
         as _: T.Type = T.self
     ) async throws -> T {
         let response = try await send(method, path, query: query, body: body, headers: headers, authenticated: authenticated)
-        return try Self.decode(T.self, from: response)
+        return try decode(T.self, from: response, route: path)
+    }
+
+    /// Decode a response of `route`, checking it against the model when ``Options/strictSchema`` is on.
+    func decode<T: Decodable>(_ type: T.Type, from response: HTTPResponse, route: String) throws -> T {
+        let value = try Self.decode(T.self, from: response)
+        if options.strictSchema { try StrictSchema.check(T.self, response: response, route: route) }
+        return value
     }
 
     /// Send a request whose response body is ignored (`204` and similar).

@@ -108,6 +108,8 @@ public struct Recipe: Codable, Sendable, Hashable {
     public var subPath: String?
     public var mcpServers: [RecipeMcpServer]?
     public var validation: RecipeValidation?
+    /// The recipe's Cedar policies (`schema`, `policies`, `routes`).
+    public var policies: JSONObject?
     public var createdByMemberId: String?
     public var createdAt: Date?
     public var updatedAt: Date?
@@ -137,7 +139,7 @@ public struct Recipe: Codable, Sendable, Hashable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, slug, description, validation
+        case id, name, slug, description, validation, policies
         case orgId = "org_id"
         case projectId = "project_id"
         case repositoryId = "repository_id"

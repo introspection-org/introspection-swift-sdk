@@ -298,45 +298,6 @@ public struct GenAISpan: Codable, Sendable, Hashable {
     }
 }
 
-/// OpenAI-style list envelope for conversation items. Pagination uses `next`.
-public struct GenAISpanList: Codable, Sendable, Hashable {
-    public var object: String?
-    public var data: [GenAISpan]
-    public var firstId: String?
-    public var lastId: String?
-    public var hasMore: Bool?
-    public var next: String?
-
-    public init(
-        data: [GenAISpan], object: String? = "list", firstId: String? = nil, lastId: String? = nil, hasMore: Bool? = nil,
-        next: String? = nil
-    ) {
-        self.data = data
-        self.object = object
-        self.firstId = firstId
-        self.lastId = lastId
-        self.hasMore = hasMore
-        self.next = next
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case object, data, next
-        case firstId = "first_id"
-        case lastId = "last_id"
-        case hasMore = "has_more"
-    }
-
-    public init(from decoder: any Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        object = try container.decodeIfPresent(String.self, forKey: .object)
-        data = try container.decodeIfPresent([GenAISpan].self, forKey: .data) ?? []
-        firstId = try container.decodeIfPresent(String.self, forKey: .firstId)
-        lastId = try container.decodeIfPresent(String.self, forKey: .lastId)
-        hasMore = try container.decodeIfPresent(Bool.self, forKey: .hasMore)
-        next = try container.decodeIfPresent(String.self, forKey: .next)
-    }
-}
-
 // MARK: - GenAI messages
 
 /// Message role. Unknown roles are preserved.

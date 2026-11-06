@@ -588,6 +588,10 @@ public struct TaskRun: Codable, Sendable, Hashable {
     public var id: String
     public var taskId: String
     public var status: TaskStatus?
+    /// Why the run failed; set only on a failed run.
+    public var error: String?
+    /// How the run ended.
+    public var completionReason: String?
     public var createdAt: Date?
     public var updatedAt: Date?
 
@@ -600,8 +604,9 @@ public struct TaskRun: Codable, Sendable, Hashable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, status
+        case id, status, error
         case taskId = "task_id"
+        case completionReason = "completion_reason"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }

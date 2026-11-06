@@ -82,13 +82,22 @@ final class Walk {
         owner = IntrospectionClient(
             configuration: .init(
                 controlPlaneURL: settings.baseApiUrl, transport: transport,
-                options: .init(additionalHeaders: ["Cookie": "intro_cp_session=\(settings.cpSession)"])))
+                options: Self.strict(.init(additionalHeaders: ["Cookie": "intro_cp_session=\(settings.cpSession)"]))))
+    }
+
+    /// The walk decodes strictly: a response field this SDK does not model fails its step with the field's
+    /// JSON path. Model the field; never drop it from the recording.
+    static func strict(_ options: HTTPClient.Options = .init()) -> HTTPClient.Options {
+        var options = options
+        options.strictSchema = true
+        return options
     }
 
     func client(token: String, dataPlaneURL: URL?, quiet: Bool = false) -> IntrospectionClient {
         IntrospectionClient(
-            controlPlaneURL: settings.baseApiUrl, dataPlaneURL: dataPlaneURL, credentials: BearerToken(token),
-            transport: quiet ? URLSessionTransport() : transport)
+            configuration: .init(
+                controlPlaneURL: settings.baseApiUrl, dataPlaneURL: dataPlaneURL, controlPlaneCredentials: BearerToken(token),
+                transport: quiet ? URLSessionTransport() : transport, options: Self.strict()))
     }
 
     var projectId: String { project.id }
