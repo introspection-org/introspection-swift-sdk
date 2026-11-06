@@ -26,7 +26,8 @@ public struct IntrospectionError: Error, Sendable, CustomStringConvertible {
         case http
         /// No HTTP response: DNS, TLS, connection reset, timeout.
         case network
-        /// A 2xx response whose body did not decode into the expected type.
+        /// A 2xx response whose body did not decode into the expected type, or, with strict decoding on
+        /// (code `schema_drift`), held fields this SDK does not model.
         case decoding
         /// A request rejected by the SDK before it was sent.
         case invalidRequest
@@ -48,6 +49,8 @@ public struct IntrospectionError: Error, Sendable, CustomStringConvertible {
     /// The server's `Retry-After`, in seconds.
     public let retryAfter: TimeInterval?
     public let underlying: (any Error)?
+    /// The JSON paths of the response fields this SDK does not model, when strict decoding failed.
+    public internal(set) var unmodelledFields: [String] = []
 
     public init(
         kind: Kind,

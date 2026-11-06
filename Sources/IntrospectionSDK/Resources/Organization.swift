@@ -186,6 +186,18 @@ public struct MemberType: RawRepresentable, Codable, Sendable, Hashable, Express
     public static let customer: MemberType = "customer"
 }
 
+/// A member's Ark seat.
+public struct MemberSeatTier: RawRepresentable, Codable, Sendable, Hashable, ExpressibleByStringLiteral {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+    public init(stringLiteral value: String) { self.rawValue = value }
+
+    /// The default seat.
+    public static let standard: MemberSeatTier = "standard"
+    /// The Pro seat.
+    public static let pro: MemberSeatTier = "pro"
+}
+
 /// A member of the organization.
 public struct Member: Codable, Sendable, Hashable {
     public var id: String
@@ -207,6 +219,10 @@ public struct Member: Codable, Sendable, Hashable {
     public var isExternalCredentialAgent: Bool?
     /// Attributes the recipe's Cedar policies read for this member.
     public var policyAttributes: JSONObject?
+    /// The member's Ark seat; nil is a standard seat. Only an org on the Ark plan is billed by it.
+    public var seatTier: MemberSeatTier?
+    /// The member's monthly spend limit override in cents; nil takes their seat's default.
+    public var spendLimitCents: Int?
     public var createdAt: Date?
     public var updatedAt: Date?
 
@@ -251,6 +267,8 @@ public struct Member: Codable, Sendable, Hashable {
         case integrationId = "integration_id"
         case isExternalCredentialAgent = "is_external_credential_agent"
         case policyAttributes = "policy_attributes"
+        case seatTier = "seat_tier"
+        case spendLimitCents = "spend_limit_cents"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
