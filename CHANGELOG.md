@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.15.0...v0.16.0) (2026-11-06)
+
+
+### Features
+
+* add opt-in strict decoding of responses ([#87](https://github.com/introspection-org/introspection-swift-sdk/issues/87)) ([d62e039](https://github.com/introspection-org/introspection-swift-sdk/commit/d62e039035f1cbdb362fb1a6b9e2585f7e3f4a19))
+
 ## [0.15.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.14.0...v0.15.0) (2026-11-05)
 
 
