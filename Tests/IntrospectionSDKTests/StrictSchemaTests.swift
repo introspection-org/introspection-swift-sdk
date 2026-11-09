@@ -96,6 +96,12 @@ import Testing
         #expect(await drift(run, as: TaskRun.self) == nil)
     }
 
+    @Test func aProjectDecodesItsGitOrigin() async throws {
+        let json = #"{"id":"p","name":"Main","git_origin":"https://git.example.test"}"#
+        let project = try await client(json, strict: true).json("GET", "/v1/projects/p", as: Project.self)
+        #expect(project.gitOrigin == "https://git.example.test")
+    }
+
     @Test func openMapsNeverReport() async throws {
         let spans = #"""
             {"object":"list","data":[{"trace_id":"t","span_id":"s","name":"chat",
