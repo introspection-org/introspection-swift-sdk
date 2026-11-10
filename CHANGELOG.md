@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.17.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.16.0...v0.17.0) (2026-11-10)
+
+
+### ⚠ BREAKING CHANGES
+
+* ConnectionTokenResult and RepositoryContent keep a variant they do not model as .unknown ([#101](https://github.com/introspection-org/introspection-swift-sdk/issues/101))
+* TagKind is a RawRepresentable struct instead of an enum. An exhaustive switch over it needs a default branch, and TagKind(rawValue:) is no longer failable.
+
+### Bug Fixes
+
+* ConnectionTokenResult and RepositoryContent keep a variant they do not model as .unknown ([#101](https://github.com/introspection-org/introspection-swift-sdk/issues/101)) ([c32f99f](https://github.com/introspection-org/introspection-swift-sdk/commit/c32f99fa39ef3f602c9d86117a21f939c3adc81f))
+* tolerate unknown enum values in responses ([#97](https://github.com/introspection-org/introspection-swift-sdk/issues/97)) ([c7e3607](https://github.com/introspection-org/introspection-swift-sdk/commit/c7e360709f5aa710e54448562554cc17c8162a03))
+
 ## [0.16.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.15.0...v0.16.0) (2026-11-10)
 
 
