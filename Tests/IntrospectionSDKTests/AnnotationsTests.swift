@@ -39,20 +39,6 @@ import Testing
         #expect(transport.requests.isEmpty)
     }
 
-    @Test func annotationNavigation() async throws {
-        let transport = MockTransport(
-            json:
-                #"{"previous": null, "current": {"trace_id": "t", "span_id": "s", "comment_count": 0, "labels": [], "assignee_member_ids": [], "reviewer_member_ids": [], "updated_at": "2026-10-01T00:00:00Z", "updated_by_member_id": "m-1"}, "next": null, "current_position": 0, "total_count": 1}"#
-        )
-        let annotations = makeClient(transport).annotations
-        let window = try await annotations.navigation(AnnotationTarget(traceId: "t", spanId: "s"), labels: ["bug"], lookbackDays: 7)
-        #expect(window.current?.spanId == "s")
-        #expect(window.totalCount == 1)
-        #expect(transport.last?.path == "/v1/annotations/navigation")
-        #expect(transport.last?.query["trace_id"] == ["t"])
-        #expect(transport.last?.query["lookback_days"] == ["7"])
-    }
-
     @Test func annotationListReadsADatasetSizeFromTheTotal() async throws {
         let transport = MockTransport(
             json:

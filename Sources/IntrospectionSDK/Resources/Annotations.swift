@@ -106,32 +106,6 @@ public struct AnnotationState: Codable, Sendable, Hashable {
     }
 }
 
-/// The previous, current and next annotation around one span in the filtered review order.
-public struct AnnotationNavigation: Codable, Sendable, Hashable {
-    public var previous: AnnotationState?
-    public var current: AnnotationState?
-    public var next: AnnotationState?
-    public var currentPosition: Int?
-    public var totalCount: Int?
-
-    public init(
-        previous: AnnotationState? = nil, current: AnnotationState? = nil, next: AnnotationState? = nil, currentPosition: Int? = nil,
-        totalCount: Int? = nil
-    ) {
-        self.previous = previous
-        self.current = current
-        self.next = next
-        self.currentPosition = currentPosition
-        self.totalCount = totalCount
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case previous, current, next
-        case currentPosition = "current_position"
-        case totalCount = "total_count"
-    }
-}
-
 /// Filters for `GET /v1/annotations`. Email filters are resolved to active business members first.
 /// Optional expansions of a listed annotation row (repeated `include`).
 public struct AnnotationInclude: RawRepresentable, Codable, Sendable, Hashable, ExpressibleByStringLiteral {
@@ -409,26 +383,6 @@ public struct AnnotationsAPI: Sendable {
             )
         }
         return AnnotationWriteResult(eventId: echoed, visible: true)
-    }
-
-    /// The bounded previous/current/next window around one span in the filtered review order.
-    public func navigation(
-        _ target: AnnotationTarget,
-        annotatedByMemberId: String? = nil,
-        assigneeMemberId: String? = nil,
-        labels: [String]? = nil,
-        status: AnnotationReviewStatus? = nil,
-        lookbackDays: Int? = nil
-    ) async throws -> AnnotationNavigation {
-        var query = Query()
-        query.add("trace_id", target.traceId)
-        query.add("span_id", target.spanId)
-        query.add("annotated_by_member_id", annotatedByMemberId)
-        query.add("assignee_member_id", assigneeMemberId)
-        query.add("label", labels)
-        query.add("status", status)
-        query.add("lookback_days", lookbackDays)
-        return try await dataPlane.json("GET", "/v1/annotations/navigation", query: query)
     }
 
     /// Resolve emails to active business member ids, in order. Throws `.notFound` or `.conflict` (ambiguous).

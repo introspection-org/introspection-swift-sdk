@@ -89,7 +89,6 @@ extension Walk {
         }
         let table = try await sa.events.listArrow(params)
         try check(!table.isEmpty, "the Arrow event list")
-        _ = try await member.annotations.navigation(span)
     }
 
     private func emptyReads(decider: String) async throws {
