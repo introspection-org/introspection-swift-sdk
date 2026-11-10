@@ -124,7 +124,7 @@ public struct IntrospectionEvent: Codable, Sendable, Hashable {
     public var feedback: FeedbackPayload? { familyPayload(.feedback) }
     /// The payload when this is an `introspection.annotation` row.
     public var annotation: AnnotationPayload? { familyPayload(.annotation) }
-    /// The payload when this is an `introspection.judgement` row.
+    /// The payload when this is an `introspection.judgement` row: a `.verdict` or an `.egress` decision.
     public var judgement: JudgementPayload? { familyPayload(.judgement) }
     /// The payload when this is an `introspection.track` row.
     public var track: TrackPayload? { familyPayload(.track) }
@@ -283,10 +283,69 @@ public struct AnnotationPayload: Codable, Sendable, Hashable {
     }
 }
 
-/// One judgement.
-public struct JudgementPayload: Codable, Sendable, Hashable {
+/// One judgement, discriminated on `kind`: a recipe judge's verdict or an egress policy decision.
+/// A kind this SDK does not model, or a malformed payload, decodes as `.unknown` with its raw fields.
+public enum JudgementPayload: Codable, Sendable, Hashable {
+    case verdict(JudgementVerdictPayload)
+    case egress(JudgementEgressPayload)
+    case unknown(JSONObject)
+
+    /// The payload's `kind` discriminator.
+    public var kind: String {
+        switch self {
+        case .verdict: return "verdict"
+        case .egress: return "egress"
+        case let .unknown(raw): return raw["kind"]?.stringValue ?? ""
+        }
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let value = try JSONValue(from: decoder)
+        guard case let .object(raw) = value else {
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Judgement payload is not an object"))
+        }
+        // A data plane that predates `kind` sends one flat payload, told apart by its `result_schema`.
+        let legacyKind = raw["result_schema"]?.stringValue == "question_scores.v1" ? "egress" : "verdict"
+        switch raw["kind"]?.stringValue ?? legacyKind {
+        case "verdict": self = (try? value.decode(JudgementVerdictPayload.self)).map(JudgementPayload.verdict) ?? .unknown(raw)
+        case "egress": self = (try? value.decode(JudgementEgressPayload.self)).map(JudgementPayload.egress) ?? .unknown(raw)
+        default: self = .unknown(raw)
+        }
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        switch self {
+        case let .verdict(payload): try payload.encode(to: encoder)
+        case let .egress(payload): try payload.encode(to: encoder)
+        case let .unknown(raw): return try JSONValue.object(raw).encode(to: encoder)
+        }
+        var container = encoder.container(keyedBy: KindKey.self)
+        try container.encode(kind, forKey: .kind)
+    }
+
+    private enum KindKey: String, CodingKey {
+        case kind
+    }
+}
+
+/// Where a judge runs.
+public struct JudgeType: RawRepresentable, Codable, Sendable, Hashable, ExpressibleByStringLiteral {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+    public init(stringLiteral value: String) { self.rawValue = value }
+
+    public static let online: JudgeType = "online"
+    public static let offline: JudgeType = "offline"
+    public static let mission: JudgeType = "mission"
+}
+
+/// A recipe judge's verdict on a conversation.
+public struct JudgementVerdictPayload: Codable, Sendable, Hashable {
     public var judgementId: String?
     public var judgeId: String?
+    public var judgeSlug: String?
+    public var judgeType: JudgeType?
+    public var runtimeSlug: String?
     /// The verdict.
     public var result: String?
     /// Execution outcome (`ok` or `error`), distinct from the verdict.
@@ -294,35 +353,88 @@ public struct JudgementPayload: Codable, Sendable, Hashable {
     public var errorClass: String?
     public var errorMessage: String?
     public var sourceComponent: String?
+    public var judgeModel: String?
+    public var experimentArmId: String?
     public var reasoning: String?
     public var definitionHash: String?
     public var engineVersion: String?
     public var judgeProvider: String?
-    public var judgeModel: String?
     public var contractVersion: String?
     public var sequenceHash: String?
     public var inputTokens: Int?
     public var outputTokens: Int?
     public var totalTokens: Int?
-    public var experimentArmId: String?
 
     private enum CodingKeys: String, CodingKey {
         case result, status, reasoning
         case judgementId = "judgement_id"
         case judgeId = "judge_id"
+        case judgeSlug = "judge_slug"
+        case judgeType = "judge_type"
+        case runtimeSlug = "runtime_slug"
         case errorClass = "error_class"
         case errorMessage = "error_message"
         case sourceComponent = "source_component"
+        case judgeModel = "judge_model"
+        case experimentArmId = "experiment_arm_id"
         case definitionHash = "definition_hash"
         case engineVersion = "engine_version"
         case judgeProvider = "judge_provider"
-        case judgeModel = "judge_model"
         case contractVersion = "contract_version"
         case sequenceHash = "sequence_hash"
         case inputTokens = "input_tokens"
         case outputTokens = "output_tokens"
         case totalTokens = "total_tokens"
+    }
+}
+
+/// The egress policy gate's decision on one outbound request.
+public struct JudgementEgressPayload: Codable, Sendable, Hashable {
+    public var judgementId: String?
+    public var judgeId: String?
+    public var judgeSlug: String?
+    public var judgeType: JudgeType?
+    public var runtimeSlug: String?
+    /// The decision.
+    public var result: String?
+    /// Execution outcome (`ok` or `error`), distinct from the decision.
+    public var status: String?
+    public var errorClass: String?
+    public var errorMessage: String?
+    public var sourceComponent: String?
+    public var judgeModel: String?
+    public var experimentArmId: String?
+    /// Each answered question's probability of true, 0-100, by question name.
+    public var scores: [String: Int]?
+    /// The questions asked, by name.
+    public var questions: [String: String]?
+    /// The `@id` of the recipe Cedar rule that denied.
+    public var policyId: String?
+    public var policyAction: String?
+    /// The `@reason` of the recipe Cedar rule that denied.
+    public var reason: String?
+    public var requestHost: String?
+    public var requestMethod: String?
+    /// Without the query.
+    public var requestPath: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case result, status, scores, questions, reason
+        case judgementId = "judgement_id"
+        case judgeId = "judge_id"
+        case judgeSlug = "judge_slug"
+        case judgeType = "judge_type"
+        case runtimeSlug = "runtime_slug"
+        case errorClass = "error_class"
+        case errorMessage = "error_message"
+        case sourceComponent = "source_component"
+        case judgeModel = "judge_model"
         case experimentArmId = "experiment_arm_id"
+        case policyId = "policy_id"
+        case policyAction = "policy_action"
+        case requestHost = "request_host"
+        case requestMethod = "request_method"
+        case requestPath = "request_path"
     }
 }
 

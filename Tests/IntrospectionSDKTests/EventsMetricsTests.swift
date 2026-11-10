@@ -49,6 +49,64 @@ import Testing
         #expect(throws: (any Error).self) { try client.events.list(EventListParams(eventName: .pattern, end: Date(), lookback: "1d")) }
     }
 
+    @Test func judgementPayloadIsAUnionOnKind() async throws {
+        let page = #"""
+            {"records":[
+              {"id":"j1","event_name":"introspection.judgement","payload":{"kind":"verdict","judgement_id":"j1","judge_id":"judge-1",
+               "judge_slug":"helpful","judge_type":"online","runtime_slug":"hello-mcp","result":"pass","status":"ok",
+               "error_class":null,"error_message":null,"source_component":"introspection-judge","judge_model":"m",
+               "experiment_arm_id":null,"reasoning":"fine","definition_hash":"d1","engine_version":"1.2.3",
+               "judge_provider":"p","contract_version":"1","sequence_hash":"s1","input_tokens":120,"output_tokens":30,
+               "total_tokens":150}},
+              {"id":"j2","event_name":"introspection.judgement","payload":{"kind":"egress","judgement_id":"j2","result":"deny",
+               "status":"ok","source_component":"egress","scores":{"q1":90},"questions":{"q1":"Is it exfiltration?"},
+               "policy_id":"rule-1","policy_action":"http","reason":"no uploads","request_host":"x.test",
+               "request_method":"POST","request_path":"/upload"}},
+              {"id":"j3","event_name":"introspection.judgement","payload":{"judgement_id":"j3","result":"deny",
+               "result_schema":"question_scores.v1","scores":{"q1":10},"reasoning":null,"request_host":"y.test"}},
+              {"id":"j4","event_name":"introspection.judgement","payload":{"judgement_id":"j4","result":"pass",
+               "result_schema":"verdict.v1","reasoning":"ok","scores":null,"judge_type":"batch"}},
+              {"id":"j5","event_name":"introspection.judgement","payload":{"kind":"appeal","judgement_id":"j5","outcome":"upheld"}}
+            ],"count":5,"total_count":null,"next":null}
+            """#
+        let events = try await makeClient(MockTransport(json: page)).events.list(EventListParams(eventName: .judgement)).collect()
+        #expect(events.count == 5)
+        #expect(events.compactMap(\.judgement).map(\.kind) == ["verdict", "egress", "egress", "verdict", "appeal"])
+
+        guard case let .verdict(verdict) = events[0].judgement else {
+            Issue.record("expected a verdict")
+            return
+        }
+        #expect(verdict.judgeType == .online)
+        #expect(verdict.result == "pass")
+        #expect(verdict.reasoning == "fine")
+        #expect(verdict.totalTokens == 150)
+
+        guard case let .egress(egress) = events[1].judgement, case let .egress(legacyEgress) = events[2].judgement else {
+            Issue.record("expected egress decisions")
+            return
+        }
+        #expect(egress.scores == ["q1": 90])
+        #expect(egress.policyId == "rule-1")
+        #expect(egress.reason == "no uploads")
+        #expect(egress.requestPath == "/upload")
+        #expect(legacyEgress.scores == ["q1": 10])
+        #expect(legacyEgress.requestHost == "y.test")
+
+        guard case let .verdict(legacyVerdict) = events[3].judgement, case let .unknown(raw) = events[4].judgement else {
+            Issue.record("expected a legacy verdict and an unknown kind")
+            return
+        }
+        #expect(legacyVerdict.reasoning == "ok")
+        #expect(legacyVerdict.judgeType?.rawValue == "batch")
+        #expect(raw["outcome"] == "upheld")
+
+        let wire = try JSONCoding.decoder.decode(JSONValue.self, from: JSONCoding.encoder.encode(JudgementPayload.egress(legacyEgress)))
+        #expect(wire["kind"] == "egress")
+        #expect(wire["judgement_id"] == "j3")
+        #expect(wire["result_schema"] == nil)
+    }
+
     @Test func eventsListAsksForLatestRecords() async throws {
         let transport = MockTransport(json: #"{"records":[],"count":0,"total_count":null,"next":null}"#)
         let client = makeClient(transport)
