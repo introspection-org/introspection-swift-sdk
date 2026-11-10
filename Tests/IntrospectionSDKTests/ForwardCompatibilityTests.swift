@@ -87,4 +87,28 @@ import Testing
         )
         #expect(repositories.integrationType.rawValue == "gitlab")
     }
+
+    @Test func connectionTokenResultKeepsAnUnknownStatus() throws {
+        let json = #"{"status":"step_up_required","challenge_url":"https://consent.test/c"}"#
+        let result = try decode(ConnectionTokenResult.self, json)
+        guard case let .unknown(raw) = result else {
+            Issue.record("expected .unknown, got \(result)")
+            return
+        }
+        #expect(raw["challenge_url"]?.stringValue == "https://consent.test/c")
+        #expect(try reencoded(result) == decode(JSONValue.self, json))
+        #expect(try decode(ConnectionTokenResult.self, #"{"token":"t"}"#).token?.token == "t")
+    }
+
+    @Test func repositoryContentKeepsAnUnknownType() throws {
+        let json = #"{"type":"symlink","path":"docs/link","target":"README.md"}"#
+        let content = try decode(RepositoryContent.self, json)
+        guard case let .unknown(raw) = content else {
+            Issue.record("expected .unknown, got \(content)")
+            return
+        }
+        #expect(raw["target"]?.stringValue == "README.md")
+        #expect(content.path == "docs/link")
+        #expect(try reencoded(content) == decode(JSONValue.self, json))
+    }
 }

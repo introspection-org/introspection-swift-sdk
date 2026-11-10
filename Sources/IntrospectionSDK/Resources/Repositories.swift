@@ -161,16 +161,21 @@ public struct RepositoryFile: Codable, Sendable, Hashable {
 public enum RepositoryContent: Codable, Sendable, Hashable {
     case directory(RepositoryDirectory)
     case file(RepositoryFile)
+    /// Content of a `type` this SDK does not model, such as a symlink, as received.
+    case unknown(JSONObject)
 
     private enum CodingKeys: String, CodingKey { case type }
 
     public init(from decoder: any Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        let type = try container.decodeIfPresent(String.self, forKey: .type)
-        if type == "dir" {
-            self = .directory(try RepositoryDirectory(from: decoder))
-        } else {
-            self = .file(try RepositoryFile(from: decoder))
+        let value = try JSONValue(from: decoder)
+        guard case let .object(raw) = value else {
+            throw DecodingError.dataCorrupted(
+                .init(codingPath: decoder.codingPath, debugDescription: "Repository content is not an object"))
+        }
+        switch raw["type"]?.stringValue {
+        case "dir": self = (try? value.decode(RepositoryDirectory.self)).map(RepositoryContent.directory) ?? .unknown(raw)
+        case "file", nil: self = (try? value.decode(RepositoryFile.self)).map(RepositoryContent.file) ?? .unknown(raw)
+        default: self = .unknown(raw)
         }
     }
 
@@ -183,6 +188,8 @@ public enum RepositoryContent: Codable, Sendable, Hashable {
         case let .file(file):
             try container.encode("file", forKey: .type)
             try file.encode(to: encoder)
+        case let .unknown(raw):
+            try JSONValue.object(raw).encode(to: encoder)
         }
     }
 
@@ -191,6 +198,7 @@ public enum RepositoryContent: Codable, Sendable, Hashable {
         switch self {
         case let .directory(directory): return directory.path
         case let .file(file): return file.path
+        case let .unknown(raw): return raw["path"]?.stringValue ?? ""
         }
     }
 }
