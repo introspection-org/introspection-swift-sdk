@@ -1,7 +1,6 @@
 import Foundation
+import IntrospectionSDK
 import Synchronization
-
-@testable import IntrospectionSDK
 
 /// A transport that replays a HAR recording, or records one through `URLSessionTransport`.
 ///

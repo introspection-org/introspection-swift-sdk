@@ -1,31 +1,61 @@
+// swift-format-ignore-file: NeverUseImplicitlyUnwrappedOptionals
+// Test code outside a test target: each step's outputs are set by the step before the one that reads them.
+
 import Foundation
-import InlineSnapshotTesting
 import IntrospectionSDK
-import Testing
 
 /// The SDK end-to-end walk: one ordered scenario from a clean project to a graded eval, every step an SDK
 /// call, replaying the recording the JS SDK's walk made against a local stack (introspection-cloud
 /// `docs/design/sdk-end-to-end-walk.md`). The steps, their order and their names are the design doc's, the same in every SDK.
 ///
-/// Replay (the default `swift test`) needs no stack, keys or network. A live run needs a signed-in
+/// Replay (the default) needs no stack, keys or network. A live run needs a signed-in
 /// `introspection login` (or `INTROSPECTION_CP_SESSION`) against the target:
 ///
 ///     WALK_MODE=record swift test --filter WalkTests        # writes Tests/recordings/walk/recording.har
 ///     WALK_MODE=passthrough swift test --filter WalkTests   # live, records nothing
-@Suite("SDK end-to-end walk")
-struct WalkTests {
-    // Replay runs only against a recording that reaches the teardown; live runs always run.
-    @Test(.enabled(if: WalkMode.current != .replay || WalkPaths.completeRecording() != nil))
-    func walk() async throws {
-        let walk = try Walk(mode: WalkMode.current)
-        let report = try await walk.run()
-        let failed = report.steps.filter { $0.status == "failed" }.map { "\($0.n): \($0.name)" }
-        #expect(failed.isEmpty, "failed steps: \(failed)")
-        #expect(
-            walk.transport.misses.isEmpty,
-            "requests with no recorded answer:\n\(walk.transport.misses.map(\.description).joined(separator: "\n"))")
+///
+/// `WalkTests` runs it under Swift Testing; the `introspection-walk` executable (the `Walk` trait) runs it alone.
+public enum WalkCommand {
+    /// Runs the walk once in `WALK_MODE`, printing each step: 0 when every step passed and replay answered
+    /// every request, 1 otherwise.
+    public static func run() async -> Int32 {
+        do {
+            let walk = try Walk(mode: WalkMode.current)
+            let report = try await walk.run()
+            for failure in walk.failures { print("FAILED \(failure)") }
+            for miss in walk.transport.misses { print("NO RECORDED ANSWER \(miss)") }
+            let passed = walk.failures.isEmpty && walk.transport.misses.isEmpty && !report.steps.contains { $0.status == "failed" }
+            print(passed ? "walk passed" : "walk failed")
+            return passed ? 0 : 1
+        } catch {
+            print("walk failed: \(error)")
+            return 1
+        }
     }
 }
+
+/// `try require(value)`: the value, or a step failure naming where it was missing.
+func require<T>(
+    _ value: T?, _ message: @autoclosure () -> String = "", fileID: StaticString = #fileID, line: UInt = #line
+) throws -> T {
+    guard let value else {
+        let detail = message()
+        throw WalkError("\(fileID):\(line): required value is nil\(detail.isEmpty ? "" : ": \(detail)")")
+    }
+    return value
+}
+
+/// Where a step's inline snapshot is written, so a reporter can compare or rewrite it in place.
+struct SnapshotSite {
+    let fileID: StaticString
+    let filePath: StaticString
+    let function: StaticString
+    let line: UInt
+    let column: UInt
+}
+
+/// Reports one inline snapshot: `WalkTests` passes `assertInlineSnapshot`, which can re-record it.
+typealias SnapshotReporter = (_ value: JSONValue, _ expected: (() -> String)?, _ site: SnapshotSite) -> Void
 
 func check(_ condition: Bool, _ message: @autoclosure () -> String) throws {
     if !condition { throw WalkError(message()) }
@@ -69,8 +99,13 @@ final class Walk {
     var experiment: Experiment!
     var automation: Automation!
 
-    init(mode: HARTransport.Mode) throws {
+    /// Step errors, and snapshot mismatches when no reporter takes them, in the order they happened.
+    private(set) var failures: [String] = []
+    private let reportSnapshot: SnapshotReporter?
+
+    init(mode: HARTransport.Mode, reportSnapshot: SnapshotReporter? = nil) throws {
         self.mode = mode
+        self.reportSnapshot = reportSnapshot
         settings = try WalkSettings.load(mode)
         if mode == .replay {
             guard let har = WalkPaths.completeRecording() else { throw WalkError("no complete recording at \(WalkPaths.har.path)") }
@@ -136,19 +171,20 @@ final class Walk {
         for (n, name, body) in steps {
             guard let body, failed == nil else {
                 report.steps.append(.init(n: n, name: name, status: "skipped"))
+                print("step \(n) skipped: \(name)")
                 continue
             }
             snapshotMismatches = 0
+            let failuresBefore = failures.count
             do {
                 try await body()
-                let passed = snapshotMismatches == 0
-                report.steps.append(.init(n: n, name: name, status: passed ? "passed" : "failed"))
-                if !passed { failed = name }
             } catch {
-                Issue.record(error, "step \(n): \(name)")
-                report.steps.append(.init(n: n, name: name, status: "failed"))
-                failed = name
+                failures.append("step \(n): \(name): \(error)")
             }
+            let passed = snapshotMismatches == 0 && failures.count == failuresBefore
+            report.steps.append(.init(n: n, name: name, status: passed ? "passed" : "failed"))
+            print("step \(n) \(passed ? "passed" : "FAILED"): \(name)")
+            if !passed { failed = name }
         }
         if let recipeDir { try? FileManager.default.removeItem(at: recipeDir) }
         try finish(&report)
@@ -171,18 +207,25 @@ final class Walk {
         }
     }
 
-    /// `assertInlineSnapshot(of: value, as: .json)` at the caller's line, counting a mismatch (or a snapshot
-    /// recorded for the first time) against the running step.
+    /// The step's inline snapshot of `value` at the caller's line, counting a mismatch (or a snapshot recorded
+    /// for the first time) against the running step. The text is `assertInlineSnapshot(of:as: .json)`'s.
     func snap(
         _ value: JSONValue, matches expected: (() -> String)? = nil, fileID: StaticString = #fileID,
         file filePath: StaticString = #filePath,
         function: StaticString = #function, line: UInt = #line, column: UInt = #column
     ) {
-        var actual: String?
-        Snapshotting<JSONValue, String>.json.snapshot(value).run { actual = $0 }
-        if expected?() != actual { snapshotMismatches += 1 }
-        assertInlineSnapshot(
-            of: value, as: .json, matches: expected, fileID: fileID, file: filePath, function: function, line: line, column: column)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let actual = (try? encoder.encode(value)).map { String(decoding: $0, as: UTF8.self) }
+        let expectedText = expected?()
+        if expectedText != actual { snapshotMismatches += 1 }
+        if let reportSnapshot {
+            reportSnapshot(
+                value, expected, SnapshotSite(fileID: fileID, filePath: filePath, function: function, line: line, column: column))
+        } else if expectedText != actual {
+            failures.append(
+                "\(fileID):\(line): snapshot mismatch\n--- expected\n\(expectedText ?? "(none)")\n+++ actual\n\(actual ?? "(unencodable)")")
+        }
     }
 
     func expectNotFound(_ read: () async throws -> some Any, _ what: String) async throws {

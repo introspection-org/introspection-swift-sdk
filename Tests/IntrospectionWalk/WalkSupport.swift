@@ -99,7 +99,7 @@ enum WalkMode {
 /// redirects a record run.
 enum WalkPaths {
     static let repository = URL(fileURLWithPath: #filePath)
-        .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
 
     /// A `recipe-harbor-mcp-agent` checkout beside this repository: the recipe is private, so cloning it needs
     /// GitHub credentials a local checkout does not.

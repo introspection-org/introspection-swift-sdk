@@ -1,7 +1,5 @@
 import Foundation
-import InlineSnapshotTesting
 import IntrospectionSDK
-import Testing
 
 // Steps 0–5: the project, the service account, the hosted repository, the recipe, the runtime's settings.
 extension Walk {
@@ -167,10 +165,10 @@ extension Walk {
         }
 
         let first = try await owner.applications.secrets.create(application.id, name: "first")
-        let secret = try #require(first.secret, "the plaintext is returned once")
+        let secret = try require(first.secret, "the plaintext is returned once")
         let minted = try await owner.auth.clientCredentials(
             clientId: application.clientId ?? "", clientSecret: secret.plaintext, project: project.id)
-        let dpUrl = try #require(minted.dpUrl.flatMap(URL.init(string:)), "the token response names the Data Plane")
+        let dpUrl = try require(minted.dpUrl.flatMap(URL.init(string:)), "the token response names the Data Plane")
         sa = client(token: minted.accessToken, dataPlaneURL: dpUrl)
         saQuiet = client(token: minted.accessToken, dataPlaneURL: dpUrl, quiet: true)
 
@@ -278,7 +276,7 @@ extension Walk {
     func step3Repository() async throws {
         let created = try await sa.repositories.create(
             HostedRepositoryCreate(slug: WALK.recipeSlug, defaultBranch: "main"), project: project.id)
-        let gitURL = try #require(created.url, "the credential-free Git transport URL")
+        let gitURL = try require(created.url, "the credential-free Git transport URL")
         snap(try stable(created)) {
             """
             {
@@ -310,7 +308,7 @@ extension Walk {
             read: { try await sa.recipes.list(RecipeListParams(project: project.id)).all() },
             poll: { try await saQuiet.recipes.list(RecipeListParams(project: project.id)).all() },
             done: { $0.contains { $0.repositoryId == repository.id } })
-        let seedRecipe = try #require(seeded.first { $0.repositoryId == repository.id })
+        let seedRecipe = try require(seeded.first { $0.repositoryId == repository.id })
         let seedRuntime = try await sa.runtimes.create(
             RuntimeCreate(name: WALK.runtimeSlug, project: project.id, recipeId: seedRecipe.id, slug: WALK.runtimeSlug))
         try check(seedRuntime.slug == WALK.runtimeSlug, "the seed runtime takes the slug")
@@ -325,7 +323,7 @@ extension Walk {
 
     func step4Recipe() async throws {
         let commits = try await sa.repositories.commits(repository.id, RepositoryCommitsParams(sha: "main")).firstPage()
-        let head = try #require(commits.records.first, "a commit on the hosted main")
+        let head = try require(commits.records.first, "a commit on the hosted main")
         let detail = try await sa.repositories.commit(repository.id, sha: head.sha)
         try check(detail.sha == head.sha, "the commit reads back")
         let branches = try await sa.repositories.branches(repository.id).firstPage()
@@ -341,7 +339,7 @@ extension Walk {
             read: { try await sa.recipes.list(RecipeListParams(project: project.id)).all().first { $0.gitCommitSha == head.sha } },
             poll: { try await saQuiet.recipes.list(RecipeListParams(project: project.id)).all().first { $0.gitCommitSha == head.sha } },
             done: { $0 != nil })
-        let versionedRecipe = try #require(versioned)
+        let versionedRecipe = try require(versioned)
         recipe = versionedRecipe
         // The slug carries the commit's hash, new whenever the recipe's repository moves.
         snap(try stable(recipe, removing: ["slug"])) {

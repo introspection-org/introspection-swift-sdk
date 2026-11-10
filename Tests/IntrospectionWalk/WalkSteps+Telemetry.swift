@@ -1,7 +1,5 @@
 import Foundation
-import InlineSnapshotTesting
 import IntrospectionSDK
-import Testing
 
 // Steps 13–16: telemetry reads, the eval and its experiment, sandbox commands, automations.
 extension Walk {
@@ -32,7 +30,7 @@ extension Walk {
 
         // A tag share's grantor must hold the tag, so the file is shared to the owner member directly.
         let owners = try await owner.members.list().all()
-        let ownerId = try #require(owners.first).id
+        let ownerId = try require(owners.first).id
         let share = try await sa.shares.create(ShareCreate(resourceType: .file, resourceId: outputFile.id, grantedMemberId: ownerId))
         snap(try stable(share)) {
             """
@@ -109,7 +107,7 @@ extension Walk {
         // `/v1/connections` holds the project's own grant from step 8, with no member; an app connector is what a member
         // connects through, which needs that provider's credentials, so with none on the project the other routes answer 404.
         let held = try await member.connections.list(AppConnectionListParams(connectorId: connector.id)).all()
-        let grant = try #require(held.first { $0.owner == .project }, "the project's grant is listed")
+        let grant = try require(held.first { $0.owner == .project }, "the project's grant is listed")
         try check(grant.memberId == nil && grant.connector?.slug == WALK.connectorName, "the grant is the project's, on the connector")
         snap(try stable(grant)) {
             """
@@ -153,7 +151,7 @@ extension Walk {
         try await sa.images.delete(mirror.id)
         _ = try await owner.integrations.list().firstPage()
         let judges = try await sa.judges.list(JudgeListParams(project: project.id, runtimeGroupId: runtime.runtimeGroupId)).firstPage()
-        let greeting = try #require(judges.records.first { $0.name == "greeting" }, "the recipe's judge is synced")
+        let greeting = try require(judges.records.first { $0.name == "greeting" }, "the recipe's judge is synced")
         judge = greeting
         let readJudge = try await sa.judges.get(judge.id, project: project.id)
         try check(readJudge.name == "greeting", "the judge reads back")
