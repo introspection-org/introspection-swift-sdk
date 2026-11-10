@@ -122,6 +122,25 @@ jobs:
           name: coverage-report
           path: coverage.txt
           if-no-files-found: ignore
+      # introspection-cloud's SDK walks download this rather than build the tests; the static stdlib lets it
+      # run on a runner with no Swift toolchain.
+      - name: Build introspection-walk
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          flags="-c debug --traits Walk --static-swift-stdlib"
+          # shellcheck disable=SC2086
+          swift build $flags --product introspection-walk
+          mkdir -p walk
+          # shellcheck disable=SC2086
+          cp "$(swift build $flags --show-bin-path)/introspection-walk" walk/
+      - name: Upload introspection-walk
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v7
+        with:
+          name: introspection-walk-linux-x64
+          path: walk/introspection-walk
+          retention-days: 30
+          if-no-files-found: error
 
   apple:
     name: Tests (Apple platforms)

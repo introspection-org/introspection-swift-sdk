@@ -1,7 +1,5 @@
 import Foundation
-import InlineSnapshotTesting
 import IntrospectionSDK
-import Testing
 
 /// What one person can open of Avery's work.
 struct Reads: Equatable, CustomStringConvertible {
@@ -25,7 +23,7 @@ extension Walk {
         // Drew, the administrator: an application bound to the organisation's admin agent member, whose
         // client-credentials token is privileged.
         let agents = try await owner.members.list(MemberListParams(memberType: .agent)).all()
-        let adminAgentId = try #require(agents.last { $0.role == "admin" }?.id, "the organisation's admin agent")
+        let adminAgentId = try require(agents.last { $0.role == "admin" }?.id, "the organisation's admin agent")
         let drewApp = try await owner.applications.create(
             ApplicationCreate(
                 name: WALK.adminName, applicationType: .serviceAccount,
@@ -34,7 +32,7 @@ extension Walk {
             project: project.id)
         let drewSecret = try await owner.applications.secrets.create(drewApp.id, name: "drew")
         let drewToken = try await owner.auth.clientCredentials(
-            clientId: drewApp.clientId ?? "", clientSecret: try #require(drewSecret.secret).plaintext, project: project.id)
+            clientId: drewApp.clientId ?? "", clientSecret: try require(drewSecret.secret).plaintext, project: project.id)
         let drew = client(token: drewToken.accessToken, dataPlaneURL: drewToken.dpUrl.flatMap(URL.init(string:)))
 
         var people: [String: (id: String, client: Runner)] = [:]
@@ -57,8 +55,8 @@ extension Walk {
                 runtime.id, RunRequest(identity: RunnerIdentity(userId: "walk-\(name)"), agentName: settings.agent))
             people[name] = (id, client)
         }
-        let avery = try #require(people["avery"]), blake = try #require(people["blake"])
-        let casey = try #require(people["casey"]), emery = try #require(people["emery"])
+        let avery = try require(people["avery"]), blake = try require(people["blake"])
+        let casey = try require(people["casey"]), emery = try require(people["emery"])
         let work = try await averysWork(avery.client)
 
         func reads(_ who: any DataPlaneResources) async throws -> Reads {
@@ -116,7 +114,7 @@ extension Walk {
                 prompt: WALK.prompt(settings), agentName: settings.agent, idleTimeoutSeconds: 180, metadata: ["suite": "walk"],
                 conversationMetadata: ["suite": "walk", "persona": "avery"], tags: [WALK.groupTag, "suite:walk"]))
         _ = try await started.text()
-        let startedId = try #require(started.task?.id)
+        let startedId = try require(started.task?.id)
         let task = try await settled(
             "Avery's task", mode: mode, timeout: .seconds(300), interval: .seconds(5), read: { try await avery.tasks.get(startedId) },
             poll: { try await memberQuiet.tasks.get(startedId) },
@@ -132,7 +130,7 @@ extension Walk {
             "Avery's output", mode: mode, read: { try await member.files.list(FileListParams(taskId: task.id)).firstPage().records },
             poll: { try await memberQuiet.files.list(FileListParams(taskId: task.id)).firstPage().records },
             done: { $0.contains { $0.name.hasSuffix(WALK.outputFileName) } })
-        let output = try #require(outputs.first { $0.name.hasSuffix(WALK.outputFileName) })
+        let output = try require(outputs.first { $0.name.hasSuffix(WALK.outputFileName) })
         _ = try await settled(
             "Avery's conversation", mode: mode, read: { try await member.conversations.get(task.id) },
             poll: { try await memberQuiet.conversations.get(task.id) }, done: { ($0.metrics?.llmCallCount ?? 0) > 0 })
@@ -146,7 +144,7 @@ extension Walk {
 
     func step18MembersAndKeys() async throws {
         let members = try await owner.members.list().all()
-        _ = try await owner.members.get(try #require(members.first).id)
+        _ = try await owner.members.get(try require(members.first).id)
         let org = try await owner.organizations.current()
         // An invite outlives the project, so a repeat run finds the one the last run sent; and a person belongs to
         // one organisation, so the address names this one.

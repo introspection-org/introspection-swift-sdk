@@ -2,6 +2,7 @@ import Foundation
 import Testing
 
 @testable import IntrospectionSDK
+@testable import IntrospectionWalk
 
 @Suite struct HARTransportTests {
     private func entry(_ method: String, _ url: String, body: String? = nil, status: Int = 200, response: String = "{}") -> HAR.Entry {

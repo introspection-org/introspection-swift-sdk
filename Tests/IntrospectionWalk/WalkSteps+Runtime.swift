@@ -1,7 +1,5 @@
 import Foundation
-import InlineSnapshotTesting
 import IntrospectionSDK
-import Testing
 
 // Steps 6–11: the connector, the runtime, the grant, the input file, the task and its evidence.
 extension Walk {
@@ -104,7 +102,7 @@ extension Walk {
             read: { try await sa.runtimes.list(params).all().first { $0.recipeId == recipe.id } },
             poll: { try await saQuiet.runtimes.list(params).all().first { $0.recipeId == recipe.id } },
             done: built)
-        let versionedRuntime = try #require(versioned)
+        let versionedRuntime = try require(versioned)
         runtime = versionedRuntime
         try check(runtime.imageBuildStatus == .ready, runtime.imageBuildErrorMessage ?? "the runtime baked")
         snap(try stable(runtime)) {
@@ -177,7 +175,7 @@ extension Walk {
             started.authorizeUrl, transport: transport, baseApiUrl: settings.baseApiUrl, cookie: settings.cpSession, returnURL: returnURL)
         let landedQuery = Dictionary((landed.queryItems ?? []).map { ($0.name, $0.value ?? "") }, uniquingKeysWith: { $1 })
         try check(landedQuery["status"] == "active", "the grant lands active")
-        let connectionId = try #require(landedQuery["connection_id"])
+        let connectionId = try require(landedQuery["connection_id"])
         let connection = try await sa.connectors.connections.get(connector.id, connectionId)
         snap(try stable(connection)) {
             """
@@ -204,7 +202,7 @@ extension Walk {
         try check(connections.contains { $0.id == connectionId }, "the connection is listed")
 
         let endpoints = try await sa.endpoints.list(EndpointListParams(project: project.id, mcpServerId: WALK.mcpServerId)).firstPage()
-        let bound = try #require(endpoints.records.first, "the grant bound an endpoint")
+        let bound = try require(endpoints.records.first, "the grant bound an endpoint")
         endpoint = bound
         // Tool discovery runs on its own schedule, so its state and verification time are left out.
         snap(try stable(endpoint, removing: ["mcp_check", "last_verified_at"])) {
@@ -373,7 +371,7 @@ extension Walk {
             TaskCreate(
                 prompt: WALK.prompt(settings), agentName: settings.agent, idleTimeoutSeconds: 180, metadata: ["suite": "walk"],
                 files: [TaskFileRef(id: inputFile.id)]))
-        let startedTask = try #require(started.task, "the create returns the task")
+        let startedTask = try require(started.task, "the create returns the task")
         let reply = try await started.text()
         try check(!reply.isEmpty, "the turn replied")
 
@@ -436,7 +434,7 @@ extension Walk {
             "task output files", mode: mode, read: { try await sa.files.list(FileListParams(taskId: task.id)).all() },
             poll: { try await saQuiet.files.list(FileListParams(taskId: task.id)).all() },
             done: { $0.contains { $0.name.hasSuffix(WALK.outputFileName) } })
-        let output = try #require(outputs.first { $0.name.hasSuffix(WALK.outputFileName) })
+        let output = try require(outputs.first { $0.name.hasSuffix(WALK.outputFileName) })
         outputFile = output
         snap(try stable(outputFile)) {
             #"""
@@ -539,7 +537,7 @@ extension Walk {
         try check(items.contains("echo"), "the hello-mcp echo tool was called")
         try check(items.contains(WALK.echoResult), "the echo result reached the conversation")
         try check(items.contains(WALK.variableValue), "the variable reached the sandbox")
-        let first = try #require(page.records.first)
+        let first = try require(page.records.first)
         _ = try await sa.conversations.items.get(conversationId, first.spanId ?? "")
         let listed = try sa.conversations.list(ConversationListParams(runtimeGroupId: runtime.runtimeGroupId))
         try check(try await listed.all().contains { $0.id == conversationId }, "the conversation is listed")

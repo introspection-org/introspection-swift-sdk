@@ -21,6 +21,8 @@ let package = Package(
         .library(name: "IntrospectionSDK", targets: ["IntrospectionSDK"]),
         // Empty unless the `Telemetry` trait is enabled; see the trait.
         .library(name: "IntrospectionTelemetry", targets: ["IntrospectionTelemetry"]),
+        // Empty unless the `Walk` trait is enabled; see the trait.
+        .executable(name: "introspection-walk", targets: ["IntrospectionWalkCommand"]),
     ],
     traits: [
         .trait(
@@ -31,6 +33,11 @@ let package = Package(
             name: "Telemetry",
             description:
                 "Builds IntrospectionTelemetry: custom events and gen_ai traces over OTLP/HTTP on the OpenTelemetry Swift SDK. Off, the OpenTelemetry packages are not even resolved."
+        ),
+        .trait(
+            name: "Walk",
+            description:
+                "Builds the introspection-walk executable: the SDK end-to-end walk (WalkTests) without the test runner, for introspection-cloud's SDK walks."
         ),
     ],
     dependencies: [
@@ -88,8 +95,23 @@ let package = Package(
                     name: "Configuration", package: "swift-configuration",
                     condition: .when(traits: ["Configuration"])),
                 .product(name: "InlineSnapshotTesting", package: "swift-snapshot-testing"),
+                "IntrospectionWalk",
             ],
             resources: [.copy("Fixtures")],
+            swiftSettings: swiftSettings
+        ),
+        // The walk and its HAR transport, shared by WalkTests and introspection-walk; under Tests, so the
+        // coverage floor and the duplicate-code gate stay on the SDK.
+        .target(
+            name: "IntrospectionWalk",
+            dependencies: ["IntrospectionSDK", .product(name: "Crypto", package: "swift-crypto")],
+            path: "Tests/IntrospectionWalk",
+            swiftSettings: swiftSettings
+        ),
+        .executableTarget(
+            name: "IntrospectionWalkCommand",
+            dependencies: [.target(name: "IntrospectionWalk", condition: .when(traits: ["Walk"]))],
+            path: "Tests/IntrospectionWalkCommand",
             swiftSettings: swiftSettings
         ),
         .executableTarget(
