@@ -135,6 +135,24 @@ for try await connection in runner.connections.list(app: "gmail") { print(connec
 try await runner.connections.delete(connectionId)
 ```
 
+### Export a conversation
+
+The span export is JSON lines (`application/x-ndjson`): one GenAI span per
+line, each line a complete JSON object, so it is read as it streams. The
+JSON-envelope export was removed. `exportJSONLines` decodes each line as it
+arrives:
+
+```swift
+for try await span in runner.conversations.exportJSONLines(conversationId) {
+    print(span.spanId ?? "", span.name ?? "")
+}
+```
+
+`exportStream(conversationId, format: .jsonl)` gives the same lines as raw
+bytes, for writing to a file. Pass
+`ConversationExportParams(include: [.annotations, .comments])` to carry each
+annotated span's `annotation` and its comments.
+
 ## End users signed in with Introspection
 
 An app whose users sign in with the platform's own email code needs no identity

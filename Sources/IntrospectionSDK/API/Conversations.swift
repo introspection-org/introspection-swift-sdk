@@ -1054,7 +1054,8 @@ public struct ConversationExportInclude: RawRepresentable, Codable, Sendable, Ha
     public static let comments: ConversationExportInclude = "comments"
 }
 
-/// Filters for `GET /v1/conversations/{id}/export`, which assembles the whole conversation.
+/// Filters for `GET /v1/conversations/{id}/export`, which assembles the whole conversation. The span
+/// export is JSON lines, one GenAI span per line.
 public struct ConversationExportParams: Sendable, Hashable {
     public var agent: String?
     public var serviceName: String?
@@ -1099,9 +1100,11 @@ public struct ConversationExportParams: Sendable, Hashable {
     }
 }
 
-/// The representation `exportStream` asks for.
+/// The representation `exportStream` asks for. The span export is JSON lines (`jsonl`); the
+/// JSON-envelope export was removed.
 public enum ConversationExportFormat: String, Sendable, Hashable, CaseIterable {
-    /// One GenAI span per line, with no envelope. An older data plane answers 406.
+    /// JSON lines (`application/x-ndjson`): one GenAI span per line, each line a complete JSON object,
+    /// with no envelope, so it can be read as it streams. An older data plane answers 406.
     case jsonl
     /// Apache Arrow IPC stream (returned as raw bytes; this SDK does not decode Arrow).
     case arrow
@@ -1190,8 +1193,9 @@ public struct ConversationsAPI: Sendable {
         return try await http.json("GET", "/v1/conversations/\(pathSegment(conversationId))", query: query)
     }
 
-    /// Export the complete conversation as trajectory-v1 records. A conversation that cannot be
-    /// represented fails with a validation error; one with no records is not found.
+    /// Export the complete conversation as trajectory-v1 records, not spans: for the spans use
+    /// ``exportJSONLines(_:_:)``. A conversation that cannot be represented fails with a validation
+    /// error; one with no records is not found.
     public func exportTrajectory(
         _ conversationId: String, _ params: ConversationExportParams = ConversationExportParams()
     ) async throws -> [TrajectoryRecord] {
@@ -1202,6 +1206,7 @@ public struct ConversationsAPI: Sendable {
     }
 
     /// Export the complete conversation as an Apache Arrow IPC stream (raw bytes; this SDK does not decode Arrow).
+    /// For decoded spans use ``exportJSONLines(_:_:)``.
     public func exportArrow(
         _ conversationId: String, _ params: ConversationExportParams = ConversationExportParams()
     ) async throws -> Data {
@@ -1211,7 +1216,9 @@ public struct ConversationsAPI: Sendable {
         )
     }
 
-    /// Open the raw export byte stream in the given format, without buffering it.
+    /// Open the raw export byte stream in the given format, without buffering it. With `.jsonl` the body is
+    /// JSON lines (`application/x-ndjson`): one GenAI span per line, each line a complete JSON object.
+    /// There is no JSON-envelope format; it was removed.
     public func exportStream(
         _ conversationId: String, format: ConversationExportFormat,
         _ params: ConversationExportParams = ConversationExportParams()
