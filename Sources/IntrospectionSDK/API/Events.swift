@@ -178,6 +178,7 @@ public struct PatternPayload: Codable, Sendable, Hashable {
     public var updatedAt: Date?
     public var retiredAt: Date?
     public var lastDetectedAt: Date?
+    public var reason: String?
     public var replacementPatternId: String?
     public var derivedFromPatternId: String?
     public var runId: String?
@@ -382,6 +383,7 @@ public struct AutomationSkippedPayload: Codable, Sendable, Hashable {
     public var slot: Date?
     /// Set only when the automation targets an existing task.
     public var taskId: String?
+    public var reason: AutomationSkipReason?
 
     private enum CodingKeys: String, CodingKey {
         case slot, reason
