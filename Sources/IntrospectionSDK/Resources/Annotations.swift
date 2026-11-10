@@ -36,12 +36,13 @@ public struct AnnotationState: Codable, Sendable, Hashable {
     public var reviewerMemberIds: [String]?
     public var commentCount: Int?
     public var updatedAt: Date?
+    public var updatedByMemberId: String?
     public var assignmentEventId: String?
 
     public init(
         traceId: String, spanId: String, conversationId: String? = nil, labels: [String]? = nil,
         assigneeMemberIds: [String]? = nil, reviewerMemberIds: [String]? = nil, commentCount: Int? = nil,
-        updatedAt: Date? = nil, assignmentEventId: String? = nil
+        updatedAt: Date? = nil, updatedByMemberId: String? = nil, assignmentEventId: String? = nil
     ) {
         self.traceId = traceId
         self.spanId = spanId
@@ -51,6 +52,7 @@ public struct AnnotationState: Codable, Sendable, Hashable {
         self.reviewerMemberIds = reviewerMemberIds
         self.commentCount = commentCount
         self.updatedAt = updatedAt
+        self.updatedByMemberId = updatedByMemberId
         self.assignmentEventId = assignmentEventId
     }
 
@@ -67,6 +69,7 @@ public struct AnnotationState: Codable, Sendable, Hashable {
         reviewerMemberIds = try reviewers ?? legacy.decodeIfPresent([String].self, forKey: .humanCommenterMemberIds)
         commentCount = try container.decodeIfPresent(Int.self, forKey: .commentCount)
         updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt)
+        updatedByMemberId = try container.decodeIfPresent(String.self, forKey: .updatedByMemberId)
         assignmentEventId = try container.decodeIfPresent(String.self, forKey: .assignmentEventId)
     }
 
@@ -79,6 +82,7 @@ public struct AnnotationState: Codable, Sendable, Hashable {
         case reviewerMemberIds = "reviewer_member_ids"
         case commentCount = "comment_count"
         case updatedAt = "updated_at"
+        case updatedByMemberId = "updated_by_member_id"
         case assignmentEventId = "assignment_event_id"
     }
 

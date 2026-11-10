@@ -381,7 +381,7 @@ private func member(_ id: String, _ email: String?, deactivated: Bool = false) -
             }
             let next = URLComponents(url: request.url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "next" }?.value
             let state =
-                #"{"trace_id": "0123456789abcdef0123456789abcdef", "span_id": "0123456789abcdef", "conversation_id": "conv", "labels": ["bug"], "assignee_member_ids": ["m-2"], "reviewer_member_ids": ["m-1"], "comment_count": 2, "updated_at": "2026-10-01T00:00:00Z", "assignment_event_id": null}"#
+                #"{"trace_id": "0123456789abcdef0123456789abcdef", "span_id": "0123456789abcdef", "conversation_id": "conv", "labels": ["bug"], "assignee_member_ids": ["m-2"], "reviewer_member_ids": ["m-1"], "comment_count": 2, "updated_at": "2026-10-01T00:00:00Z", "updated_by_member_id": "m-1", "assignment_event_id": null}"#
             return .response(.json(#"{"records": [\#(state)], "count": 1, "next": \#(next == nil ? "\"p2\"" : "null")}"#))
         }
         let annotations = makeClient(transport).annotations
@@ -394,6 +394,7 @@ private func member(_ id: String, _ email: String?, deactivated: Bool = false) -
         #expect(states.first?.labels == ["bug"])
         #expect(states.first?.commentCount == 2)
         #expect(states.first?.reviewerMemberIds == ["m-1"])
+        #expect(states.first?.updatedByMemberId == "m-1")
 
         let memberCalls = transport.requests.filter { $0.request.url.host == "cp.test" }
         #expect(memberCalls.count == 1)
@@ -416,6 +417,7 @@ private func member(_ id: String, _ email: String?, deactivated: Bool = false) -
             #"{"trace_id": "0123456789abcdef0123456789abcdef", "span_id": "0123456789abcdef", "conversation_id": "conv", "labels": ["bug"], "assignee_member_ids": ["m-2"], "annotator_member_ids": ["m-1"], "commenter_member_ids": ["m-1"], "has_comment": true, "human_commenter_member_ids": ["m-3"], "has_human_comment": true, "comment_count": 2, "latest_comment": "see", "latest_comment_member_id": "m-1", "latest_comment_actor_member_id": null, "latest_comment_actor_type": null, "updated_at": "2026-10-01T00:00:00Z", "updated_by_member_id": "m-1", "assignment_event_id": null}"#
         let state = try JSONCoding.decoder.decode(AnnotationState.self, from: Data(row.utf8))
         #expect(state.reviewerMemberIds == ["m-3"])
+        #expect(state.updatedByMemberId == "m-1")
         #expect(state.commentCount == 2)
 
         let encoded = try JSONCoding.decoder.decode(JSONValue.self, from: JSONCoding.encoder.encode(state))
@@ -425,7 +427,7 @@ private func member(_ id: String, _ email: String?, deactivated: Bool = false) -
 
     @Test func annotationExportDecodesRowsAsChunksArrive() async throws {
         let lines =
-            #"{"trace_id": "t1", "span_id": "s1", "labels": ["café"], "reviewer_member_ids": ["m-1"], "comment_count": 1}"# + "\n"
+            #"{"trace_id": "t1", "span_id": "s1", "labels": ["café"], "reviewer_member_ids": ["m-1"], "comment_count": 1, "updated_by_member_id": "m-9"}"# + "\n"
             + #"{"trace_id": "t1", "span_id": "s2", "human_commenter_member_ids": ["m-3"], "has_comment": true, "latest_comment": "see"}"# + "\n"
         // One byte per chunk splits every line, and the multi-byte character, across chunks.
         let chunks = Data(lines.utf8).map { Data([$0]) }
@@ -444,6 +446,7 @@ private func member(_ id: String, _ email: String?, deactivated: Bool = false) -
         #expect(states.map(\.spanId) == ["s1", "s2"])
         #expect(states.first?.labels == ["café"])
         #expect(states.map(\.reviewerMemberIds) == [["m-1"], ["m-3"]])
+        #expect(states.map(\.updatedByMemberId) == ["m-9", nil])
 
         let read = try #require(transport.last)
         #expect(read.path == "/v1/annotations/export")
