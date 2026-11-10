@@ -143,7 +143,8 @@ jobs:
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         with:
           version: 1.3.6
-      # The release workflow adds the vX.Y.Z tag to the image pushed here for its commit.
+      # The release workflow adds the vX.Y.Z tag to the image pushed here for its commit. oras logs in
+      # itself: this job runs in the Swift container, which has no Docker CLI for docker/login-action.
       - name: Publish introspection-walk
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         working-directory: walk
