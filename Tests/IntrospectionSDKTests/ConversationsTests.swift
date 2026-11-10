@@ -232,6 +232,46 @@ private let toolSpanJSON = #"""
         #expect(none == nil)
     }
 
+    @Test func exportJSONLinesDecodesSpansAsChunksArrive() async throws {
+        let lines =
+            #"{"trace_id":"t1","span_id":"s1","name":"café","attributes":{}}"# + "\n"
+            + #"{"trace_id":"t1","span_id":"s2","attributes":{"gen_ai":{"operation":{"name":"chat"}}}}"# + "\r\n\n"
+            + #"{"trace_id":"t1","span_id":"s3","attributes":{}}"#
+        // One byte per chunk splits every line, and the multi-byte character, across chunks.
+        let chunks = Data(lines.utf8).map { Data([$0]) }
+        let transport = MockTransport { _, _ in
+            .stream(status: 200, headers: ["content-type": "application/x-ndjson"], chunks: chunks, error: nil)
+        }
+        var spans: [GenAISpan] = []
+        let export = makeClient(transport).conversations.exportJSONLines("conv-1", ConversationExportParams(fromCompaction: true))
+        for try await span in export { spans.append(span) }
+        #expect(spans.map(\.spanId) == ["s1", "s2", "s3"])
+        #expect(spans.first?.name == "café")
+        #expect(transport.last?.path == "/v1/conversations/conv-1/export")
+        #expect(transport.last?.request.headers["Accept"] == "application/x-ndjson")
+        #expect(transport.last?.query["from_compaction"] == ["true"])
+    }
+
+    @Test func exportJSONLinesSurfacesAnOlderDataPlaneAndACutBody() async throws {
+        let older = MockTransport { _, _ in .response(.json(#"{"detail":"Not Acceptable"}"#, status: 406)) }
+        let refused = try await #require(throws: IntrospectionError.self) {
+            for try await _ in makeClient(older).conversations.exportJSONLines("conv-1") {}
+        }
+        #expect(refused.status == 406)
+        #expect(older.requests.count == 1)
+
+        let cutChunks = [Data(#"{"trace_id":"t1","attributes":{}}"#.utf8), Data("\n{\"trace_id\":".utf8)]
+        let cut = MockTransport { _, _ in .stream(status: 200, headers: [:], chunks: cutChunks, error: nil) }
+        var read = 0
+        do {
+            for try await _ in makeClient(cut).conversations.exportJSONLines("conv-1") { read += 1 }
+            Issue.record("a body cut inside a line decoded")
+        } catch let error as IntrospectionError {
+            #expect(error.kind == .decoding)
+        }
+        #expect(read == 1)
+    }
+
     @Test func getTurnsAndExports() async throws {
         let trajectoryJSON = #"""
             [{"role":"meta","source":"claude-code","cwd":"/w"},{"role":"user","content":"hi","timestamp":"2026-10-01T12:00:00Z"},

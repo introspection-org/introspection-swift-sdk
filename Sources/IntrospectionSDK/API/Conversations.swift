@@ -1082,6 +1082,9 @@ public struct ConversationExportParams: Sendable, Hashable {
 
 /// The representation `exportStream` asks for.
 public enum ConversationExportFormat: String, Sendable, Hashable, CaseIterable {
+    /// One GenAI span per line, with no envelope. The preferred raw form; an older data plane answers 406.
+    case jsonl
+    /// The GenAI-span list envelope. Prefer `jsonl`.
     case json
     /// Apache Arrow IPC stream (returned as raw bytes; this SDK does not decode Arrow).
     case arrow
@@ -1093,6 +1096,7 @@ public enum ConversationExportFormat: String, Sendable, Hashable, CaseIterable {
     /// The `Accept` header value for this format.
     public var accept: String {
         switch self {
+        case .jsonl: return "application/x-ndjson"
         case .json: return "application/json"
         case .arrow: return "application/vnd.apache.arrow.stream"
         case .trajectory: return "application/vnd.letta.trajectory+json;version=1"
@@ -1170,7 +1174,8 @@ public struct ConversationsAPI: Sendable {
         return try await http.json("GET", "/v1/conversations/\(pathSegment(conversationId))", query: query)
     }
 
-    /// Export the complete conversation as one GenAI-span list.
+    /// Export the complete conversation as one GenAI-span list, buffered whole.
+    /// Deprecated: use ``exportJSONLines(_:_:)``, which decodes the spans as they arrive.
     public func exportJSON(
         _ conversationId: String, _ params: ConversationExportParams = ConversationExportParams()
     ) async throws -> GenAISpanList {

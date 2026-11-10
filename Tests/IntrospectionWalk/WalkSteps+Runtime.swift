@@ -547,14 +547,14 @@ extension Walk {
         // The other export formats, the Arrow list, and a paged item list.
         let latest = try await sa.conversations.retrieve(conversationId: conversationId)
         try check(latest?.spanId != nil, "the latest LLM turn")
-        let exported = try await sa.conversations.exportJSON(conversationId)
-        try check(exported.data.count >= page.records.count, "the export holds every item")
+        let exported = try await sa.conversations.exportJSONLines(conversationId).reduce(0) { count, _ in count + 1 }
+        try check(exported >= page.records.count, "the export holds every item")
         let exportedTable = try await sa.conversations.exportArrow(conversationId)
         try check(exportedTable.starts(with: [0xFF, 0xFF, 0xFF, 0xFF]), "an Arrow IPC stream")
-        let streamed = try await sa.conversations.exportStream(conversationId, format: .json).collect()
-        let streamedList = try JSONCoding.decoder.decode(GenAISpanList.self, from: streamed)
+        let streamed = try await sa.conversations.exportStream(conversationId, format: .jsonl).collect()
+        let streamedLines = streamed.split(separator: UInt8(ascii: "\n"))
         // Spans can still be arriving between two exports, so each is held to the items the step already read.
-        try check(streamedList.data.count >= page.records.count, "the streamed export holds every item")
+        try check(streamedLines.count >= page.records.count, "the streamed export holds every item")
         let listedTable = try await sa.conversations.listArrow(ConversationListParams(runtimeGroupId: runtime.runtimeGroupId))
         try check(!listedTable.isEmpty, "the Arrow list")
         var itemPages = 0

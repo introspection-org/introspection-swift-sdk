@@ -24,53 +24,50 @@ public struct AnnotationReviewStatus: RawRepresentable, Codable, Sendable, Hasha
     public static let reviewed: AnnotationReviewStatus = "reviewed"
 }
 
-/// Current labels, assignees and comments folded from one span's annotation events.
+/// Current labels, assignees and reviewers folded from one span's annotation events. Comment text is not
+/// on the row: read it from the span's `introspection.annotation` events.
 public struct AnnotationState: Codable, Sendable, Hashable {
     public var traceId: String
     public var spanId: String
     public var conversationId: String?
     public var labels: [String]?
     public var assigneeMemberIds: [String]?
-    public var annotatorMemberIds: [String]?
-    public var commenterMemberIds: [String]?
-    public var hasComment: Bool?
-    public var humanCommenterMemberIds: [String]?
-    public var hasHumanComment: Bool?
+    /// Members whose comment completed a review.
+    public var reviewerMemberIds: [String]?
     public var commentCount: Int?
-    public var latestComment: String?
-    public var latestCommentMemberId: String?
-    public var latestCommentActorMemberId: String?
-    public var latestCommentActorType: String?
     public var updatedAt: Date?
-    public var updatedByMemberId: String?
     public var assignmentEventId: String?
 
     public init(
         traceId: String, spanId: String, conversationId: String? = nil, labels: [String]? = nil,
-        assigneeMemberIds: [String]? = nil, annotatorMemberIds: [String]? = nil, commenterMemberIds: [String]? = nil,
-        hasComment: Bool? = nil, humanCommenterMemberIds: [String]? = nil, hasHumanComment: Bool? = nil,
-        commentCount: Int? = nil, latestComment: String? = nil, latestCommentMemberId: String? = nil,
-        latestCommentActorMemberId: String? = nil, latestCommentActorType: String? = nil, updatedAt: Date? = nil,
-        updatedByMemberId: String? = nil, assignmentEventId: String? = nil
+        assigneeMemberIds: [String]? = nil, reviewerMemberIds: [String]? = nil, commentCount: Int? = nil,
+        updatedAt: Date? = nil, assignmentEventId: String? = nil
     ) {
         self.traceId = traceId
         self.spanId = spanId
         self.conversationId = conversationId
         self.labels = labels
         self.assigneeMemberIds = assigneeMemberIds
-        self.annotatorMemberIds = annotatorMemberIds
-        self.commenterMemberIds = commenterMemberIds
-        self.hasComment = hasComment
-        self.humanCommenterMemberIds = humanCommenterMemberIds
-        self.hasHumanComment = hasHumanComment
+        self.reviewerMemberIds = reviewerMemberIds
         self.commentCount = commentCount
-        self.latestComment = latestComment
-        self.latestCommentMemberId = latestCommentMemberId
-        self.latestCommentActorMemberId = latestCommentActorMemberId
-        self.latestCommentActorType = latestCommentActorType
         self.updatedAt = updatedAt
-        self.updatedByMemberId = updatedByMemberId
         self.assignmentEventId = assignmentEventId
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        traceId = try container.decode(String.self, forKey: .traceId)
+        spanId = try container.decode(String.self, forKey: .spanId)
+        conversationId = try container.decodeIfPresent(String.self, forKey: .conversationId)
+        labels = try container.decodeIfPresent([String].self, forKey: .labels)
+        assigneeMemberIds = try container.decodeIfPresent([String].self, forKey: .assigneeMemberIds)
+        // A data plane that predates the rename still sends `human_commenter_member_ids`.
+        let legacy = try decoder.container(keyedBy: LegacyCodingKeys.self)
+        let reviewers = try container.decodeIfPresent([String].self, forKey: .reviewerMemberIds)
+        reviewerMemberIds = try reviewers ?? legacy.decodeIfPresent([String].self, forKey: .humanCommenterMemberIds)
+        commentCount = try container.decodeIfPresent(Int.self, forKey: .commentCount)
+        updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt)
+        assignmentEventId = try container.decodeIfPresent(String.self, forKey: .assignmentEventId)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -79,19 +76,14 @@ public struct AnnotationState: Codable, Sendable, Hashable {
         case spanId = "span_id"
         case conversationId = "conversation_id"
         case assigneeMemberIds = "assignee_member_ids"
-        case annotatorMemberIds = "annotator_member_ids"
-        case commenterMemberIds = "commenter_member_ids"
-        case hasComment = "has_comment"
-        case humanCommenterMemberIds = "human_commenter_member_ids"
-        case hasHumanComment = "has_human_comment"
+        case reviewerMemberIds = "reviewer_member_ids"
         case commentCount = "comment_count"
-        case latestComment = "latest_comment"
-        case latestCommentMemberId = "latest_comment_member_id"
-        case latestCommentActorMemberId = "latest_comment_actor_member_id"
-        case latestCommentActorType = "latest_comment_actor_type"
         case updatedAt = "updated_at"
-        case updatedByMemberId = "updated_by_member_id"
         case assignmentEventId = "assignment_event_id"
+    }
+
+    private enum LegacyCodingKeys: String, CodingKey {
+        case humanCommenterMemberIds = "human_commenter_member_ids"
     }
 }
 

@@ -381,7 +381,7 @@ private func member(_ id: String, _ email: String?, deactivated: Bool = false) -
             }
             let next = URLComponents(url: request.url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "next" }?.value
             let state =
-                #"{"trace_id": "0123456789abcdef0123456789abcdef", "span_id": "0123456789abcdef", "conversation_id": "conv", "labels": ["bug"], "assignee_member_ids": ["m-2"], "annotator_member_ids": ["m-1"], "has_comment": true, "comment_count": 2, "latest_comment": "see", "latest_comment_member_id": "m-1", "updated_at": "2026-10-01T00:00:00Z", "updated_by_member_id": "m-1", "assignment_event_id": null}"#
+                #"{"trace_id": "0123456789abcdef0123456789abcdef", "span_id": "0123456789abcdef", "conversation_id": "conv", "labels": ["bug"], "assignee_member_ids": ["m-2"], "reviewer_member_ids": ["m-1"], "comment_count": 2, "updated_at": "2026-10-01T00:00:00Z", "assignment_event_id": null}"#
             return .response(.json(#"{"records": [\#(state)], "count": 1, "next": \#(next == nil ? "\"p2\"" : "null")}"#))
         }
         let annotations = makeClient(transport).annotations
@@ -393,6 +393,7 @@ private func member(_ id: String, _ email: String?, deactivated: Bool = false) -
         #expect(states.count == 2)
         #expect(states.first?.labels == ["bug"])
         #expect(states.first?.commentCount == 2)
+        #expect(states.first?.reviewerMemberIds == ["m-1"])
 
         let memberCalls = transport.requests.filter { $0.request.url.host == "cp.test" }
         #expect(memberCalls.count == 1)
@@ -408,6 +409,18 @@ private func member(_ id: String, _ email: String?, deactivated: Bool = false) -
         #expect(reads[0].query["status"] == ["assigned"])
         #expect(reads[1].query["next"] == ["p2"])
         #expect(reads[1].query["annotated_by_member_id"] == ["m-1"])
+    }
+
+    @Test func annotationStateDecodesAnOlderDataPlaneRow() throws {
+        let row =
+            #"{"trace_id": "0123456789abcdef0123456789abcdef", "span_id": "0123456789abcdef", "conversation_id": "conv", "labels": ["bug"], "assignee_member_ids": ["m-2"], "annotator_member_ids": ["m-1"], "commenter_member_ids": ["m-1"], "has_comment": true, "human_commenter_member_ids": ["m-3"], "has_human_comment": true, "comment_count": 2, "latest_comment": "see", "latest_comment_member_id": "m-1", "latest_comment_actor_member_id": null, "latest_comment_actor_type": null, "updated_at": "2026-10-01T00:00:00Z", "updated_by_member_id": "m-1", "assignment_event_id": null}"#
+        let state = try JSONCoding.decoder.decode(AnnotationState.self, from: Data(row.utf8))
+        #expect(state.reviewerMemberIds == ["m-3"])
+        #expect(state.commentCount == 2)
+
+        let encoded = try JSONCoding.decoder.decode(JSONValue.self, from: JSONCoding.encoder.encode(state))
+        #expect(encoded["reviewer_member_ids"] == .array([.string("m-3")]))
+        #expect(encoded["human_commenter_member_ids"] == nil)
     }
 
     @Test func annotationListRejectsConflictingFilters() async throws {
