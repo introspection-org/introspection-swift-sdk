@@ -17,6 +17,10 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     environment: build
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      sha: ${{ steps.release.outputs.sha }}
     steps:
       - uses: actions/create-github-app-token@v3
         id: app-token
@@ -25,7 +29,41 @@ jobs:
           private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
 
       - uses: googleapis/release-please-action@v5
+        id: release
         with:
           token: ${{ steps.app-token.outputs.token }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+  # CI pushes the walk executable for every main commit; a release only adds its tag to that image.
+  # CI may still be building the release commit, so wait for it.
+  walk-tag:
+    name: Tag introspection-walk with the release
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    permissions:
+      packages: write
+    steps:
+      - uses: oras-project/setup-oras@v2
+        with:
+          version: 1.3.6
+      - name: Wait for the release commit's image, then tag it
+        env:
+          WALK_IMAGE: ghcr.io/introspection-org/introspection-swift-walk
+          SHA: ${{ needs.release-please.outputs.sha }}
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+          ACTOR: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s' "$GHCR_TOKEN" | oras login ghcr.io -u "$ACTOR" --password-stdin
+          deadline=$((SECONDS + 45 * 60))
+          until err="$(oras resolve "$WALK_IMAGE:$SHA" 2>&1 >/dev/null)"; do
+            if ((SECONDS >= deadline)); then
+              echo "::error::$WALK_IMAGE:$SHA did not appear within 45 minutes, so $TAG is not tagged: $err"
+              exit 1
+            fi
+            sleep 30
+          done
+          oras tag "$WALK_IMAGE:$SHA" "$TAG"
