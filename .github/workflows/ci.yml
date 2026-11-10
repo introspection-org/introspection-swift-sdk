@@ -156,32 +156,6 @@ jobs:
             --artifact-type application/vnd.introspection.walk.v1 \
             introspection-walk:application/octet-stream
 
-  # GHCR has no retention policy. A release tag shares its commit's version, so "keep the newest N"
-  # alone would eventually delete releases.
-  walk-prune:
-    name: Prune introspection-walk versions
-    needs: linux
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.linux.result == 'success'
-    runs-on: ubuntu-latest
-    permissions:
-      packages: write
-    env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      VERSIONS_URL: /orgs/introspection-org/packages/container/introspection-swift-walk/versions
-      KEEP: 10
-    steps:
-      - name: Delete all but the newest versions, keeping latest and releases
-        run: |
-          set -uo pipefail
-          warn() { echo "::warning::Pruning introspection-walk failed while $1; the image is published regardless."; exit 0; }
-          ids="$(gh api --paginate "$VERSIONS_URL" --jq '.[]' | jq -rs --argjson keep "$KEEP" '
-            sort_by(.created_at) | reverse | .[$keep:][]
-            | select((.metadata.container.tags // []) | any(. == "latest" or test("^v[0-9]+\\.[0-9]+\\.[0-9]+")) | not)
-            | .id')" || warn "listing versions"
-          for id in $ids; do
-            gh api -X DELETE "$VERSIONS_URL/$id" >/dev/null || warn "deleting version $id"
-          done
-
   apple:
     name: Tests (Apple platforms)
     runs-on: macos-26
