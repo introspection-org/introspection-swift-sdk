@@ -99,7 +99,7 @@ jobs:
   linux:
     name: Tests (Linux)
     runs-on: ubuntu-latest
-    needs: lint
+    needs: [lint, swiftlint]
     container: swift:6.4-noble
     steps:
       - uses: actions/checkout@v7
@@ -146,7 +146,7 @@ jobs:
   apple:
     name: Tests (Apple platforms)
     runs-on: macos-26
-    needs: lint
+    needs: [lint, swiftlint]
     steps:
       - uses: actions/checkout@v7
       - uses: maxim-lobanov/setup-xcode@v1
