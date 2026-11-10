@@ -1,0 +1,52 @@
+name: Publish walk binary
+
+# introspection-cloud's SDK walks pull this rather than build the tests, so they
+# walk the released SDK; the static stdlib lets it run with no Swift toolchain.
+on:
+  push:
+    tags:
+      - "v[0-9]*"
+  workflow_dispatch: # run on a release tag to republish it
+
+permissions: {}
+
+jobs:
+  publish:
+    name: Publish walk binary
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    container: swift:6.4-noble
+    permissions:
+      contents: read
+      packages: write
+    env:
+      WALK_IMAGE: ghcr.io/introspection-org/introspection-swift-walk
+    steps:
+      - uses: actions/checkout@v7
+      # Debug info is most of its size; stripping it keeps the symbols a backtrace names.
+      - name: Build introspection-walk
+        run: |
+          flags="-c debug --traits Walk --static-swift-stdlib"
+          # shellcheck disable=SC2086
+          swift build $flags --product introspection-walk
+          mkdir -p walk
+          # shellcheck disable=SC2086
+          strip --strip-debug -o walk/introspection-walk "$(swift build $flags --show-bin-path)/introspection-walk"
+      # The action downloads with Node and checks the release checksum; the container has no curl.
+      - uses: oras-project/setup-oras@v2
+        with:
+          version: 1.3.6
+      # oras logs in itself: the Swift container has no Docker CLI.
+      - name: Publish introspection-walk
+        working-directory: walk
+        env:
+          ACTOR: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          printf '%s' "$GHCR_TOKEN" | oras login ghcr.io -u "$ACTOR" --password-stdin
+          oras push "$WALK_IMAGE:$version,latest" \
+            --artifact-type application/vnd.introspection.walk.v1 \
+            --annotation "org.opencontainers.image.version=$version" \
+            --annotation "org.opencontainers.image.revision=$GITHUB_SHA" \
+            introspection-walk:application/octet-stream
