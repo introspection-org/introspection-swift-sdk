@@ -381,7 +381,7 @@ private func member(_ id: String, _ email: String?, deactivated: Bool = false) -
             }
             let next = URLComponents(url: request.url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "next" }?.value
             let state =
-                #"{"trace_id": "0123456789abcdef0123456789abcdef", "span_id": "0123456789abcdef", "conversation_id": "conv", "labels": ["bug"], "assignee_member_ids": ["m-2"], "annotator_member_ids": ["m-1"], "has_comment": true, "comment_count": 2, "latest_comment": "see", "latest_comment_member_id": "m-1", "updated_at": "2026-10-01T00:00:00Z", "updated_by_member_id": "m-1", "assignment_event_id": null}"#
+                #"{"trace_id": "0123456789abcdef0123456789abcdef", "span_id": "0123456789abcdef", "conversation_id": "conv", "labels": ["bug"], "assignee_member_ids": ["m-2"], "reviewer_member_ids": ["m-1"], "comment_count": 2, "updated_at": "2026-10-01T00:00:00Z", "updated_by_member_id": "m-1", "assignment_event_id": null, "comments": null}"#
             return .response(.json(#"{"records": [\#(state)], "count": 1, "next": \#(next == nil ? "\"p2\"" : "null")}"#))
         }
         let annotations = makeClient(transport).annotations
@@ -393,6 +393,9 @@ private func member(_ id: String, _ email: String?, deactivated: Bool = false) -
         #expect(states.count == 2)
         #expect(states.first?.labels == ["bug"])
         #expect(states.first?.commentCount == 2)
+        #expect(states.first?.reviewerMemberIds == ["m-1"])
+        #expect(states.first?.updatedByMemberId == "m-1")
+        #expect(states.first?.comments == nil)
 
         let memberCalls = transport.requests.filter { $0.request.url.host == "cp.test" }
         #expect(memberCalls.count == 1)
@@ -406,18 +409,10 @@ private func member(_ id: String, _ email: String?, deactivated: Bool = false) -
         #expect(reads[0].query["assignee_member_id"] == ["m-2"])
         #expect(reads[0].query["label"] == ["bug", "ux"])
         #expect(reads[0].query["status"] == ["assigned"])
+        #expect(reads[0].query["include"] == nil)
+        #expect(reads[0].query["lookback_days"] == nil)
         #expect(reads[1].query["next"] == ["p2"])
         #expect(reads[1].query["annotated_by_member_id"] == ["m-1"])
-    }
-
-    @Test func annotationListRejectsConflictingFilters() async throws {
-        let transport = MockTransport(json: "{}")
-        let error = try await #require(throws: IntrospectionError.self) {
-            try await makeClient(transport).annotations.list(AnnotationListParams(annotatedByMemberId: "m", annotatedByEmail: "a@x"))
-                .collect()
-        }
-        #expect(error.code == "conflicting_annotation_annotator_filters")
-        #expect(transport.requests.isEmpty)
     }
 
     @Test func annotationCreateResolvesReviewersAndReportsVisibility() async throws {
@@ -475,25 +470,6 @@ private func member(_ id: String, _ email: String?, deactivated: Bool = false) -
             }
             #expect(error?.kind == .validation)
         }
-    }
-
-    @Test func annotationFacetsAndNavigation() async throws {
-        let transport = MockTransport { request, _ in
-            request.url.path.hasSuffix("facets")
-                ? .response(.json(#"[{"dimension": "label", "value": "bug", "count": 3}]"#))
-                : .response(
-                    .json(
-                        #"{"previous": null, "current": {"trace_id": "t", "span_id": "s"}, "next": null, "current_position": 0, "total_count": 1}"#
-                    ))
-        }
-        let annotations = makeClient(transport).annotations
-        let facets = try await annotations.facets()
-        #expect(facets.first?.count == 3)
-        let window = try await annotations.navigation(AnnotationTarget(traceId: "t", spanId: "s"), labels: ["bug"])
-        #expect(window.current?.spanId == "s")
-        #expect(window.totalCount == 1)
-        #expect(transport.last?.path == "/v1/annotations/navigation")
-        #expect(transport.last?.query["trace_id"] == ["t"])
     }
 
     @Test func tags() async throws {

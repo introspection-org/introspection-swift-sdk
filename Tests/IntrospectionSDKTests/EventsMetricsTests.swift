@@ -18,8 +18,7 @@ import Testing
         let events = try await client.events.list(
             EventListParams(
                 eventName: .feedback, limit: 50, sort: .timestamp, order: .desc, lookback: .days(7),
-                conversationIds: ["c1", "c2"], ownerKey: "user:u1", eventIds: ["e1"], includeSuperseded: true,
-                latestRequests: true
+                conversationIds: ["c1", "c2"], ownerKey: "user:u1", eventIds: ["e1"], includeSuperseded: true
             ), now: now
         ).collect()
 
@@ -34,7 +33,6 @@ import Testing
         #expect(q["owner_key"] == ["user:u1"])
         #expect(q["event_id"] == ["e1"])
         #expect(q["include_superseded"] == ["true"])
-        #expect(q["request"] == ["true"])
 
         #expect(events.count == 2)
         let feedback = try #require(events[0].feedback)
@@ -47,6 +45,96 @@ import Testing
         #expect(events[1].feedback == nil)
 
         #expect(throws: (any Error).self) { try client.events.list(EventListParams(eventName: .pattern, end: Date(), lookback: "1d")) }
+    }
+
+    @Test func judgementPayloadIsAUnionOnKind() async throws {
+        let page = #"""
+            {"records":[
+              {"id":"j1","event_name":"introspection.judgement","payload":{"kind":"verdict","judgement_id":"j1","judge_id":"judge-1",
+               "judge_slug":"helpful","judge_type":"online","runtime_slug":"hello-mcp","result":"pass","status":"ok",
+               "error_class":null,"error_message":null,"source_component":"introspection-judge","judge_model":"m",
+               "experiment_arm_id":null,"reasoning":"fine","definition_hash":"d1","engine_version":"1.2.3",
+               "judge_provider":"p","contract_version":"1","sequence_hash":"s1","input_tokens":120,"output_tokens":30,
+               "total_tokens":150}},
+              {"id":"j2","event_name":"introspection.judgement","payload":{"kind":"egress","judgement_id":"j2","result":"deny",
+               "status":"ok","source_component":"egress","scores":{"q1":90},"questions":{"q1":"Is it exfiltration?"},
+               "policy_id":"rule-1","policy_action":"http","reason":"no uploads","request_host":"x.test",
+               "request_method":"POST","request_path":"/upload"}},
+              {"id":"j3","event_name":"introspection.judgement","payload":{"kind":"appeal","judgement_id":"j3","outcome":"upheld"}}
+            ],"count":3,"total_count":null,"next":null}
+            """#
+        let events = try await makeClient(MockTransport(json: page)).events.list(EventListParams(eventName: .judgement)).collect()
+        #expect(events.compactMap(\.judgement).map(\.kind) == ["verdict", "egress", "appeal"])
+
+        guard case let .verdict(verdict) = events[0].judgement, case let .egress(egress) = events[1].judgement else {
+            Issue.record("expected a verdict and an egress decision")
+            return
+        }
+        guard case let .unknown(raw) = events[2].judgement else {
+            Issue.record("expected an unknown kind")
+            return
+        }
+        #expect(verdict.judgementId == "j1")
+        #expect(verdict.judgeType == .online)
+        #expect(verdict.result == "pass")
+        #expect(verdict.reasoning == "fine")
+        #expect(verdict.totalTokens == 150)
+        #expect(egress.scores == ["q1": 90])
+        #expect(egress.policyId == "rule-1")
+        #expect(egress.reason == "no uploads")
+        #expect(egress.requestPath == "/upload")
+        #expect(raw["outcome"] == "upheld")
+
+        let wire = try JSONCoding.decoder.decode(JSONValue.self, from: JSONCoding.encoder.encode(JudgementPayload.egress(egress)))
+        #expect(wire["kind"] == "egress")
+        #expect(wire["judgement_id"] == "j2")
+    }
+
+    @Test func issuePayloadIsAUnionOnAction() async throws {
+        func row(_ id: String, _ payload: String) -> String {
+            #"{"id":"\#(id)","event_name":"introspection.issue","payload":{"issue_id":"i1",\#(payload)}}"#
+        }
+        let rows = [
+            row("e1", #""action":"created","revision":1,"member_id":"m-1","data":{"title":"Checkout times out"}"#),
+            row("e2", #""action":"updated","revision":2,"member_id":"m-1","changes":{"status":{"before":"open"}}"#),
+            row("e3", #""action":"commented","member_id":"m-1","actor_member_id":"m-7","actor_member_type":"agent","comment":"On it""#),
+            row("e4", #""action":"deleted","revision":3,"member_id":null"#),
+            row("e5", #""action":"archived","reason":"stale""#),
+        ]
+        let page = #"{"records":[\#(rows.joined(separator: ","))],"count":5,"total_count":null,"next":null}"#
+        let transport = MockTransport(json: page)
+        let events = try await makeClient(transport).events.list(EventListParams(eventName: .issue, issueId: "i1")).collect()
+        #expect(transport.last?.query["issue_id"] == ["i1"])
+        let payloads = events.compactMap(\.issue)
+        #expect(payloads.map(\.action) == ["created", "updated", "commented", "deleted", "archived"])
+
+        guard case let .created(created) = payloads[0], case let .updated(updated) = payloads[1] else {
+            Issue.record("expected created and updated")
+            return
+        }
+        guard case let .commented(commented) = payloads[2], case let .deleted(deleted) = payloads[3] else {
+            Issue.record("expected commented and deleted")
+            return
+        }
+        guard case let .unknown(raw) = payloads[4] else {
+            Issue.record("expected an unknown action")
+            return
+        }
+        #expect(created.issueId == "i1")
+        #expect(created.memberId == "m-1")
+        #expect(created.data["title"] == "Checkout times out")
+        #expect(updated.revision == 2)
+        #expect(updated.changes["status"] == IssueFieldChange(before: "open", after: nil))
+        #expect(commented.comment == "On it")
+        #expect(commented.actorMemberId == "m-7")
+        #expect(commented.actorMemberType == "agent")
+        #expect(deleted.revision == 3)
+        #expect(deleted.memberId == nil)
+        #expect(raw["reason"] == "stale")
+
+        let wire = try JSONCoding.decoder.decode(JSONValue.self, from: JSONCoding.encoder.encode(payloads[3]))
+        #expect(wire["action"] == "deleted")
+        #expect(wire["issue_id"] == "i1")
     }
 
     @Test func eventsListAsksForLatestRecords() async throws {

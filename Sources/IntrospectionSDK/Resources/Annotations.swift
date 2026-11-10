@@ -24,87 +24,85 @@ public struct AnnotationReviewStatus: RawRepresentable, Codable, Sendable, Hasha
     public static let reviewed: AnnotationReviewStatus = "reviewed"
 }
 
-/// Current labels, assignees and comments folded from one span's annotation events.
+/// One comment on an annotated span.
+public struct AnnotationComment: Codable, Sendable, Hashable {
+    public var eventId: String
+    public var comment: String
+    /// The author.
+    public var memberId: String
+    public var actorMemberId: String?
+    /// The kind of actor that wrote on the member's behalf, such as `agent`.
+    public var actorMemberType: String?
+    public var createdAt: Date
+
+    public init(
+        eventId: String, comment: String, memberId: String, createdAt: Date, actorMemberId: String? = nil,
+        actorMemberType: String? = nil
+    ) {
+        self.eventId = eventId
+        self.comment = comment
+        self.memberId = memberId
+        self.createdAt = createdAt
+        self.actorMemberId = actorMemberId
+        self.actorMemberType = actorMemberType
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case comment
+        case eventId = "event_id"
+        case memberId = "member_id"
+        case actorMemberId = "actor_member_id"
+        case actorMemberType = "actor_member_type"
+        case createdAt = "created_at"
+    }
+}
+
+/// Current labels, assignees and reviewers folded from one span's annotation events.
 public struct AnnotationState: Codable, Sendable, Hashable {
     public var traceId: String
     public var spanId: String
     public var conversationId: String?
-    public var labels: [String]?
-    public var assigneeMemberIds: [String]?
-    public var annotatorMemberIds: [String]?
-    public var commenterMemberIds: [String]?
-    public var hasComment: Bool?
-    public var humanCommenterMemberIds: [String]?
-    public var hasHumanComment: Bool?
-    public var commentCount: Int?
-    public var latestComment: String?
-    public var latestCommentMemberId: String?
-    public var latestCommentActorMemberId: String?
-    public var latestCommentActorType: String?
-    public var updatedAt: Date?
-    public var updatedByMemberId: String?
+    public var labels: [String]
+    public var assigneeMemberIds: [String]
+    /// Members whose comment completed a review.
+    public var reviewerMemberIds: [String]
+    public var commentCount: Int
+    public var updatedAt: Date
+    /// The member who made the latest annotation on the span.
+    public var updatedByMemberId: String
     public var assignmentEventId: String?
+    /// Every comment on the span, oldest first, when the list was asked for `include: [.comments]`; nil otherwise.
+    public var comments: [AnnotationComment]?
 
     public init(
-        traceId: String, spanId: String, conversationId: String? = nil, labels: [String]? = nil,
-        assigneeMemberIds: [String]? = nil, annotatorMemberIds: [String]? = nil, commenterMemberIds: [String]? = nil,
-        hasComment: Bool? = nil, humanCommenterMemberIds: [String]? = nil, hasHumanComment: Bool? = nil,
-        commentCount: Int? = nil, latestComment: String? = nil, latestCommentMemberId: String? = nil,
-        latestCommentActorMemberId: String? = nil, latestCommentActorType: String? = nil, updatedAt: Date? = nil,
-        updatedByMemberId: String? = nil, assignmentEventId: String? = nil
+        traceId: String, spanId: String, updatedAt: Date, updatedByMemberId: String, conversationId: String? = nil,
+        labels: [String] = [], assigneeMemberIds: [String] = [], reviewerMemberIds: [String] = [], commentCount: Int = 0,
+        assignmentEventId: String? = nil, comments: [AnnotationComment]? = nil
     ) {
         self.traceId = traceId
         self.spanId = spanId
+        self.updatedAt = updatedAt
+        self.updatedByMemberId = updatedByMemberId
         self.conversationId = conversationId
         self.labels = labels
         self.assigneeMemberIds = assigneeMemberIds
-        self.annotatorMemberIds = annotatorMemberIds
-        self.commenterMemberIds = commenterMemberIds
-        self.hasComment = hasComment
-        self.humanCommenterMemberIds = humanCommenterMemberIds
-        self.hasHumanComment = hasHumanComment
+        self.reviewerMemberIds = reviewerMemberIds
         self.commentCount = commentCount
-        self.latestComment = latestComment
-        self.latestCommentMemberId = latestCommentMemberId
-        self.latestCommentActorMemberId = latestCommentActorMemberId
-        self.latestCommentActorType = latestCommentActorType
-        self.updatedAt = updatedAt
-        self.updatedByMemberId = updatedByMemberId
         self.assignmentEventId = assignmentEventId
+        self.comments = comments
     }
 
     private enum CodingKeys: String, CodingKey {
-        case labels
+        case labels, comments
         case traceId = "trace_id"
         case spanId = "span_id"
         case conversationId = "conversation_id"
         case assigneeMemberIds = "assignee_member_ids"
-        case annotatorMemberIds = "annotator_member_ids"
-        case commenterMemberIds = "commenter_member_ids"
-        case hasComment = "has_comment"
-        case humanCommenterMemberIds = "human_commenter_member_ids"
-        case hasHumanComment = "has_human_comment"
+        case reviewerMemberIds = "reviewer_member_ids"
         case commentCount = "comment_count"
-        case latestComment = "latest_comment"
-        case latestCommentMemberId = "latest_comment_member_id"
-        case latestCommentActorMemberId = "latest_comment_actor_member_id"
-        case latestCommentActorType = "latest_comment_actor_type"
         case updatedAt = "updated_at"
         case updatedByMemberId = "updated_by_member_id"
         case assignmentEventId = "assignment_event_id"
-    }
-}
-
-/// One filter bucket over current annotation state.
-public struct AnnotationFacet: Codable, Sendable, Hashable {
-    public var dimension: String
-    public var value: String
-    public var count: Int
-
-    public init(dimension: String, value: String, count: Int) {
-        self.dimension = dimension
-        self.value = value
-        self.count = count
     }
 }
 
@@ -135,6 +133,16 @@ public struct AnnotationNavigation: Codable, Sendable, Hashable {
 }
 
 /// Filters for `GET /v1/annotations`. Email filters are resolved to active business members first.
+/// Optional expansions of a listed annotation row (repeated `include`).
+public struct AnnotationInclude: RawRepresentable, Codable, Sendable, Hashable, ExpressibleByStringLiteral {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+    public init(stringLiteral value: String) { rawValue = value }
+
+    /// Every comment on the span, oldest first, as the row's `comments`.
+    public static let comments: AnnotationInclude = "comments"
+}
+
 public struct AnnotationListParams: Sendable, Hashable {
     public var annotatedByMemberId: String?
     public var assigneeMemberId: String?
@@ -151,12 +159,15 @@ public struct AnnotationListParams: Sendable, Hashable {
     public var includeTotal: Bool?
     public var limit: Int?
     public var next: String?
+    public var include: [AnnotationInclude]?
+    /// How many days of annotation events the read reaches back (1 to 90; the server defaults to 90).
+    public var lookbackDays: Int?
 
     public init(
         annotatedByMemberId: String? = nil, assigneeMemberId: String? = nil, annotatedByEmail: String? = nil,
         assignedToEmail: String? = nil, traceId: String? = nil, spanId: String? = nil, conversationId: String? = nil,
         labels: [String]? = nil, status: AnnotationReviewStatus? = nil, includeTotal: Bool? = nil,
-        limit: Int? = nil, next: String? = nil
+        limit: Int? = nil, next: String? = nil, include: [AnnotationInclude]? = nil, lookbackDays: Int? = nil
     ) {
         self.annotatedByMemberId = annotatedByMemberId
         self.assigneeMemberId = assigneeMemberId
@@ -170,6 +181,8 @@ public struct AnnotationListParams: Sendable, Hashable {
         self.includeTotal = includeTotal
         self.limit = limit
         self.next = next
+        self.include = include
+        self.lookbackDays = lookbackDays
     }
 }
 
@@ -312,7 +325,7 @@ public struct AnnotationsAPI: Sendable {
         self.dataPlane = dataPlane
     }
 
-    /// List one folded state per annotated span.
+    /// List one folded state per annotated span. `include: [.comments]` loads each row's `comments`.
     public func list(_ params: AnnotationListParams = AnnotationListParams()) -> Paginator<AnnotationState> {
         let http = dataPlane
         guard params.annotatedByMemberId == nil || params.annotatedByEmail == nil else {
@@ -347,6 +360,8 @@ public struct AnnotationsAPI: Sendable {
             query.add("conversation_id", params.conversationId)
             query.add("label", params.labels)
             query.add("status", params.status)
+            query.add("include", params.include)
+            query.add("lookback_days", params.lookbackDays)
             query.add("include_total", params.includeTotal)
             query.add("limit", params.limit)
             return query
@@ -396,18 +411,14 @@ public struct AnnotationsAPI: Sendable {
         return AnnotationWriteResult(eventId: echoed, visible: true)
     }
 
-    /// Annotator, assignee, label and status counts for filter menus.
-    public func facets() async throws -> [AnnotationFacet] {
-        try await dataPlane.json("GET", "/v1/annotations/facets")
-    }
-
     /// The bounded previous/current/next window around one span in the filtered review order.
     public func navigation(
         _ target: AnnotationTarget,
         annotatedByMemberId: String? = nil,
         assigneeMemberId: String? = nil,
         labels: [String]? = nil,
-        status: AnnotationReviewStatus? = nil
+        status: AnnotationReviewStatus? = nil,
+        lookbackDays: Int? = nil
     ) async throws -> AnnotationNavigation {
         var query = Query()
         query.add("trace_id", target.traceId)
@@ -416,6 +427,7 @@ public struct AnnotationsAPI: Sendable {
         query.add("assignee_member_id", assigneeMemberId)
         query.add("label", labels)
         query.add("status", status)
+        query.add("lookback_days", lookbackDays)
         return try await dataPlane.json("GET", "/v1/annotations/navigation", query: query)
     }
 

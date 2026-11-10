@@ -23,7 +23,11 @@ import Testing
                   "trace_id": "0123456789abcdef0123456789abcdef",
                   "span_id": "0123456789abcdef",
                   "labels": ["bug"],
+                  "assignee_member_ids": [],
+                  "reviewer_member_ids": [],
                   "comment_count": 1,
+                  "updated_at": "2026-10-01T00:00:00Z",
+                  "updated_by_member_id": "m-1",
                   "review_priority": "urgent",
                   "future_object": {"nested_new_field": [1, 2, 3], "status": "brand_new"}
                 }

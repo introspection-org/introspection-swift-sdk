@@ -28,13 +28,28 @@ private let issueJSON = #"""
       "task_id": "0199a1b2-0000-7000-8000-0000000000dd",
       "task_status": "awaiting_user",
       "member_id": null,
+      "created_by_member_id": "0199a1b2-0000-7000-8000-0000000000c1",
+      "assignee_member_id": "0199a1b2-0000-7000-8000-0000000000c2",
+      "reviewer_member_id": null,
       "closed_at": null,
-      "open_requests": [
-        {"id": "0199a1b2-0000-7000-8000-0000000000c1", "question": "Can we refund the duplicate charge?",
-         "assignee_id": "0199a1b2-0000-7000-8000-0000000000c2", "created_at": "2026-10-02T11:00:00Z"}
+      "members": [
+        {"member_id": "0199a1b2-0000-7000-8000-0000000000c1", "relation": "creator"},
+        {"member_id": "0199a1b2-0000-7000-8000-0000000000c2", "relation": "assignee"},
+        {"member_id": "0199a1b2-0000-7000-8000-0000000000c3", "relation": "follower"}
+      ],
+      "comments": [
+        {"id": "0199a1b2-0000-7000-8000-0000000000d1", "issue_id": "0199a1b2-0000-7000-8000-000000000001",
+         "comment": "Can we refund the duplicate charge?", "member_id": "0199a1b2-0000-7000-8000-0000000000c1",
+         "actor_member_id": "0199a1b2-0000-7000-8000-0000000000c9", "actor_member_type": "agent",
+         "created_at": "2026-10-02T11:00:00Z"}
       ]
     }
     """#
+
+/// An issue as a read without `include` returns it: the brief, and every related list null.
+private func briefJSON(_ id: String = "i", title: String = "t", status: String = "open", extra: String = "") -> String {
+    #"{"id":"\#(id)","org_id":"o","project_id":"p","title":"\#(title)","description":"d","priority":"medium","status":"\#(status)","revision":1,"tags":[],"metadata":{}\#(extra)}"#
+}
 
 private func issueTransport(status: Int = 200) -> MockTransport {
     MockTransport { request, _ in
@@ -71,36 +86,44 @@ private func issueTransport(status: Int = 200) -> MockTransport {
         #expect(issue.taskStatus == .awaitingUser)
         #expect(issue.memberId == nil)
         #expect(issue.closedAt == nil)
-        let request = try #require(issue.openRequests?.first)
-        #expect(request.id == "0199a1b2-0000-7000-8000-0000000000c1")
-        #expect(request.question == "Can we refund the duplicate charge?")
-        #expect(request.assigneeId == "0199a1b2-0000-7000-8000-0000000000c2")
-        #expect(request.createdAt == ISO8601.parse("2026-10-02T11:00:00Z"))
+        #expect(issue.createdByMemberId == "0199a1b2-0000-7000-8000-0000000000c1")
+        #expect(issue.assigneeMemberId == "0199a1b2-0000-7000-8000-0000000000c2")
+        #expect(issue.reviewerMemberId == nil)
+        #expect(issue.members?.map(\.relation) == [.creator, .assignee, .follower])
+        #expect(issue.members?.last?.memberId == "0199a1b2-0000-7000-8000-0000000000c3")
+        let comment = try #require(issue.comments?.first)
+        #expect(comment.id == "0199a1b2-0000-7000-8000-0000000000d1")
+        #expect(comment.issueId == issue.id)
+        #expect(comment.comment == "Can we refund the duplicate charge?")
+        #expect(comment.memberId == "0199a1b2-0000-7000-8000-0000000000c1")
+        #expect(comment.actorMemberType == "agent")
+        #expect(comment.createdAt == ISO8601.parse("2026-10-02T11:00:00Z"))
         #expect(issue.createdAt == ISO8601.parse("2026-10-01T10:00:00Z"))
         #expect(issue.updatedAt == ISO8601.parse("2026-10-02T11:30:00.123Z"))
 
-        let minimal = try JSONCoding.decoder.decode(
-            Issue.self,
-            from: Data(#"{"id":"i","org_id":"o","project_id":"p","title":"t","description":"d","status":"brand_new"}"#.utf8))
-        #expect(minimal.status == "brand_new")
-        #expect(minimal.revision == nil)
-        #expect(minimal.openRequests == nil)
-        #expect(minimal.metadata == nil)
+        let brief = try JSONCoding.decoder.decode(Issue.self, from: Data(briefJSON(status: "brand_new").utf8))
+        #expect(brief.status == "brand_new")
+        #expect(brief.revision == 1)
+        #expect(brief.members == nil)
+        #expect(brief.links == nil)
+        #expect(brief.files == nil)
+        #expect(brief.events == nil)
+        #expect(brief.spans == nil)
+        #expect(brief.comments == nil)
+        #expect(brief.metadata == [:])
     }
 
     @Test func listEncodesRepeatedFiltersAndPaginates() async throws {
         let transport = MockTransport { request, _ in
             request.url.query?.contains("next=") != true
                 ? .response(.json(#"{"records":[\#(issueJSON)],"count":1,"total_count":2,"next":"cur-2"}"#))
-                : .response(
-                    .json(
-                        #"{"records":[{"id":"b","org_id":"o","project_id":"p","title":"second","description":"d"}],"count":1,"total_count":2,"next":null}"#
-                    ))
+                : .response(.json(#"{"records":[\#(briefJSON("b", title: "second"))],"count":1,"total_count":2,"next":null}"#))
         }
         let params = IssueListParams(
-            limit: 1, status: [.open, .waiting], owner: [.project, .me], assignedToMe: true, hasOpenRequests: false,
+            limit: 1, status: [.open, .waiting], owner: [.project, .me], relation: [.assignee, .reviewer], memberId: "m-1",
             taskStatus: [.running, .awaitingUser], excludeTaskStatus: [.completed, .cancelled], displayIndex: 42,
-            tag: "customer:acme", metadata: ["source": "slack", "env": "prod"], includeTotal: true
+            tag: "customer:acme", metadata: ["source": "slack", "env": "prod"], includeTotal: true,
+            include: [.members, .attachments]
         )
         let api = makeClient(transport).issues
         let page = try await api.list(params).firstPage()
@@ -113,10 +136,10 @@ private func issueTransport(status: Int = 200) -> MockTransport {
         #expect(first.path == "/v1/issues")
         #expect(
             first.query == [
-                "limit": ["1"], "status": ["open", "waiting"], "owner": ["project", "me"], "assigned_to_me": ["true"],
-                "has_open_requests": ["false"], "task_status": ["running", "awaiting_user"],
+                "limit": ["1"], "status": ["open", "waiting"], "owner": ["project", "me"],
+                "relation": ["assignee", "reviewer"], "member_id": ["m-1"], "task_status": ["running", "awaiting_user"],
                 "exclude_task_status": ["completed", "cancelled"], "display_index": ["42"], "tag": ["customer:acme"],
-                "metadata": ["env:prod", "source:slack"], "include_total": ["true"],
+                "metadata": ["env:prod", "source:slack"], "include_total": ["true"], "include": ["members", "attachments"],
             ])
         #expect(transport.requests[2].query["next"] == ["cur-2"])
         #expect(transport.requests[2].query["status"] == ["open", "waiting"])
@@ -155,6 +178,19 @@ private func issueTransport(status: Int = 200) -> MockTransport {
 
         _ = try await api.create(IssueCreate(title: "t", description: "d", taskId: "task-1"))
         #expect(transport.last?.json == ["title": "t", "description": "d", "task_id": "task-1"])
+        #expect(transport.last?.query == [:])
+
+        let people = IssueCreate(
+            title: "t", description: "d", taskId: "task-1", assigneeMemberId: "m-1", reviewerMemberId: "m-2",
+            followerMemberIds: ["m-3", "m-4"]
+        )
+        _ = try await api.create(people, include: [.members, .attachments])
+        #expect(
+            transport.last?.json == [
+                "title": "t", "description": "d", "task_id": "task-1", "assignee_member_id": "m-1",
+                "reviewer_member_id": "m-2", "follower_member_ids": ["m-3", "m-4"],
+            ])
+        #expect(transport.last?.query == ["include": ["members", "attachments"]])
     }
 
     @Test func getEscapesTheId() async throws {
@@ -163,6 +199,50 @@ private func issueTransport(status: Int = 200) -> MockTransport {
         #expect(issue.title == "Checkout times out")
         #expect(transport.last?.request.method == "GET")
         #expect(transport.last?.request.url.absoluteString == "https://dp.test/v1/issues/i%2F1")
+
+        _ = try await makeClient(transport).issues.get("i-1", include: [.members, .attachments, .comments])
+        #expect(transport.last?.path == "/v1/issues/i-1")
+        #expect(transport.last?.query == ["include": ["members", "attachments", "comments"]])
+    }
+
+    @Test func updateAssignsClearsAndLeavesPeople() async throws {
+        let transport = issueTransport()
+        let api = makeClient(transport).issues
+        _ = try await api.update(
+            "i-1", IssueUpdate(status: .waiting, assigneeMemberId: "m-1", reviewerMemberId: .some(nil), followerMemberIds: []),
+            include: [.members]
+        )
+        let sent = try #require(transport.last)
+        #expect(
+            sent.json == ["status": "waiting", "assignee_member_id": "m-1", "reviewer_member_id": nil, "follower_member_ids": []])
+        #expect(sent.query == ["include": ["members"]])
+
+        _ = try await api.update("i-1", IssueUpdate(assigneeMemberId: .some(nil)))
+        #expect(transport.last?.bodyString == #"{"assignee_member_id":null}"#)
+        #expect(transport.last?.query == [:])
+
+        _ = try await api.update("i-1", IssueUpdate(title: "New title"))
+        #expect(transport.last?.bodyString == #"{"title":"New title"}"#)
+    }
+
+    @Test func commentCreatePostsTheCommentAndDecodesIt() async throws {
+        let transport = MockTransport { _, _ in
+            .response(
+                .json(
+                    #"{"id":"c-1","issue_id":"i-1","comment":"Refund it?","member_id":"m-1","actor_member_id":null,"actor_member_type":null,"created_at":"2026-10-02T11:00:00Z"}"#,
+                    status: 201))
+        }
+        let comment = try await makeClient(transport).issues.comments.create("i/1", comment: "Refund it?")
+        #expect(comment.id == "c-1")
+        #expect(comment.issueId == "i-1")
+        #expect(comment.comment == "Refund it?")
+        #expect(comment.memberId == "m-1")
+        #expect(comment.actorMemberId == nil)
+        #expect(comment.createdAt == ISO8601.parse("2026-10-02T11:00:00Z"))
+        let sent = try #require(transport.last)
+        #expect(sent.request.method == "POST")
+        #expect(sent.request.url.absoluteString == "https://dp.test/v1/issues/i%2F1/comments")
+        #expect(sent.json == ["comment": "Refund it?"])
     }
 
     @Test func updateOmitsUnsetFieldsAndSendsEmptyListsToClear() async throws {
@@ -206,7 +286,7 @@ private func issueTransport(status: Int = 200) -> MockTransport {
         ("2026-11-04T01:00:00.123456+00:00", #""2026-11-04T01:00:00.123456+00:00""#),
     ])
     func etagIsUpdatedAtAsReceived(updatedAt: String, etag: String) throws {
-        let json = #"{"id":"i","org_id":"o","project_id":"p","title":"t","description":"d","updated_at":"\#(updatedAt)"}"#
+        let json = briefJSON(extra: #","updated_at":"\#(updatedAt)""#)
         let issue = try JSONCoding.decoder.decode(Issue.self, from: Data(json.utf8))
         #expect(issue.etag == etag)
         #expect(issue.updatedAt == ISO8601.parse(updatedAt))
@@ -217,8 +297,7 @@ private func issueTransport(status: Int = 200) -> MockTransport {
     }
 
     @Test func etagIsNilWithoutUpdatedAt() throws {
-        let json = #"{"id":"i","org_id":"o","project_id":"p","title":"t","description":"d"}"#
-        let issue = try JSONCoding.decoder.decode(Issue.self, from: Data(json.utf8))
+        let issue = try JSONCoding.decoder.decode(Issue.self, from: Data(briefJSON().utf8))
         #expect(issue.etag == nil)
     }
 
@@ -235,35 +314,6 @@ private func issueTransport(status: Int = 200) -> MockTransport {
         #expect(error?.message == "The issue has changed since it was read")
         await #expect(throws: IntrospectionError.self) { try await api.delete("i-1", ifMatch: #""1""#) }
         #expect(transport.last?.request.headers["If-Match"] == #""1""#)
-    }
-
-    @Test func updateCreatesAndChangesAHumanRequest() async throws {
-        let transport = issueTransport()
-        let api = makeClient(transport).issues
-        let create = IssueRequestMutation.create(question: "Refund it?", assigneeId: "m-1", id: "r-1")
-        _ = try await api.update("i-1", IssueMutation(request: create))
-        let sent = try #require(transport.last)
-        #expect(sent.request.method == "PATCH")
-        #expect(sent.path == "/v1/issues/i-1")
-        #expect(sent.request.headers["If-Match"] == nil)
-        #expect(
-            sent.json == ["request": ["id": "r-1", "question": "Refund it?", "assignee_id": "m-1"]])
-
-        _ = try await api.update(
-            "i-1",
-            IssueMutation(
-                request: IssueRequestMutation(id: "r-1", status: .resolved, resolution: "Refunded")))
-        #expect(
-            transport.last?.json == [
-                "request": ["id": "r-1", "status": "resolved", "resolution": "Refunded"]
-            ])
-    }
-
-    @Test func newRequestMintsAUUIDv7() {
-        let request = IssueRequestMutation.create(question: "q", assigneeId: "m-1")
-        #expect(request.id.count == 36)
-        #expect(Array(request.id)[14] == "7")
-        #expect(request.status == nil)
     }
 
     @Test func deleteSendsIfMatchOnlyWhenGiven() async throws {

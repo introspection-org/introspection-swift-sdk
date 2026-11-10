@@ -146,12 +146,14 @@ public struct GenAISpan: Codable, Sendable, Hashable {
     /// Present when requested with the `events` include.
     public var events: [GenAISpanEvent]?
     public var attributes: JSONObject
+    /// The span's current annotation state, on an export asked for `include: [.annotations]`; nil when it has none.
+    public var annotation: AnnotationState?
 
     public init(
         traceId: String, spanId: String? = nil, parentSpanId: String? = nil, name: String? = nil,
         kind: GenAISpanKind? = nil, startTime: Date? = nil, endTime: Date? = nil, durationNs: Int64? = nil,
         status: GenAISpanStatus? = nil, resource: JSONObject? = nil, events: [GenAISpanEvent]? = nil,
-        attributes: JSONObject = [:]
+        attributes: JSONObject = [:], annotation: AnnotationState? = nil
     ) {
         self.traceId = traceId
         self.spanId = spanId
@@ -165,10 +167,11 @@ public struct GenAISpan: Codable, Sendable, Hashable {
         self.resource = resource
         self.events = events
         self.attributes = attributes
+        self.annotation = annotation
     }
 
     private enum CodingKeys: String, CodingKey {
-        case name, kind, status, resource, events, attributes
+        case name, kind, status, resource, events, attributes, annotation
         case traceId = "trace_id"
         case spanId = "span_id"
         case parentSpanId = "parent_span_id"
@@ -191,6 +194,7 @@ public struct GenAISpan: Codable, Sendable, Hashable {
         resource = try container.decodeIfPresent(JSONObject.self, forKey: .resource)
         events = try container.decodeIfPresent([GenAISpanEvent].self, forKey: .events)
         attributes = try container.decodeIfPresent(JSONObject.self, forKey: .attributes) ?? [:]
+        annotation = try container.decodeIfPresent(AnnotationState.self, forKey: .annotation)
     }
 
     /// The attribute at a dotted semantic-convention path, walking the nested tree
@@ -1038,7 +1042,20 @@ public struct ConversationItemListParams: Sendable, Hashable {
     }
 }
 
-/// Filters for `GET /v1/conversations/{id}/export`, which assembles the whole conversation.
+/// Optional expansions of an exported span (repeated `include`), on the JSON-lines form only.
+public struct ConversationExportInclude: RawRepresentable, Codable, Sendable, Hashable, ExpressibleByStringLiteral {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+    public init(stringLiteral value: String) { rawValue = value }
+
+    /// Each annotated span carries its current `annotation`. Needs the annotations read scope.
+    public static let annotations: ConversationExportInclude = "annotations"
+    /// With `annotations`: that annotation's `comments`, oldest first.
+    public static let comments: ConversationExportInclude = "comments"
+}
+
+/// Filters for `GET /v1/conversations/{id}/export`, which assembles the whole conversation. The span
+/// export is JSON lines, one GenAI span per line.
 public struct ConversationExportParams: Sendable, Hashable {
     public var agent: String?
     public var serviceName: String?
@@ -1048,11 +1065,12 @@ public struct ConversationExportParams: Sendable, Hashable {
     public var startDate: Date?
     public var endDate: Date?
     public var fromCompaction: Bool?
+    public var include: [ConversationExportInclude]?
 
     public init(
         agent: String? = nil, serviceName: String? = nil, operationName: String? = nil, lookbackDays: Int? = nil,
         annotationId: String? = nil, startDate: Date? = nil, endDate: Date? = nil,
-        fromCompaction: Bool? = nil
+        fromCompaction: Bool? = nil, include: [ConversationExportInclude]? = nil
     ) {
         // jscpd:ignore-start: memberwise init of a public type; the assignments cannot be shared
         self.agent = agent
@@ -1064,6 +1082,7 @@ public struct ConversationExportParams: Sendable, Hashable {
         self.endDate = endDate
         self.fromCompaction = fromCompaction
         // jscpd:ignore-end
+        self.include = include
     }
 
     var query: Query {
@@ -1076,13 +1095,17 @@ public struct ConversationExportParams: Sendable, Hashable {
         q.add("start_date", startDate)
         q.add("end_date", endDate)
         q.add("from_compaction", fromCompaction)
+        q.add("include", include)
         return q
     }
 }
 
-/// The representation `exportStream` asks for.
+/// The representation `exportStream` asks for. The span export is JSON lines (`jsonl`); the
+/// JSON-envelope export was removed.
 public enum ConversationExportFormat: String, Sendable, Hashable, CaseIterable {
-    case json
+    /// JSON lines (`application/x-ndjson`): one GenAI span per line, each line a complete JSON object,
+    /// with no envelope, so it can be read as it streams.
+    case jsonl
     /// Apache Arrow IPC stream (returned as raw bytes; this SDK does not decode Arrow).
     case arrow
     /// trajectory-v1.
@@ -1093,7 +1116,7 @@ public enum ConversationExportFormat: String, Sendable, Hashable, CaseIterable {
     /// The `Accept` header value for this format.
     public var accept: String {
         switch self {
-        case .json: return "application/json"
+        case .jsonl: return "application/x-ndjson"
         case .arrow: return "application/vnd.apache.arrow.stream"
         case .trajectory: return "application/vnd.letta.trajectory+json;version=1"
         case .replay: return "application/vnd.introspection.conversation-replay+json;version=1"
@@ -1170,20 +1193,9 @@ public struct ConversationsAPI: Sendable {
         return try await http.json("GET", "/v1/conversations/\(pathSegment(conversationId))", query: query)
     }
 
-    /// Export the complete conversation as one GenAI-span list.
-    public func exportJSON(
-        _ conversationId: String, _ params: ConversationExportParams = ConversationExportParams()
-    ) async throws -> GenAISpanList {
-        var list = try await http.json(
-            "GET", "/v1/conversations/\(pathSegment(conversationId))/export",
-            query: params.query, headers: ["Accept": ConversationExportFormat.json.accept], as: GenAISpanList.self
-        )
-        list.data = list.data.map { $0.normalizingLegacyToolResults() }
-        return list
-    }
-
-    /// Export the complete conversation as trajectory-v1 records. A conversation that cannot be
-    /// represented fails with a validation error; one with no records is not found.
+    /// Export the complete conversation as trajectory-v1 records, not spans: for the spans use
+    /// ``exportJSONLines(_:_:)``. A conversation that cannot be represented fails with a validation
+    /// error; one with no records is not found.
     public func exportTrajectory(
         _ conversationId: String, _ params: ConversationExportParams = ConversationExportParams()
     ) async throws -> [TrajectoryRecord] {
@@ -1194,6 +1206,7 @@ public struct ConversationsAPI: Sendable {
     }
 
     /// Export the complete conversation as an Apache Arrow IPC stream (raw bytes; this SDK does not decode Arrow).
+    /// For decoded spans use ``exportJSONLines(_:_:)``.
     public func exportArrow(
         _ conversationId: String, _ params: ConversationExportParams = ConversationExportParams()
     ) async throws -> Data {
@@ -1203,7 +1216,9 @@ public struct ConversationsAPI: Sendable {
         )
     }
 
-    /// Open the raw export byte stream in the given format, without buffering it.
+    /// Open the raw export byte stream in the given format, without buffering it. With `.jsonl` the body is
+    /// JSON lines (`application/x-ndjson`): one GenAI span per line, each line a complete JSON object.
+    /// There is no JSON-envelope format; it was removed.
     public func exportStream(
         _ conversationId: String, format: ConversationExportFormat,
         _ params: ConversationExportParams = ConversationExportParams()

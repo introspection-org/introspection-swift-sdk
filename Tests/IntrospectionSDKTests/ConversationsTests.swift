@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import Testing
 
 @testable import IntrospectionSDK
@@ -34,6 +35,38 @@ private let toolSpanJSON = #"""
     {"trace_id":"t1","span_id":"s1","start_time":"2026-10-01T12:00:01Z",
      "attributes":{"gen_ai":{"operation":{"name":"execute_tool"},"tool":{"name":"search","call":{"id":"call-1"}}}}}
     """#
+
+/// A body that is produced only as it is pulled, one line per chunk, counting what it has produced.
+private final class CountingLineSource: HTTPTransport, Sendable {
+    private let produced = Mutex(0)
+    private let total: Int
+
+    /// How many lines the body has produced so far.
+    var count: Int { produced.withLock { $0 } }
+
+    init(total: Int) { self.total = total }
+
+    func send(_: HTTPRequest) async throws -> HTTPResponse {
+        HTTPResponse(status: 500, headers: [:], body: Data())
+    }
+
+    func stream(_: HTTPRequest) async throws -> HTTPStreamResponse {
+        HTTPStreamResponse(status: 200, headers: [:], bytes: AsyncThrowingStream(unfolding: { self.line() }))
+    }
+
+    private func line() -> Data? {
+        let row = produced.withLock { count -> Int? in
+            guard count < total else { return nil }
+            count += 1
+            return count
+        }
+        return row.map { Data(#"{"trace_id":"t1","span_id":"s\#($0)","attributes":{}}"#.utf8) + Data("\n".utf8) }
+    }
+
+    var conversations: ConversationsAPI {
+        ConversationsAPI(http: HTTPClient(baseURL: URL(string: "https://dp.test")!, transport: self))
+    }
+}
 
 @Suite struct ConversationsTests {
     @Test func listSerializesReadWindowAndMetadata() async throws {
@@ -232,6 +265,100 @@ private let toolSpanJSON = #"""
         #expect(none == nil)
     }
 
+    @Test func exportJSONLinesDecodesSpansAsChunksArrive() async throws {
+        let lines =
+            #"{"trace_id":"t1","span_id":"s1","name":"café","attributes":{}}"# + "\n"
+            + #"{"trace_id":"t1","span_id":"s2","attributes":{"gen_ai":{"operation":{"name":"chat"}}}}"# + "\r\n\n"
+            + #"{"trace_id":"t1","span_id":"s3","attributes":{}}"#
+        // One byte per chunk splits every line, and the multi-byte character, across chunks.
+        let chunks = Data(lines.utf8).map { Data([$0]) }
+        let transport = MockTransport { _, _ in
+            .stream(status: 200, headers: ["content-type": "application/x-ndjson"], chunks: chunks, error: nil)
+        }
+        var spans: [GenAISpan] = []
+        let export = makeClient(transport).conversations.exportJSONLines("conv-1", ConversationExportParams(fromCompaction: true))
+        for try await span in export { spans.append(span) }
+        #expect(spans.map(\.spanId) == ["s1", "s2", "s3"])
+        #expect(spans.first?.name == "café")
+        #expect(transport.last?.path == "/v1/conversations/conv-1/export")
+        #expect(transport.last?.request.headers["Accept"] == "application/x-ndjson")
+        #expect(transport.last?.query["from_compaction"] == ["true"])
+    }
+
+    @Test func exportCarriesAnnotationsWhenIncluded() async throws {
+        let human = #"{"event_id":"ev-1","comment":"see","member_id":"m-1","created_at":"2026-10-01T00:00:00Z"}"#
+        let agent =
+            #"{"event_id":"ev-2","comment":"done","member_id":"m-1","actor_member_id":"m-7","actor_member_type":"agent","created_at":"2026-10-02T00:00:00Z"}"#
+        let annotation =
+            #"{"trace_id":"t1","span_id":"s1","labels":["bug"],"assignee_member_ids":[],"reviewer_member_ids":[],"comment_count":2,"updated_at":"2026-10-02T00:00:00Z","updated_by_member_id":"m-1","comments":[\#(human),\#(agent)]}"#
+        let lines =
+            #"{"trace_id":"t1","span_id":"s1","attributes":{},"annotation":\#(annotation)}"# + "\n"
+            + #"{"trace_id":"t1","span_id":"s2","attributes":{}}"# + "\n"
+        let transport = MockTransport { _, _ in .stream(status: 200, headers: [:], chunks: [Data(lines.utf8)], error: nil) }
+        let conversations = makeClient(transport).conversations
+        let params = ConversationExportParams(include: [.annotations, .comments])
+        var spans: [GenAISpan] = []
+        for try await span in conversations.exportJSONLines("conv-1", params) { spans.append(span) }
+        #expect(transport.last?.query["include"] == ["annotations", "comments"])
+
+        let state = try #require(spans.first?.annotation)
+        #expect(state.labels == ["bug"])
+        #expect(state.comments?.map(\.comment) == ["see", "done"])
+        #expect(state.comments?.map(\.actorMemberType) == [nil, "agent"])
+        #expect(spans.last?.annotation == nil)
+
+        _ = try await conversations.exportStream("conv-1", format: .jsonl, params).collect()
+        #expect(transport.last?.query["include"] == ["annotations", "comments"])
+        _ = try await conversations.exportStream("conv-1", format: .jsonl).collect()
+        #expect(transport.last?.query["include"] == nil)
+    }
+
+    @Test func exportJSONLinesReadsOnlyAsFarAsItIsConsumed() async throws {
+        let source = CountingLineSource(total: 10_000)
+        var iterator = source.conversations.exportJSONLines("conv-1").makeAsyncIterator()
+        #expect(source.count == 0)
+        for row in 1...3 {
+            let span = try await iterator.next()
+            #expect(span?.spanId == "s\(row)")
+            #expect(source.count <= row + 1)
+        }
+    }
+
+    @Test func exportJSONLinesStopsReadingWhenItsTaskIsCancelled() async throws {
+        let source = CountingLineSource(total: 10_000)
+        let spans = source.conversations.exportJSONLines("conv-1")
+        let reader = Task { () -> Int in
+            var read = 0
+            for try await _ in spans {
+                read += 1
+                if read == 5 { withUnsafeCurrentTask { $0?.cancel() } }
+            }
+            return read
+        }
+        await #expect(throws: CancellationError.self) { try await reader.value }
+        #expect(source.count <= 6)
+    }
+
+    @Test func exportJSONLinesSurfacesAnOlderDataPlaneAndACutBody() async throws {
+        let older = MockTransport { _, _ in .response(.json(#"{"detail":"Not Acceptable"}"#, status: 406)) }
+        let refused = try await #require(throws: IntrospectionError.self) {
+            for try await _ in makeClient(older).conversations.exportJSONLines("conv-1") {}
+        }
+        #expect(refused.status == 406)
+        #expect(older.requests.count == 1)
+
+        let cutChunks = [Data(#"{"trace_id":"t1","attributes":{}}"#.utf8), Data("\n{\"trace_id\":".utf8)]
+        let cut = MockTransport { _, _ in .stream(status: 200, headers: [:], chunks: cutChunks, error: nil) }
+        var read = 0
+        do {
+            for try await _ in makeClient(cut).conversations.exportJSONLines("conv-1") { read += 1 }
+            Issue.record("a body cut inside a line decoded")
+        } catch let error as IntrospectionError {
+            #expect(error.kind == .decoding)
+        }
+        #expect(read == 1)
+    }
+
     @Test func getTurnsAndExports() async throws {
         let trajectoryJSON = #"""
             [{"role":"meta","source":"claude-code","cwd":"/w"},{"role":"user","content":"hi","timestamp":"2026-10-01T12:00:00Z"},
@@ -246,8 +373,6 @@ private let toolSpanJSON = #"""
                 if accept.contains("arrow") {
                     return .stream(status: 200, headers: ["content-type": accept], chunks: [Data([1, 2]), Data([3])], error: nil)
                 }
-                return .response(
-                    .json(#"{"object":"list","first_id":"s2","data":[\#(chatSpanJSON)],"last_id":"s2","has_more":false,"next":null}"#))
             }
             return .response(.json(conversationJSON))
         }
@@ -255,11 +380,6 @@ private let toolSpanJSON = #"""
 
         let conversation = try await client.conversations.get("conv-1")
         #expect(conversation.taskTitle == "Hello")
-
-        let exported = try await client.conversations.exportJSON("conv-1", ConversationExportParams(agent: "root", fromCompaction: true))
-        #expect(exported.data.count == 1)
-        #expect(transport.last?.request.headers["Accept"] == "application/json")
-        #expect(transport.last?.query["from_compaction"] == ["true"])
 
         let trajectory = try await client.conversations.exportTrajectory("conv-1")
         #expect(trajectory.map(\.role) == ["meta", "user", "assistant", "tool"])
