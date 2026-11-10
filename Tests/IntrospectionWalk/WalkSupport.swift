@@ -63,7 +63,7 @@ enum WALK {
         "tasks:write", "tasks:delete", "tasks:eval", "tasks:exec", "files:read", "files:write", "files:delete",
         "conversations:read", "events:read", "metrics:read", "shares:read", "shares:write", "shares:delete",
         "connectors:read", "connectors:write", "connections:read", "connections:write", "connections:delete",
-        "automations:read", "automations:write", "issues:read", "issues:write", "issues:delete", "annotations:read",
+        "automations:read", "automations:write", "annotations:read",
         "approvals:read", "approvals:write", "images:read", "images:write", "api_keys:read", "api_keys:write",
         "api_keys:delete", "applications:read", "applications:write", "applications:delete", "credentials:read",
         "credentials:write", "credentials:delete", "endpoints:read", "endpoints:write", "endpoints:delete",
