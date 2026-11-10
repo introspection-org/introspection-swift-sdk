@@ -423,6 +423,71 @@ private func member(_ id: String, _ email: String?, deactivated: Bool = false) -
         #expect(encoded["human_commenter_member_ids"] == nil)
     }
 
+    @Test func annotationExportDecodesRowsAsChunksArrive() async throws {
+        let lines =
+            #"{"trace_id": "t1", "span_id": "s1", "labels": ["café"], "reviewer_member_ids": ["m-1"], "comment_count": 1}"# + "\n"
+            + #"{"trace_id": "t1", "span_id": "s2", "human_commenter_member_ids": ["m-3"], "has_comment": true, "latest_comment": "see"}"# + "\n"
+        // One byte per chunk splits every line, and the multi-byte character, across chunks.
+        let chunks = Data(lines.utf8).map { Data([$0]) }
+        let transport = MockTransport { request, _ in
+            request.url.host == "cp.test"
+                ? .response(.json(#"{"records": [\#(member("m-1", "ana@example.com"))], "count": 1}"#))
+                : .stream(status: 200, headers: ["content-type": "application/x-ndjson"], chunks: chunks, error: nil)
+        }
+        let annotations = makeClient(transport).annotations
+        let params = AnnotationListParams(
+            assigneeMemberId: "m-2", annotatedByEmail: "ANA@example.com", traceId: "t1", spanId: "s1", conversationId: "conv",
+            labels: ["bug", "ux"], status: .reviewed, includeTotal: true, limit: 5, next: "p2"
+        )
+        var states: [AnnotationState] = []
+        for try await state in annotations.export(params) { states.append(state) }
+        #expect(states.map(\.spanId) == ["s1", "s2"])
+        #expect(states.first?.labels == ["café"])
+        #expect(states.map(\.reviewerMemberIds) == [["m-1"], ["m-3"]])
+
+        let read = try #require(transport.last)
+        #expect(read.path == "/v1/annotations/export")
+        #expect(read.request.headers["Accept"] == "application/x-ndjson")
+        #expect(read.query["annotated_by_member_id"] == ["m-1"])
+        #expect(read.query["assignee_member_id"] == ["m-2"])
+        #expect(read.query["trace_id"] == ["t1"])
+        #expect(read.query["span_id"] == ["s1"])
+        #expect(read.query["conversation_id"] == ["conv"])
+        #expect(read.query["label"] == ["bug", "ux"])
+        #expect(read.query["status"] == ["reviewed"])
+        #expect(read.query["limit"] == nil)
+        #expect(read.query["next"] == nil)
+        #expect(read.query["include_total"] == nil)
+
+        let raw = try await annotations.exportStream(AnnotationListParams(conversationId: "conv")).collect()
+        #expect(raw == Data(lines.utf8))
+        #expect(transport.last?.request.headers["Accept"] == "application/x-ndjson")
+        #expect(transport.last?.query["conversation_id"] == ["conv"])
+    }
+
+    @Test func annotationExportYieldsNothingForAnEmptyBodyAndSurfacesErrors() async throws {
+        let empty = MockTransport { _, _ in .stream(status: 200, headers: [:], chunks: [], error: nil) }
+        var count = 0
+        for try await _ in makeClient(empty).annotations.export() { count += 1 }
+        #expect(count == 0)
+        #expect(empty.requests.count == 1)
+
+        let older = MockTransport { _, _ in .response(.json(#"{"detail":"Not Acceptable"}"#, status: 406)) }
+        let refused = try await #require(throws: IntrospectionError.self) {
+            for try await _ in makeClient(older).annotations.export() {}
+        }
+        #expect(refused.status == 406)
+        #expect(older.requests.count == 1)
+
+        let unsent = MockTransport(json: "{}")
+        let conflict = try await #require(throws: IntrospectionError.self) {
+            let params = AnnotationListParams(annotatedByMemberId: "m", annotatedByEmail: "a@x")
+            for try await _ in makeClient(unsent).annotations.export(params) {}
+        }
+        #expect(conflict.code == "conflicting_annotation_annotator_filters")
+        #expect(unsent.requests.isEmpty)
+    }
+
     @Test func annotationListRejectsConflictingFilters() async throws {
         let transport = MockTransport(json: "{}")
         let error = try await #require(throws: IntrospectionError.self) {
@@ -493,7 +558,10 @@ private func member(_ id: String, _ email: String?, deactivated: Bool = false) -
     @Test func annotationFacetsAndNavigation() async throws {
         let transport = MockTransport { request, _ in
             request.url.path.hasSuffix("facets")
-                ? .response(.json(#"[{"dimension": "label", "value": "bug", "count": 3}]"#))
+                ? .response(
+                    .json(
+                        #"[{"dimension": "label", "value": "bug", "count": 3}, {"dimension": "review_queue", "value": "bug", "count": 2, "conversation_count": 1, "comment_count": 4, "reviewer_member_ids": ["m-1"], "updated_at": "2026-10-01T00:00:00Z"}]"#
+                    ))
                 : .response(
                     .json(
                         #"{"previous": null, "current": {"trace_id": "t", "span_id": "s"}, "next": null, "current_position": 0, "total_count": 1}"#
@@ -502,6 +570,12 @@ private func member(_ id: String, _ email: String?, deactivated: Bool = false) -
         let annotations = makeClient(transport).annotations
         let facets = try await annotations.facets()
         #expect(facets.first?.count == 3)
+        #expect(facets.first?.conversationCount == nil)
+        #expect(facets.last?.dimension == "review_queue")
+        #expect(facets.last?.conversationCount == 1)
+        #expect(facets.last?.commentCount == 4)
+        #expect(facets.last?.reviewerMemberIds == ["m-1"])
+        #expect(facets.last?.updatedAt != nil)
         let window = try await annotations.navigation(AnnotationTarget(traceId: "t", spanId: "s"), labels: ["bug"])
         #expect(window.current?.spanId == "s")
         #expect(window.totalCount == 1)
