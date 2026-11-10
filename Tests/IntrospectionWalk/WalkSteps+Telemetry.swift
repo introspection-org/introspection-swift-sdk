@@ -89,8 +89,6 @@ extension Walk {
         }
         let table = try await sa.events.listArrow(params)
         try check(!table.isEmpty, "the Arrow event list")
-        // The facets count the whole project's annotations: the route takes no conversation filter.
-        _ = try await member.annotations.facets()
         _ = try await member.annotations.navigation(span)
     }
 

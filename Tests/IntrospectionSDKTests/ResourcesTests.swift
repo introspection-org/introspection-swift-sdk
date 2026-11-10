@@ -410,6 +410,7 @@ private func member(_ id: String, _ email: String?, deactivated: Bool = false) -
         #expect(reads[0].query["label"] == ["bug", "ux"])
         #expect(reads[0].query["status"] == ["assigned"])
         #expect(reads[0].query["include"] == nil)
+        #expect(reads[0].query["lookback_days"] == nil)
         #expect(reads[1].query["next"] == ["p2"])
         #expect(reads[1].query["annotated_by_member_id"] == ["m-1"])
     }
@@ -518,32 +519,32 @@ private func member(_ id: String, _ email: String?, deactivated: Bool = false) -
         }
     }
 
-    @Test func annotationFacetsAndNavigation() async throws {
-        let transport = MockTransport { request, _ in
-            request.url.path.hasSuffix("facets")
-                ? .response(
-                    .json(
-                        #"[{"dimension": "label", "value": "bug", "count": 3}, {"dimension": "review_queue", "value": "bug", "count": 2, "conversation_count": 1, "comment_count": 4, "reviewer_member_ids": ["m-1"], "updated_at": "2026-10-01T00:00:00Z"}]"#
-                    ))
-                : .response(
-                    .json(
-                        #"{"previous": null, "current": {"trace_id": "t", "span_id": "s"}, "next": null, "current_position": 0, "total_count": 1}"#
-                    ))
-        }
+    @Test func annotationNavigation() async throws {
+        let transport = MockTransport(
+            json: #"{"previous": null, "current": {"trace_id": "t", "span_id": "s"}, "next": null, "current_position": 0, "total_count": 1}"#
+        )
         let annotations = makeClient(transport).annotations
-        let facets = try await annotations.facets()
-        #expect(facets.first?.count == 3)
-        #expect(facets.first?.conversationCount == nil)
-        #expect(facets.last?.dimension == "review_queue")
-        #expect(facets.last?.conversationCount == 1)
-        #expect(facets.last?.commentCount == 4)
-        #expect(facets.last?.reviewerMemberIds == ["m-1"])
-        #expect(facets.last?.updatedAt != nil)
-        let window = try await annotations.navigation(AnnotationTarget(traceId: "t", spanId: "s"), labels: ["bug"])
+        let window = try await annotations.navigation(AnnotationTarget(traceId: "t", spanId: "s"), labels: ["bug"], lookbackDays: 7)
         #expect(window.current?.spanId == "s")
         #expect(window.totalCount == 1)
         #expect(transport.last?.path == "/v1/annotations/navigation")
         #expect(transport.last?.query["trace_id"] == ["t"])
+        #expect(transport.last?.query["lookback_days"] == ["7"])
+    }
+
+    @Test func annotationListReadsADatasetSizeFromTheTotal() async throws {
+        let transport = MockTransport(
+            json:
+                #"{"records": [{"trace_id": "t", "span_id": "s", "updated_at": "2026-10-01T00:00:00Z"}], "count": 1, "total_count": 42, "next": "p2"}"#
+        )
+        let params = AnnotationListParams(labels: ["bug"], includeTotal: true, limit: 1, lookbackDays: 30)
+        let page = try await makeClient(transport).annotations.list(params).page(at: nil)
+        #expect(page.totalCount == 42)
+        #expect(page.records.first?.updatedAt != nil)
+        #expect(transport.last?.query["label"] == ["bug"])
+        #expect(transport.last?.query["limit"] == ["1"])
+        #expect(transport.last?.query["include_total"] == ["true"])
+        #expect(transport.last?.query["lookback_days"] == ["30"])
     }
 
     @Test func tags() async throws {

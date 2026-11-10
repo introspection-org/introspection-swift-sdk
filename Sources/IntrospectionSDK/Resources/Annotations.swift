@@ -128,39 +128,6 @@ public struct AnnotationState: Codable, Sendable, Hashable {
     }
 }
 
-/// One filter bucket over current annotation state. The `label` and `review_queue` buckets also
-/// summarize their dataset: its conversations, comments, reviewers and last update.
-public struct AnnotationFacet: Codable, Sendable, Hashable {
-    public var dimension: String
-    public var value: String
-    public var count: Int
-    public var conversationCount: Int?
-    public var commentCount: Int?
-    public var reviewerMemberIds: [String]?
-    public var updatedAt: Date?
-
-    public init(
-        dimension: String, value: String, count: Int, conversationCount: Int? = nil, commentCount: Int? = nil,
-        reviewerMemberIds: [String]? = nil, updatedAt: Date? = nil
-    ) {
-        self.dimension = dimension
-        self.value = value
-        self.count = count
-        self.conversationCount = conversationCount
-        self.commentCount = commentCount
-        self.reviewerMemberIds = reviewerMemberIds
-        self.updatedAt = updatedAt
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case dimension, value, count
-        case conversationCount = "conversation_count"
-        case commentCount = "comment_count"
-        case reviewerMemberIds = "reviewer_member_ids"
-        case updatedAt = "updated_at"
-    }
-}
-
 /// The previous, current and next annotation around one span in the filtered review order.
 public struct AnnotationNavigation: Codable, Sendable, Hashable {
     public var previous: AnnotationState?
@@ -215,12 +182,14 @@ public struct AnnotationListParams: Sendable, Hashable {
     public var limit: Int?
     public var next: String?
     public var include: [AnnotationInclude]?
+    /// How many days of annotation events the read reaches back (1 to 90; the server defaults to 90).
+    public var lookbackDays: Int?
 
     public init(
         annotatedByMemberId: String? = nil, assigneeMemberId: String? = nil, annotatedByEmail: String? = nil,
         assignedToEmail: String? = nil, traceId: String? = nil, spanId: String? = nil, conversationId: String? = nil,
         labels: [String]? = nil, status: AnnotationReviewStatus? = nil, includeTotal: Bool? = nil,
-        limit: Int? = nil, next: String? = nil, include: [AnnotationInclude]? = nil
+        limit: Int? = nil, next: String? = nil, include: [AnnotationInclude]? = nil, lookbackDays: Int? = nil
     ) {
         self.annotatedByMemberId = annotatedByMemberId
         self.assigneeMemberId = assigneeMemberId
@@ -235,6 +204,7 @@ public struct AnnotationListParams: Sendable, Hashable {
         self.limit = limit
         self.next = next
         self.include = include
+        self.lookbackDays = lookbackDays
     }
 }
 
@@ -413,6 +383,7 @@ public struct AnnotationsAPI: Sendable {
             query.add("label", params.labels)
             query.add("status", params.status)
             query.add("include", params.include)
+            query.add("lookback_days", params.lookbackDays)
             query.add("include_total", params.includeTotal)
             query.add("limit", params.limit)
             return query
@@ -462,18 +433,14 @@ public struct AnnotationsAPI: Sendable {
         return AnnotationWriteResult(eventId: echoed, visible: true)
     }
 
-    /// Annotator, assignee, label and status counts for filter menus.
-    public func facets() async throws -> [AnnotationFacet] {
-        try await dataPlane.json("GET", "/v1/annotations/facets")
-    }
-
     /// The bounded previous/current/next window around one span in the filtered review order.
     public func navigation(
         _ target: AnnotationTarget,
         annotatedByMemberId: String? = nil,
         assigneeMemberId: String? = nil,
         labels: [String]? = nil,
-        status: AnnotationReviewStatus? = nil
+        status: AnnotationReviewStatus? = nil,
+        lookbackDays: Int? = nil
     ) async throws -> AnnotationNavigation {
         var query = Query()
         query.add("trace_id", target.traceId)
@@ -482,6 +449,7 @@ public struct AnnotationsAPI: Sendable {
         query.add("assignee_member_id", assigneeMemberId)
         query.add("label", labels)
         query.add("status", status)
+        query.add("lookback_days", lookbackDays)
         return try await dataPlane.json("GET", "/v1/annotations/navigation", query: query)
     }
 
