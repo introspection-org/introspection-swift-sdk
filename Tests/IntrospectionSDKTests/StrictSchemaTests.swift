@@ -71,6 +71,27 @@ import Testing
         }
     }
 
+    @Test func judgementPayloadModelsEveryFieldTheAPIReturns() async throws {
+        let json = #"""
+            {"judgement_id":"j1","judge_id":"judge-1","judge_slug":"helpful","judge_type":"online",
+             "result":"pass","result_schema":"question_scores.v1","runtime_slug":"hello-mcp",
+             "status":"ok","error_class":null,"error_message":null,"source_component":"judge-engine",
+             "reasoning":"fine","reason":null,"definition_hash":"d1","engine_version":"1.2.3",
+             "judge_provider":"anthropic","judge_model":"claude","contract_version":"1",
+             "sequence_hash":"s1","experiment_arm_id":null,"input_tokens":120,"output_tokens":30,
+             "total_tokens":150,"scores":{"q1":1},"questions":{"q1":"Is it helpful?"},
+             "policy_id":null,"policy_action":null,"request_host":null,"request_method":null,
+             "request_path":null}
+            """#
+        #expect(await drift(json, as: JudgementPayload.self) == nil)
+        let payload = try await client(json, strict: true).json("GET", "/v1/things", as: JudgementPayload.self)
+        #expect(payload.judgeType == .online)
+        #expect(payload.resultSchema == .questionScoresV1)
+        #expect(payload.scores == ["q1": 1])
+        let later = try await client(#"{"judge_type":"batch"}"#, strict: true).json("GET", "/v1/things", as: JudgementPayload.self)
+        #expect(later.judgeType?.rawValue == "batch")
+    }
+
     @Test func offToleratesAnUnknownField() async throws {
         let decoded = try await client(#"{"id":"a","items":[],"color":"red"}"#, strict: false).json("GET", "/v1/things", as: Outer.self)
         #expect(decoded.id == "a")

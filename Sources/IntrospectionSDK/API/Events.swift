@@ -305,9 +305,24 @@ public struct JudgementPayload: Codable, Sendable, Hashable {
     public var outputTokens: Int?
     public var totalTokens: Int?
     public var experimentArmId: String?
+    public var judgeSlug: String?
+    public var judgeType: JudgeType?
+    /// The shape of `result`.
+    public var resultSchema: JudgementResultSchema?
+    public var runtimeSlug: String?
+    public var reason: String?
+    /// Score per question id.
+    public var scores: [String: Int]?
+    /// Question text per question id.
+    public var questions: [String: String]?
+    public var policyId: String?
+    public var policyAction: String?
+    public var requestHost: String?
+    public var requestMethod: String?
+    public var requestPath: String?
 
     private enum CodingKeys: String, CodingKey {
-        case result, status, reasoning
+        case result, status, reasoning, reason, scores, questions
         case judgementId = "judgement_id"
         case judgeId = "judge_id"
         case errorClass = "error_class"
@@ -323,7 +338,37 @@ public struct JudgementPayload: Codable, Sendable, Hashable {
         case outputTokens = "output_tokens"
         case totalTokens = "total_tokens"
         case experimentArmId = "experiment_arm_id"
+        case judgeSlug = "judge_slug"
+        case judgeType = "judge_type"
+        case resultSchema = "result_schema"
+        case runtimeSlug = "runtime_slug"
+        case policyId = "policy_id"
+        case policyAction = "policy_action"
+        case requestHost = "request_host"
+        case requestMethod = "request_method"
+        case requestPath = "request_path"
     }
+}
+
+/// Where a judge runs.
+public struct JudgeType: RawRepresentable, Codable, Sendable, Hashable, ExpressibleByStringLiteral {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+    public init(stringLiteral value: String) { self.rawValue = value }
+
+    public static let online: JudgeType = "online"
+    public static let offline: JudgeType = "offline"
+    public static let mission: JudgeType = "mission"
+}
+
+/// The shape of a judgement's `result`.
+public struct JudgementResultSchema: RawRepresentable, Codable, Sendable, Hashable, ExpressibleByStringLiteral {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+    public init(stringLiteral value: String) { self.rawValue = value }
+
+    public static let verdictV1: JudgementResultSchema = "verdict.v1"
+    public static let questionScoresV1: JudgementResultSchema = "question_scores.v1"
 }
 
 /// One custom event (written with `logEvent` or `track` from the `IntrospectionTelemetry` module, or any other
