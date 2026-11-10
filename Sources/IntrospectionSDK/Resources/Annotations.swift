@@ -24,8 +24,40 @@ public struct AnnotationReviewStatus: RawRepresentable, Codable, Sendable, Hasha
     public static let reviewed: AnnotationReviewStatus = "reviewed"
 }
 
-/// Current labels, assignees and reviewers folded from one span's annotation events. Comment text is not
-/// on the row: read it from the span's `introspection.annotation` events.
+/// One comment on an annotated span, as the export carries it.
+public struct AnnotationComment: Codable, Sendable, Hashable {
+    public var eventId: String
+    public var comment: String
+    /// The author.
+    public var memberId: String
+    public var actorMemberId: String?
+    /// The kind of actor that wrote on the member's behalf, such as `agent`.
+    public var actorMemberType: String?
+    public var createdAt: Date?
+
+    public init(
+        eventId: String, comment: String, memberId: String, actorMemberId: String? = nil, actorMemberType: String? = nil,
+        createdAt: Date? = nil
+    ) {
+        self.eventId = eventId
+        self.comment = comment
+        self.memberId = memberId
+        self.actorMemberId = actorMemberId
+        self.actorMemberType = actorMemberType
+        self.createdAt = createdAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case comment
+        case eventId = "event_id"
+        case memberId = "member_id"
+        case actorMemberId = "actor_member_id"
+        case actorMemberType = "actor_member_type"
+        case createdAt = "created_at"
+    }
+}
+
+/// Current labels, assignees and reviewers folded from one span's annotation events.
 public struct AnnotationState: Codable, Sendable, Hashable {
     public var traceId: String
     public var spanId: String
@@ -38,11 +70,14 @@ public struct AnnotationState: Codable, Sendable, Hashable {
     public var updatedAt: Date?
     public var updatedByMemberId: String?
     public var assignmentEventId: String?
+    /// Every comment on the span, oldest first. Only the export sets it; nil from the list and the navigation.
+    public var comments: [AnnotationComment]?
 
     public init(
         traceId: String, spanId: String, conversationId: String? = nil, labels: [String]? = nil,
         assigneeMemberIds: [String]? = nil, reviewerMemberIds: [String]? = nil, commentCount: Int? = nil,
-        updatedAt: Date? = nil, updatedByMemberId: String? = nil, assignmentEventId: String? = nil
+        updatedAt: Date? = nil, updatedByMemberId: String? = nil, assignmentEventId: String? = nil,
+        comments: [AnnotationComment]? = nil
     ) {
         self.traceId = traceId
         self.spanId = spanId
@@ -54,6 +89,7 @@ public struct AnnotationState: Codable, Sendable, Hashable {
         self.updatedAt = updatedAt
         self.updatedByMemberId = updatedByMemberId
         self.assignmentEventId = assignmentEventId
+        self.comments = comments
     }
 
     public init(from decoder: any Decoder) throws {
@@ -71,10 +107,11 @@ public struct AnnotationState: Codable, Sendable, Hashable {
         updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt)
         updatedByMemberId = try container.decodeIfPresent(String.self, forKey: .updatedByMemberId)
         assignmentEventId = try container.decodeIfPresent(String.self, forKey: .assignmentEventId)
+        comments = try container.decodeIfPresent([AnnotationComment].self, forKey: .comments)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case labels
+        case labels, comments
         case traceId = "trace_id"
         case spanId = "span_id"
         case conversationId = "conversation_id"
@@ -346,7 +383,8 @@ public struct AnnotationsAPI: Sendable {
         }
     }
 
-    /// Every folded state the list's filters match, decoded one JSON line at a time as the body arrives.
+    /// Every folded state the list's filters match, each with its `comments`, decoded one JSON line at a
+    /// time as the body arrives.
     /// The export is not paged: `limit`, `next` and `includeTotal` are not sent.
     public func export(_ params: AnnotationListParams = AnnotationListParams()) -> AsyncThrowingStream<AnnotationState, any Error> {
         let api = self
