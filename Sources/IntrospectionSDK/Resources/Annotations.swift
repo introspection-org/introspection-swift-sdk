@@ -24,7 +24,7 @@ public struct AnnotationReviewStatus: RawRepresentable, Codable, Sendable, Hasha
     public static let reviewed: AnnotationReviewStatus = "reviewed"
 }
 
-/// One comment on an annotated span, as the export carries it.
+/// One comment on an annotated span.
 public struct AnnotationComment: Codable, Sendable, Hashable {
     public var eventId: String
     public var comment: String
@@ -70,7 +70,7 @@ public struct AnnotationState: Codable, Sendable, Hashable {
     public var updatedAt: Date?
     public var updatedByMemberId: String?
     public var assignmentEventId: String?
-    /// Every comment on the span, oldest first. Only the export sets it; nil from the list and the navigation.
+    /// Every comment on the span, oldest first, when the list was asked for `include: [.comments]`; nil otherwise.
     public var comments: [AnnotationComment]?
 
     public init(
@@ -188,6 +188,16 @@ public struct AnnotationNavigation: Codable, Sendable, Hashable {
 }
 
 /// Filters for `GET /v1/annotations`. Email filters are resolved to active business members first.
+/// Optional expansions of a listed annotation row (repeated `include`).
+public struct AnnotationInclude: RawRepresentable, Codable, Sendable, Hashable, ExpressibleByStringLiteral {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+    public init(stringLiteral value: String) { rawValue = value }
+
+    /// Every comment on the span, oldest first, as the row's `comments`.
+    public static let comments: AnnotationInclude = "comments"
+}
+
 public struct AnnotationListParams: Sendable, Hashable {
     public var annotatedByMemberId: String?
     public var assigneeMemberId: String?
@@ -204,12 +214,13 @@ public struct AnnotationListParams: Sendable, Hashable {
     public var includeTotal: Bool?
     public var limit: Int?
     public var next: String?
+    public var include: [AnnotationInclude]?
 
     public init(
         annotatedByMemberId: String? = nil, assigneeMemberId: String? = nil, annotatedByEmail: String? = nil,
         assignedToEmail: String? = nil, traceId: String? = nil, spanId: String? = nil, conversationId: String? = nil,
         labels: [String]? = nil, status: AnnotationReviewStatus? = nil, includeTotal: Bool? = nil,
-        limit: Int? = nil, next: String? = nil
+        limit: Int? = nil, next: String? = nil, include: [AnnotationInclude]? = nil
     ) {
         self.annotatedByMemberId = annotatedByMemberId
         self.assigneeMemberId = assigneeMemberId
@@ -223,6 +234,7 @@ public struct AnnotationListParams: Sendable, Hashable {
         self.includeTotal = includeTotal
         self.limit = limit
         self.next = next
+        self.include = include
     }
 }
 
@@ -365,13 +377,42 @@ public struct AnnotationsAPI: Sendable {
         self.dataPlane = dataPlane
     }
 
-    /// List one folded state per annotated span.
+    /// List one folded state per annotated span. `include: [.comments]` loads each row's `comments`.
     public func list(_ params: AnnotationListParams = AnnotationListParams()) -> Paginator<AnnotationState> {
         let http = dataPlane
-        if let conflict = conflictingFilters(params) { return Paginator { _ in throw conflict } }
+        guard params.annotatedByMemberId == nil || params.annotatedByEmail == nil else {
+            return Paginator { _ in
+                throw annotationValidationError(
+                    "Use annotatedByMemberId or annotatedByEmail, not both", code: "conflicting_annotation_annotator_filters"
+                )
+            }
+        }
+        guard params.assigneeMemberId == nil || params.assignedToEmail == nil else {
+            return Paginator { _ in
+                throw annotationValidationError(
+                    "Use assigneeMemberId or assignedToEmail, not both", code: "conflicting_annotation_assignee_filters"
+                )
+            }
+        }
         let api = self
         let resolver = AnnotationFilterResolver {
-            var query = try await api.filterQuery(params)
+            var annotatedBy = params.annotatedByMemberId
+            var assignee = params.assigneeMemberId
+            let emails = [params.annotatedByEmail, params.assignedToEmail].compactMap { $0 }
+            if !emails.isEmpty {
+                let ids = try await api.resolveReviewerMap(emails)
+                if let email = params.annotatedByEmail { annotatedBy = ids[normalizedEmail(email)] }
+                if let email = params.assignedToEmail { assignee = ids[normalizedEmail(email)] }
+            }
+            var query = Query()
+            query.add("annotated_by_member_id", annotatedBy)
+            query.add("assignee_member_id", assignee)
+            query.add("trace_id", params.traceId)
+            query.add("span_id", params.spanId)
+            query.add("conversation_id", params.conversationId)
+            query.add("label", params.labels)
+            query.add("status", params.status)
+            query.add("include", params.include)
             query.add("include_total", params.includeTotal)
             query.add("limit", params.limit)
             return query
@@ -381,62 +422,6 @@ public struct AnnotationsAPI: Sendable {
             query.set("next", cursor)
             return try await http.json("GET", "/v1/annotations", query: query, as: Page<AnnotationState>.self)
         }
-    }
-
-    /// Every folded state the list's filters match, each with its `comments`, decoded one JSON line at a
-    /// time as the body arrives.
-    /// The export is not paged: `limit`, `next` and `includeTotal` are not sent.
-    public func export(_ params: AnnotationListParams = AnnotationListParams()) -> AsyncThrowingStream<AnnotationState, any Error> {
-        let api = self
-        return dataPlane.jsonLines("/v1/annotations/export", as: AnnotationState.self) { try await api.exportQuery(params) }
-    }
-
-    /// Open the raw JSON-lines export byte stream, without buffering it.
-    public func exportStream(_ params: AnnotationListParams = AnnotationListParams()) async throws -> HTTPStreamResponse {
-        try await dataPlane.stream(
-            "GET", "/v1/annotations/export", query: try await exportQuery(params),
-            headers: ["Accept": ConversationExportFormat.jsonl.accept]
-        )
-    }
-
-    private func exportQuery(_ params: AnnotationListParams) async throws -> Query {
-        if let conflict = conflictingFilters(params) { throw conflict }
-        return try await filterQuery(params)
-    }
-
-    private func conflictingFilters(_ params: AnnotationListParams) -> IntrospectionError? {
-        if params.annotatedByMemberId != nil, params.annotatedByEmail != nil {
-            return annotationValidationError(
-                "Use annotatedByMemberId or annotatedByEmail, not both", code: "conflicting_annotation_annotator_filters"
-            )
-        }
-        if params.assigneeMemberId != nil, params.assignedToEmail != nil {
-            return annotationValidationError(
-                "Use assigneeMemberId or assignedToEmail, not both", code: "conflicting_annotation_assignee_filters"
-            )
-        }
-        return nil
-    }
-
-    /// The filters the list and the export share, with the email filters resolved to member ids.
-    private func filterQuery(_ params: AnnotationListParams) async throws -> Query {
-        var annotatedBy = params.annotatedByMemberId
-        var assignee = params.assigneeMemberId
-        let emails = [params.annotatedByEmail, params.assignedToEmail].compactMap { $0 }
-        if !emails.isEmpty {
-            let ids = try await resolveReviewerMap(emails)
-            if let email = params.annotatedByEmail { annotatedBy = ids[normalizedEmail(email)] }
-            if let email = params.assignedToEmail { assignee = ids[normalizedEmail(email)] }
-        }
-        var query = Query()
-        query.add("annotated_by_member_id", annotatedBy)
-        query.add("assignee_member_id", assignee)
-        query.add("trace_id", params.traceId)
-        query.add("span_id", params.spanId)
-        query.add("conversation_id", params.conversationId)
-        query.add("label", params.labels)
-        query.add("status", params.status)
-        return query
     }
 
     /// Append one annotation event. Pass `eventId` (a UUIDv7) to make a retry idempotent.

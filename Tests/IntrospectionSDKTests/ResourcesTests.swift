@@ -409,6 +409,7 @@ private func member(_ id: String, _ email: String?, deactivated: Bool = false) -
         #expect(reads[0].query["assignee_member_id"] == ["m-2"])
         #expect(reads[0].query["label"] == ["bug", "ux"])
         #expect(reads[0].query["status"] == ["assigned"])
+        #expect(reads[0].query["include"] == nil)
         #expect(reads[1].query["next"] == ["p2"])
         #expect(reads[1].query["annotated_by_member_id"] == ["m-1"])
     }
@@ -427,60 +428,17 @@ private func member(_ id: String, _ email: String?, deactivated: Bool = false) -
         #expect(encoded["human_commenter_member_ids"] == nil)
     }
 
-    @Test func annotationExportDecodesRowsAsChunksArrive() async throws {
-        let lines =
-            #"{"trace_id": "t1", "span_id": "s1", "labels": ["café"], "reviewer_member_ids": ["m-1"], "comment_count": 1, "updated_by_member_id": "m-9"}"# + "\n"
-            + #"{"trace_id": "t1", "span_id": "s2", "human_commenter_member_ids": ["m-3"], "has_comment": true, "latest_comment": "see"}"# + "\n"
-        // One byte per chunk splits every line, and the multi-byte character, across chunks.
-        let chunks = Data(lines.utf8).map { Data([$0]) }
-        let transport = MockTransport { request, _ in
-            request.url.host == "cp.test"
-                ? .response(.json(#"{"records": [\#(member("m-1", "ana@example.com"))], "count": 1}"#))
-                : .stream(status: 200, headers: ["content-type": "application/x-ndjson"], chunks: chunks, error: nil)
-        }
-        let annotations = makeClient(transport).annotations
-        let params = AnnotationListParams(
-            assigneeMemberId: "m-2", annotatedByEmail: "ANA@example.com", traceId: "t1", spanId: "s1", conversationId: "conv",
-            labels: ["bug", "ux"], status: .reviewed, includeTotal: true, limit: 5, next: "p2"
-        )
-        var states: [AnnotationState] = []
-        for try await state in annotations.export(params) { states.append(state) }
-        #expect(states.map(\.spanId) == ["s1", "s2"])
-        #expect(states.first?.labels == ["café"])
-        #expect(states.map(\.reviewerMemberIds) == [["m-1"], ["m-3"]])
-        #expect(states.map(\.updatedByMemberId) == ["m-9", nil])
-
-        let read = try #require(transport.last)
-        #expect(read.path == "/v1/annotations/export")
-        #expect(read.request.headers["Accept"] == "application/x-ndjson")
-        #expect(read.query["annotated_by_member_id"] == ["m-1"])
-        #expect(read.query["assignee_member_id"] == ["m-2"])
-        #expect(read.query["trace_id"] == ["t1"])
-        #expect(read.query["span_id"] == ["s1"])
-        #expect(read.query["conversation_id"] == ["conv"])
-        #expect(read.query["label"] == ["bug", "ux"])
-        #expect(read.query["status"] == ["reviewed"])
-        #expect(read.query["limit"] == nil)
-        #expect(read.query["next"] == nil)
-        #expect(read.query["include_total"] == nil)
-
-        let raw = try await annotations.exportStream(AnnotationListParams(conversationId: "conv")).collect()
-        #expect(raw == Data(lines.utf8))
-        #expect(transport.last?.request.headers["Accept"] == "application/x-ndjson")
-        #expect(transport.last?.query["conversation_id"] == ["conv"])
-    }
-
-    @Test func annotationExportCarriesEachRowsComments() async throws {
+    @Test func annotationListLoadsCommentsWhenIncluded() async throws {
         let human =
             #"{"event_id": "ev-1", "comment": "see", "member_id": "m-1", "actor_member_id": null, "actor_member_type": null, "created_at": "2026-10-01T00:00:00Z"}"#
         let agent =
             #"{"event_id": "ev-2", "comment": "done", "member_id": "m-1", "actor_member_id": "m-7", "actor_member_type": "agent", "created_at": "2026-10-02T00:00:00Z"}"#
-        let lines =
-            #"{"trace_id": "t1", "span_id": "s1", "comment_count": 2, "comments": [\#(human), \#(agent)]}"# + "\n"
-            + #"{"trace_id": "t1", "span_id": "s2", "comment_count": 0, "comments": []}"# + "\n"
-        let transport = MockTransport { _, _ in .stream(status: 200, headers: [:], chunks: [Data(lines.utf8)], error: nil) }
-        var states: [AnnotationState] = []
-        for try await state in makeClient(transport).annotations.export() { states.append(state) }
+        let transport = MockTransport(
+            json:
+                #"{"records": [{"trace_id": "t1", "span_id": "s1", "comment_count": 2, "comments": [\#(human), \#(agent)]}, {"trace_id": "t1", "span_id": "s2", "comment_count": 0, "comments": []}], "count": 2, "next": null}"#
+        )
+        let states = try await makeClient(transport).annotations.list(AnnotationListParams(include: [.comments])).collect()
+        #expect(transport.last?.query["include"] == ["comments"])
 
         let comments = try #require(states.first?.comments)
         #expect(comments.map(\.eventId) == ["ev-1", "ev-2"])
@@ -491,29 +449,6 @@ private func member(_ id: String, _ email: String?, deactivated: Bool = false) -
         #expect(comments.first?.createdAt == ISO8601.parse("2026-10-01T00:00:00Z"))
         #expect(states.first?.commentCount == 2)
         #expect(states.last?.comments == [])
-    }
-
-    @Test func annotationExportYieldsNothingForAnEmptyBodyAndSurfacesErrors() async throws {
-        let empty = MockTransport { _, _ in .stream(status: 200, headers: [:], chunks: [], error: nil) }
-        var count = 0
-        for try await _ in makeClient(empty).annotations.export() { count += 1 }
-        #expect(count == 0)
-        #expect(empty.requests.count == 1)
-
-        let older = MockTransport { _, _ in .response(.json(#"{"detail":"Not Acceptable"}"#, status: 406)) }
-        let refused = try await #require(throws: IntrospectionError.self) {
-            for try await _ in makeClient(older).annotations.export() {}
-        }
-        #expect(refused.status == 406)
-        #expect(older.requests.count == 1)
-
-        let unsent = MockTransport(json: "{}")
-        let conflict = try await #require(throws: IntrospectionError.self) {
-            let params = AnnotationListParams(annotatedByMemberId: "m", annotatedByEmail: "a@x")
-            for try await _ in makeClient(unsent).annotations.export(params) {}
-        }
-        #expect(conflict.code == "conflicting_annotation_annotator_filters")
-        #expect(unsent.requests.isEmpty)
     }
 
     @Test func annotationListRejectsConflictingFilters() async throws {
