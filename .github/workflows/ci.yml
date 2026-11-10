@@ -131,8 +131,9 @@ jobs:
           # shellcheck disable=SC2086
           swift build $flags --product introspection-walk
           mkdir -p walk
+          # Debug info is most of its size; stripping it keeps the symbols a backtrace names.
           # shellcheck disable=SC2086
-          cp "$(swift build $flags --show-bin-path)/introspection-walk" walk/
+          strip --strip-debug -o walk/introspection-walk "$(swift build $flags --show-bin-path)/introspection-walk"
       - name: Upload introspection-walk
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v7
