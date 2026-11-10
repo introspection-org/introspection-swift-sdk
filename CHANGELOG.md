@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.18.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.17.0...v0.18.0) (2026-11-10)
+
+
+### ⚠ BREAKING CHANGES
+
+* drop annotations.navigation; GET /v1/annotations/navigation is gone ([#103](https://github.com/introspection-org/introspection-swift-sdk/issues/103))
+
+### Bug Fixes
+
+* drop annotations.navigation; GET /v1/annotations/navigation is gone ([#103](https://github.com/introspection-org/introspection-swift-sdk/issues/103)) ([118ecd9](https://github.com/introspection-org/introspection-swift-sdk/commit/118ecd93be70a884dc18adb2a8af96be7ddccab8))
+
 ## [0.17.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.16.0...v0.17.0) (2026-11-10)
 
 
