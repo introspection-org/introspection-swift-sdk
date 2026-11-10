@@ -153,6 +153,25 @@ bytes, for writing to a file. Pass
 `ConversationExportParams(include: [.annotations, .comments])` to carry each
 annotated span's `annotation` and its comments.
 
+### Issues
+
+An issue is a brief with a creator, an assignee and a reviewer. To ask a
+person something, assign the issue, set it `waiting`, and comment:
+
+```swift
+_ = try await runner.issues.update(issueId, IssueUpdate(status: .waiting, assigneeMemberId: memberId))
+_ = try await runner.issues.comments.create(issueId, comment: "Can we refund the duplicate charge?")
+```
+
+`assigneeMemberId: .some(nil)` unassigns; leaving it out leaves the assignee
+alone. People, attachments and comments come back only when asked for:
+
+```swift
+let issue = try await runner.issues.get(issueId, include: [.members, .comments])
+for comment in issue.comments ?? [] { print(comment.memberId ?? "", comment.comment) }
+let inbox = try await runner.issues.list(IssueListParams(relation: [.assignee, .reviewer])).collect()
+```
+
 ## End users signed in with Introspection
 
 An app whose users sign in with the platform's own email code needs no identity

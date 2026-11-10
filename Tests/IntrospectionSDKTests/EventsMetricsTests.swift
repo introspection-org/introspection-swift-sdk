@@ -18,8 +18,7 @@ import Testing
         let events = try await client.events.list(
             EventListParams(
                 eventName: .feedback, limit: 50, sort: .timestamp, order: .desc, lookback: .days(7),
-                conversationIds: ["c1", "c2"], ownerKey: "user:u1", eventIds: ["e1"], includeSuperseded: true,
-                latestRequests: true
+                conversationIds: ["c1", "c2"], ownerKey: "user:u1", eventIds: ["e1"], includeSuperseded: true
             ), now: now
         ).collect()
 
@@ -34,7 +33,6 @@ import Testing
         #expect(q["owner_key"] == ["user:u1"])
         #expect(q["event_id"] == ["e1"])
         #expect(q["include_superseded"] == ["true"])
-        #expect(q["request"] == ["true"])
 
         #expect(events.count == 2)
         let feedback = try #require(events[0].feedback)
@@ -93,55 +91,48 @@ import Testing
     }
 
     @Test func issuePayloadIsAUnionOnAction() async throws {
-        let request = #"""
-            {"id":"r1","issue_id":"i1","task_id":"t1","question":"Refund it?","assignee_id":"m-2","status":"open",
-             "resolution":null,"revision":1,"issue_revision":3,"issue_member_id":null,"files":[],"links":[],"events":[],
-             "spans":[],"created_at":"2026-10-02T11:00:00Z","updated_at":"2026-10-02T11:00:00Z"}
-            """#
         func row(_ id: String, _ payload: String) -> String {
             #"{"id":"\#(id)","event_name":"introspection.issue","payload":{"issue_id":"i1",\#(payload)}}"#
         }
         let rows = [
-            row("e1", #""action":"created","resource_id":"i1","revision":1,"data":{"title":"Checkout times out"}"#),
-            row("e2", #""action":"updated","resource_id":"i1","revision":2,"changes":{"status":{"before":"open","after":null}}"#),
-            row("e3", #""action":"deleted","resource_id":"i1","revision":3"#),
-            row("e4", #""action":"request.created","resource_id":"r1","revision":1,"request":\#(request)"#),
-            row(
-                "e5",
-                #""action":"request.updated","resource_id":"r1","revision":2,"request":\#(request),"changes":{"status":{"before":"open","after":"resolved"}}"#
-            ),
-            row("e6", #""action":"archived","reason":"stale""#),
+            row("e1", #""action":"created","revision":1,"member_id":"m-1","data":{"title":"Checkout times out"}"#),
+            row("e2", #""action":"updated","revision":2,"member_id":"m-1","changes":{"status":{"before":"open"}}"#),
+            row("e3", #""action":"commented","member_id":"m-1","actor_member_id":"m-7","actor_member_type":"agent","comment":"On it""#),
+            row("e4", #""action":"deleted","revision":3,"member_id":null"#),
+            row("e5", #""action":"archived","reason":"stale""#),
         ]
-        let page = #"{"records":[\#(rows.joined(separator: ","))],"count":6,"total_count":null,"next":null}"#
-        let events = try await makeClient(MockTransport(json: page)).events.list(EventListParams(eventName: .issue)).collect()
+        let page = #"{"records":[\#(rows.joined(separator: ","))],"count":5,"total_count":null,"next":null}"#
+        let transport = MockTransport(json: page)
+        let events = try await makeClient(transport).events.list(EventListParams(eventName: .issue, issueId: "i1")).collect()
+        #expect(transport.last?.query["issue_id"] == ["i1"])
         let payloads = events.compactMap(\.issue)
-        #expect(payloads.map(\.action) == ["created", "updated", "deleted", "request.created", "request.updated", "archived"])
+        #expect(payloads.map(\.action) == ["created", "updated", "commented", "deleted", "archived"])
 
         guard case let .created(created) = payloads[0], case let .updated(updated) = payloads[1] else {
             Issue.record("expected created and updated")
             return
         }
-        guard case let .deleted(deleted) = payloads[2], case let .unknown(raw) = payloads[5] else {
-            Issue.record("expected deleted and an unknown action")
+        guard case let .commented(commented) = payloads[2], case let .deleted(deleted) = payloads[3] else {
+            Issue.record("expected commented and deleted")
             return
         }
-        guard case let .requestCreated(requestCreated) = payloads[3], case let .requestUpdated(requestUpdated) = payloads[4] else {
-            Issue.record("expected the two request actions")
+        guard case let .unknown(raw) = payloads[4] else {
+            Issue.record("expected an unknown action")
             return
         }
         #expect(created.issueId == "i1")
+        #expect(created.memberId == "m-1")
         #expect(created.data["title"] == "Checkout times out")
         #expect(updated.revision == 2)
         #expect(updated.changes["status"] == IssueFieldChange(before: "open", after: nil))
-        #expect(deleted.resourceId == "i1")
-        #expect(requestCreated.request.question == "Refund it?")
-        #expect(requestCreated.request.status == .open)
-        #expect(requestCreated.request.issueRevision == 3)
-        #expect(requestUpdated.resourceId == "r1")
-        #expect(requestUpdated.changes["status"]?.after == "resolved")
+        #expect(commented.comment == "On it")
+        #expect(commented.actorMemberId == "m-7")
+        #expect(commented.actorMemberType == "agent")
+        #expect(deleted.revision == 3)
+        #expect(deleted.memberId == nil)
         #expect(raw["reason"] == "stale")
 
-        let wire = try JSONCoding.decoder.decode(JSONValue.self, from: JSONCoding.encoder.encode(payloads[2]))
+        let wire = try JSONCoding.decoder.decode(JSONValue.self, from: JSONCoding.encoder.encode(payloads[3]))
         #expect(wire["action"] == "deleted")
         #expect(wire["issue_id"] == "i1")
     }

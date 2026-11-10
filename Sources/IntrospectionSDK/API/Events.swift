@@ -444,9 +444,8 @@ public struct JudgementEgressPayload: Codable, Sendable, Hashable {
 public enum IssueActivityPayload: Codable, Sendable, Hashable {
     case created(IssueCreatedPayload)
     case updated(IssueUpdatedPayload)
+    case commented(IssueCommentedPayload)
     case deleted(IssueDeletedPayload)
-    case requestCreated(IssueRequestCreatedPayload)
-    case requestUpdated(IssueRequestUpdatedPayload)
     case unknown(JSONObject)
 
     /// The payload's `action` discriminator.
@@ -454,9 +453,8 @@ public enum IssueActivityPayload: Codable, Sendable, Hashable {
         switch self {
         case .created: return "created"
         case .updated: return "updated"
+        case .commented: return "commented"
         case .deleted: return "deleted"
-        case .requestCreated: return "request.created"
-        case .requestUpdated: return "request.updated"
         case let .unknown(raw): return raw["action"]?.stringValue ?? ""
         }
     }
@@ -472,9 +470,8 @@ public enum IssueActivityPayload: Codable, Sendable, Hashable {
         switch raw["action"]?.stringValue {
         case "created": self = attempt(IssueCreatedPayload.self, IssueActivityPayload.created)
         case "updated": self = attempt(IssueUpdatedPayload.self, IssueActivityPayload.updated)
+        case "commented": self = attempt(IssueCommentedPayload.self, IssueActivityPayload.commented)
         case "deleted": self = attempt(IssueDeletedPayload.self, IssueActivityPayload.deleted)
-        case "request.created": self = attempt(IssueRequestCreatedPayload.self, IssueActivityPayload.requestCreated)
-        case "request.updated": self = attempt(IssueRequestUpdatedPayload.self, IssueActivityPayload.requestUpdated)
         default: self = .unknown(raw)
         }
     }
@@ -483,9 +480,8 @@ public enum IssueActivityPayload: Codable, Sendable, Hashable {
         switch self {
         case let .created(payload): try payload.encode(to: encoder)
         case let .updated(payload): try payload.encode(to: encoder)
+        case let .commented(payload): try payload.encode(to: encoder)
         case let .deleted(payload): try payload.encode(to: encoder)
-        case let .requestCreated(payload): try payload.encode(to: encoder)
-        case let .requestUpdated(payload): try payload.encode(to: encoder)
         case let .unknown(raw): return try JSONValue.object(raw).encode(to: encoder)
         }
         var container = encoder.container(keyedBy: DiscriminatorKey.self)
@@ -493,7 +489,7 @@ public enum IssueActivityPayload: Codable, Sendable, Hashable {
     }
 }
 
-/// One authored field's value on either side of an issue update; nil for JSON null.
+/// One authored field's value on either side of an issue update; a null side is omitted and reads as nil.
 public struct IssueFieldChange: Codable, Sendable, Hashable {
     public var before: JSONValue?
     public var after: JSONValue?
@@ -502,80 +498,85 @@ public struct IssueFieldChange: Codable, Sendable, Hashable {
 /// An issue was created.
 public struct IssueCreatedPayload: Codable, Sendable, Hashable {
     public var issueId: String
-    /// The issue.
-    public var resourceId: String?
     public var revision: Int?
+    /// The member who made the change.
+    public var memberId: String?
+    /// The member acting for `memberId`, when the write was delegated.
+    public var actorMemberId: String?
+    /// The actor's capacity: `agent`, `dev` or `impersonation`.
+    public var actorMemberType: String?
     /// The authored fields the issue was created with.
     public var data: JSONObject
 
     private enum CodingKeys: String, CodingKey {
         case revision, data
         case issueId = "issue_id"
-        case resourceId = "resource_id"
+        case memberId = "member_id"
+        case actorMemberId = "actor_member_id"
+        case actorMemberType = "actor_member_type"
     }
 }
 
-/// An issue's authored fields changed.
+/// An issue changed.
 public struct IssueUpdatedPayload: Codable, Sendable, Hashable {
     public var issueId: String
-    /// The issue.
-    public var resourceId: String?
     public var revision: Int?
-    /// Each changed field, by name.
+    /// The member who made the change.
+    public var memberId: String?
+    /// The member acting for `memberId`, when the write was delegated.
+    public var actorMemberId: String?
+    /// The actor's capacity: `agent`, `dev` or `impersonation`.
+    public var actorMemberType: String?
+    /// Each changed field, by name; `members` holds the people on the issue before and after.
     public var changes: [String: IssueFieldChange]
 
     private enum CodingKeys: String, CodingKey {
         case revision, changes
         case issueId = "issue_id"
-        case resourceId = "resource_id"
+        case memberId = "member_id"
+        case actorMemberId = "actor_member_id"
+        case actorMemberType = "actor_member_type"
+    }
+}
+
+/// A comment on an issue. Its author is `memberId`; its time is the event's timestamp.
+public struct IssueCommentedPayload: Codable, Sendable, Hashable {
+    public var issueId: String
+    public var revision: Int?
+    /// The member who commented.
+    public var memberId: String?
+    /// The member acting for `memberId`, when the write was delegated.
+    public var actorMemberId: String?
+    /// The actor's capacity: `agent`, `dev` or `impersonation`.
+    public var actorMemberType: String?
+    public var comment: String
+
+    private enum CodingKeys: String, CodingKey {
+        case revision, comment
+        case issueId = "issue_id"
+        case memberId = "member_id"
+        case actorMemberId = "actor_member_id"
+        case actorMemberType = "actor_member_type"
     }
 }
 
 /// An issue was deleted.
 public struct IssueDeletedPayload: Codable, Sendable, Hashable {
     public var issueId: String
-    /// The issue.
-    public var resourceId: String?
     public var revision: Int?
+    /// The member who made the change.
+    public var memberId: String?
+    /// The member acting for `memberId`, when the write was delegated.
+    public var actorMemberId: String?
+    /// The actor's capacity: `agent`, `dev` or `impersonation`.
+    public var actorMemberType: String?
 
     private enum CodingKeys: String, CodingKey {
         case revision
         case issueId = "issue_id"
-        case resourceId = "resource_id"
-    }
-}
-
-/// A human request was created on an issue.
-public struct IssueRequestCreatedPayload: Codable, Sendable, Hashable {
-    public var issueId: String
-    /// The request.
-    public var resourceId: String?
-    public var revision: Int?
-    /// The request as created.
-    public var request: IssueRequest
-
-    private enum CodingKeys: String, CodingKey {
-        case revision, request
-        case issueId = "issue_id"
-        case resourceId = "resource_id"
-    }
-}
-
-/// A human request on an issue changed.
-public struct IssueRequestUpdatedPayload: Codable, Sendable, Hashable {
-    public var issueId: String
-    /// The request.
-    public var resourceId: String?
-    public var revision: Int?
-    /// The request after the update.
-    public var request: IssueRequest
-    /// Each changed field, by name.
-    public var changes: [String: IssueFieldChange]
-
-    private enum CodingKeys: String, CodingKey {
-        case revision, request, changes
-        case issueId = "issue_id"
-        case resourceId = "resource_id"
+        case memberId = "member_id"
+        case actorMemberId = "actor_member_id"
+        case actorMemberType = "actor_member_type"
     }
 }
 
@@ -671,16 +672,12 @@ public struct EventListParams: Sendable, Hashable {
     public var patternId: String?
     /// Observations: include superseded versions.
     public var includeSuperseded: Bool?
-    /// Patterns: `active` or `retired`; issue requests: `open`, `resolved` or `cancelled`.
+    /// Patterns: `active` or `retired`.
     public var status: String?
     /// Judgements.
     public var judgeId: String?
-    /// Issues.
+    /// Issues: one issue's events.
     public var issueId: String?
-    /// Issues: the latest event per human request (sent as `request=true`).
-    public var latestRequests: Bool?
-    public var requestId: String?
-    public var assigneeId: String?
     /// Automation triggers and skips.
     public var automationId: String?
     /// Automation triggers and skips: the task created or posted into.
@@ -699,9 +696,8 @@ public struct EventListParams: Sendable, Hashable {
         environment: String? = nil, runtimeGroupId: String? = nil, traceId: String? = nil, spanId: String? = nil,
         ownerKey: String? = nil, eventIds: [String]? = nil, runtimeGroupUnattributed: Bool? = nil,
         lens: String? = nil, patternId: String? = nil, includeSuperseded: Bool? = nil, status: String? = nil,
-        judgeId: String? = nil, issueId: String? = nil, latestRequests: Bool? = nil, requestId: String? = nil,
-        assigneeId: String? = nil, automationId: String? = nil, taskId: String? = nil, names: [String]? = nil,
-        latestRecords: Bool? = nil
+        judgeId: String? = nil, issueId: String? = nil, automationId: String? = nil, taskId: String? = nil,
+        names: [String]? = nil, latestRecords: Bool? = nil
     ) {
         self.eventName = eventName
         self.limit = limit
@@ -727,9 +723,6 @@ public struct EventListParams: Sendable, Hashable {
         self.status = status
         self.judgeId = judgeId
         self.issueId = issueId
-        self.latestRequests = latestRequests
-        self.requestId = requestId
-        self.assigneeId = assigneeId
         self.automationId = automationId
         self.taskId = taskId
         self.names = names
@@ -758,9 +751,6 @@ public struct EventListParams: Sendable, Hashable {
         q.add("status", status)
         q.add("judge_id", judgeId)
         q.add("issue_id", issueId)
-        q.add("request", latestRequests)
-        q.add("request_id", requestId)
-        q.add("assignee_id", assigneeId)
         q.add("automation_id", automationId)
         q.add("task_id", taskId)
         q.add("name", names)

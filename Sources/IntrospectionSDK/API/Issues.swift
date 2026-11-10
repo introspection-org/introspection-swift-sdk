@@ -46,20 +46,32 @@ public struct IssueOwner: RawRepresentable, Codable, Sendable, Hashable, Express
     public static let me: IssueOwner = "me"
 }
 
-/// A human request's status.
-public struct IssueRequestStatus: RawRepresentable, Codable, Sendable, Hashable, ExpressibleByStringLiteral {
+/// How a member stands to an issue. Unknown server values are preserved.
+public struct IssueMemberRelation: RawRepresentable, Codable, Sendable, Hashable, ExpressibleByStringLiteral {
     public let rawValue: String
     public init(rawValue: String) { self.rawValue = rawValue }
     public init(stringLiteral value: String) { rawValue = value }
     public init(from decoder: any Decoder) throws { rawValue = try decoder.singleString() }
     public func encode(to encoder: any Encoder) throws { try encoder.encodeSingle(rawValue) }
 
-    /// A new request is open.
-    public static let open: IssueRequestStatus = "open"
-    /// Needs a `resolution`.
-    public static let resolved: IssueRequestStatus = "resolved"
-    /// Needs a `resolution`.
-    public static let cancelled: IssueRequestStatus = "cancelled"
+    public static let creator: IssueMemberRelation = "creator"
+    public static let assignee: IssueMemberRelation = "assignee"
+    public static let reviewer: IssueMemberRelation = "reviewer"
+    public static let follower: IssueMemberRelation = "follower"
+}
+
+/// The related lists an issue read or write returns with the brief (repeated `include`).
+public struct IssueInclude: RawRepresentable, Codable, Sendable, Hashable, ExpressibleByStringLiteral {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+    public init(stringLiteral value: String) { rawValue = value }
+
+    /// `members`.
+    public static let members: IssueInclude = "members"
+    /// `links`, `files`, `events` and `spans`.
+    public static let attachments: IssueInclude = "attachments"
+    /// `comments`, at most 500, on ``IssuesAPI/get(_:include:)`` only; the list and the writes refuse it with 422.
+    public static let comments: IssueInclude = "comments"
 }
 
 // MARK: Evidence
@@ -128,84 +140,82 @@ public struct IssueSpanReference: Codable, Sendable, Hashable {
 
 // MARK: Models
 
-/// One open human request, as projected onto its issue.
-public struct IssueOpenRequest: Codable, Sendable, Hashable {
-    public let id: String
-    public let question: String
-    public let assigneeId: String
-    public let createdAt: Date
+/// One person on an issue.
+public struct IssueMember: Codable, Sendable, Hashable {
+    public let memberId: String
+    public let relation: IssueMemberRelation
 
     enum CodingKeys: String, CodingKey {
-        case id, question
-        case assigneeId = "assignee_id"
-        case createdAt = "created_at"
+        case relation
+        case memberId = "member_id"
     }
 }
 
-/// A human request on an issue, as an `introspection.issue` event recorded it.
-public struct IssueRequest: Codable, Sendable, Hashable {
+/// One comment on an issue. Comments are append-only: they cannot be edited or deleted.
+public struct IssueComment: Codable, Sendable, Hashable {
+    /// The comment's id, which is its event's id.
     public let id: String
     public let issueId: String
-    /// The task the request was raised from.
-    public let taskId: String
-    public let question: String
-    public let assigneeId: String
-    public let status: IssueRequestStatus
-    public let resolution: String?
-    public let revision: Int
-    /// The parent issue's revision when the request was written.
-    public let issueRevision: Int
-    /// The owner of the parent issue; nil for a project-owned (Operator) issue.
-    public let issueMemberId: String?
-    public let files: [IssueFile]
-    public let links: [IssueLink]
-    public let events: [IssueEventReference]
-    public let spans: [IssueSpanReference]
+    public let comment: String
+    /// The member who commented.
+    public let memberId: String?
+    /// The member acting for `memberId`, when delegated.
+    public let actorMemberId: String?
+    /// The actor's capacity: `agent`, `dev` or `impersonation`.
+    public let actorMemberType: String?
     public let createdAt: Date
-    public let updatedAt: Date
 
     enum CodingKeys: String, CodingKey {
-        case id, question, status, resolution, revision, files, links, events, spans
+        case id, comment
         case issueId = "issue_id"
-        case taskId = "task_id"
-        case assigneeId = "assignee_id"
-        case issueRevision = "issue_revision"
-        case issueMemberId = "issue_member_id"
+        case memberId = "member_id"
+        case actorMemberId = "actor_member_id"
+        case actorMemberType = "actor_member_type"
         case createdAt = "created_at"
-        case updatedAt = "updated_at"
     }
 }
 
-/// An issue: its brief, the evidence it cites and its open human requests.
+/// An issue: its brief, and each related list the read asked for with `include`. A list that was not
+/// included is nil.
 public struct Issue: Codable, Sendable, Hashable {
     public let id: String
     public let orgId: String
     public let projectId: String
     public let title: String
     public let description: String
-    public let priority: IssuePriority?
-    public let status: IssueStatus?
+    public let priority: IssuePriority
+    public let status: IssueStatus
     /// Orders the issue's snapshots on the server; conditional writes use ``etag`` instead.
-    public let revision: Int?
+    public let revision: Int
     /// Project-scoped display ID.
     public let displayIndex: Int?
-    public let files: [IssueFile]?
-    public let links: [IssueLink]?
-    public let events: [IssueEventReference]?
-    public let spans: [IssueSpanReference]?
     /// Free-form tags, conventionally `key:value`.
-    public let tags: [String]?
+    public let tags: [String]
     /// Caller-defined attributes; values are strings, numbers, booleans or null.
-    public let metadata: JSONObject?
+    public let metadata: JSONObject
     /// The fixed worker task behind the issue chat and Slack replies.
     public let taskId: String?
     public let taskStatus: TaskStatus?
     /// The owner of a private issue; nil for a project-owned (Operator) issue.
     public let memberId: String?
+    /// Nil when the issue was created by a caller that is not a member.
+    public let createdByMemberId: String?
+    public let assigneeMemberId: String?
+    public let reviewerMemberId: String?
     /// When the issue last entered `closed` or `cancelled`.
     public let closedAt: Date?
-    /// Oldest first.
-    public let openRequests: [IssueOpenRequest]?
+    /// With `.members`: the creator, then the assignee, the reviewer, and the followers in the order they were added.
+    public let members: [IssueMember]?
+    /// With `.attachments`.
+    public let links: [IssueLink]?
+    /// With `.attachments`.
+    public let files: [IssueFile]?
+    /// With `.attachments`.
+    public let events: [IssueEventReference]?
+    /// With `.attachments`.
+    public let spans: [IssueSpanReference]?
+    /// With `.comments`: oldest first, at most 500. Page the issue's events for more.
+    public let comments: [IssueComment]?
     public let createdAt: Date?
     public var updatedAt: Date? { updatedAtStamp?.date }
     private let updatedAtStamp: WireTimestamp?
@@ -216,12 +226,15 @@ public struct Issue: Codable, Sendable, Hashable {
         case projectId = "project_id"
         case title, description, priority, status, revision
         case displayIndex = "display_index"
-        case files, links, events, spans, tags, metadata
+        case tags, metadata
         case taskId = "task_id"
         case taskStatus = "task_status"
         case memberId = "member_id"
+        case createdByMemberId = "created_by_member_id"
+        case assigneeMemberId = "assignee_member_id"
+        case reviewerMemberId = "reviewer_member_id"
         case closedAt = "closed_at"
-        case openRequests = "open_requests"
+        case members, links, files, events, spans, comments
         case createdAt = "created_at"
         case updatedAtStamp = "updated_at"
     }
@@ -263,11 +276,18 @@ public struct IssueCreate: Encodable, Sendable, Hashable {
     public var tags: [String]?
     /// Values are strings, numbers, booleans or null.
     public var metadata: JSONObject?
+    public var assigneeMemberId: String?
+    public var reviewerMemberId: String?
+    /// At most 50, each once.
+    public var followerMemberIds: [String]?
 
     enum CodingKeys: String, CodingKey {
         case title, description
         case taskId = "task_id"
         case priority, files, links, events, spans, tags, metadata
+        case assigneeMemberId = "assignee_member_id"
+        case reviewerMemberId = "reviewer_member_id"
+        case followerMemberIds = "follower_member_ids"
     }
 
     public init(
@@ -280,7 +300,10 @@ public struct IssueCreate: Encodable, Sendable, Hashable {
         events: [IssueEventReference]? = nil,
         spans: [IssueSpanReference]? = nil,
         tags: [String]? = nil,
-        metadata: JSONObject? = nil
+        metadata: JSONObject? = nil,
+        assigneeMemberId: String? = nil,
+        reviewerMemberId: String? = nil,
+        followerMemberIds: [String]? = nil
     ) {
         // jscpd:ignore-start: memberwise init of a public type; the assignments cannot be shared
         self.title = title
@@ -294,11 +317,17 @@ public struct IssueCreate: Encodable, Sendable, Hashable {
         self.tags = tags
         self.metadata = metadata
         // jscpd:ignore-end
+        self.assigneeMemberId = assigneeMemberId
+        self.reviewerMemberId = reviewerMemberId
+        self.followerMemberIds = followerMemberIds
     }
 }
 
-/// An edit to an issue's brief (`PATCH /v1/issues/{id}`). Nil fields are omitted and stay unchanged; each list
+/// An edit to an issue (`PATCH /v1/issues/{id}`). Nil fields are omitted and stay unchanged; each list
 /// and `metadata` replaces its value wholesale, so `[]` (or `[:]`) clears it.
+///
+/// The API tells an omitted assignee or reviewer from a null one, so `assigneeMemberId: .some(nil)` unassigns
+/// the issue and leaving it `nil` leaves the assignee alone; `reviewerMemberId` is the same.
 public struct IssueUpdate: Encodable, Sendable, Hashable {
     public var title: String?
     public var description: String?
@@ -310,9 +339,16 @@ public struct IssueUpdate: Encodable, Sendable, Hashable {
     public var spans: [IssueSpanReference]?
     public var tags: [String]?
     public var metadata: JSONObject?
+    public var assigneeMemberId: String??
+    public var reviewerMemberId: String??
+    /// Replaces the followers wholesale (at most 50, each once).
+    public var followerMemberIds: [String]?
 
     enum CodingKeys: String, CodingKey {
         case title, description, priority, status, files, links, events, spans, tags, metadata
+        case assigneeMemberId = "assignee_member_id"
+        case reviewerMemberId = "reviewer_member_id"
+        case followerMemberIds = "follower_member_ids"
     }
 
     public init(
@@ -325,7 +361,10 @@ public struct IssueUpdate: Encodable, Sendable, Hashable {
         events: [IssueEventReference]? = nil,
         spans: [IssueSpanReference]? = nil,
         tags: [String]? = nil,
-        metadata: JSONObject? = nil
+        metadata: JSONObject? = nil,
+        assigneeMemberId: String?? = nil,
+        reviewerMemberId: String?? = nil,
+        followerMemberIds: [String]? = nil
     ) {
         // jscpd:ignore-start: memberwise init of a public type; the assignments cannot be shared
         self.title = title
@@ -339,55 +378,28 @@ public struct IssueUpdate: Encodable, Sendable, Hashable {
         self.tags = tags
         self.metadata = metadata
         // jscpd:ignore-end
-    }
-}
-
-/// Creates one human request on an issue, or changes one. An `id` the issue does not have yet creates the request;
-/// an existing one changes it, and the last write wins.
-public struct IssueRequestMutation: Encodable, Sendable, Hashable {
-    /// The request's id; a new request takes a client-minted UUIDv7.
-    public var id: String
-    /// What the assignee is asked; required to create.
-    public var question: String?
-    /// The member asked; required to create, set again to reassign.
-    public var assigneeId: String?
-    /// `resolved` and `cancelled` need a `resolution`.
-    public var status: IssueRequestStatus?
-    /// The decision and its basis, when closing.
-    public var resolution: String?
-
-    enum CodingKeys: String, CodingKey {
-        case id
-        case question
-        case assigneeId = "assignee_id"
-        case status, resolution
+        self.assigneeMemberId = assigneeMemberId
+        self.reviewerMemberId = reviewerMemberId
+        self.followerMemberIds = followerMemberIds
     }
 
-    public init(
-        id: String,
-        question: String? = nil,
-        assigneeId: String? = nil,
-        status: IssueRequestStatus? = nil,
-        resolution: String? = nil
-    ) {
-        self.id = id
-        self.question = question
-        self.assigneeId = assigneeId
-        self.status = status
-        self.resolution = resolution
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(title, forKey: .title)
+        try container.encodeIfPresent(description, forKey: .description)
+        try container.encodeIfPresent(priority, forKey: .priority)
+        try container.encodeIfPresent(status, forKey: .status)
+        try container.encodeIfPresent(files, forKey: .files)
+        try container.encodeIfPresent(links, forKey: .links)
+        try container.encodeIfPresent(events, forKey: .events)
+        try container.encodeIfPresent(spans, forKey: .spans)
+        try container.encodeIfPresent(tags, forKey: .tags)
+        try container.encodeIfPresent(metadata, forKey: .metadata)
+        // An omitted key leaves the member; an explicit null clears it.
+        if let assigneeMemberId { try container.encode(assigneeMemberId, forKey: .assigneeMemberId) }
+        if let reviewerMemberId { try container.encode(reviewerMemberId, forKey: .reviewerMemberId) }
+        try container.encodeIfPresent(followerMemberIds, forKey: .followerMemberIds)
     }
-
-    /// A new request. Without an `id`, one is minted as a UUIDv7.
-    public static func create(question: String, assigneeId: String, id: String? = nil) -> IssueRequestMutation {
-        IssueRequestMutation(id: id ?? makeUUIDv7(), question: question, assigneeId: assigneeId)
-    }
-}
-
-/// The `{"request": ...}` body of `PATCH /v1/issues/{id}`: create or change one human request.
-public struct IssueMutation: Encodable, Sendable, Hashable {
-    public var request: IssueRequestMutation
-
-    public init(request: IssueRequestMutation) { self.request = request }
 }
 
 /// Filters for `GET /v1/issues`. Array filters are sent as repeated parameters.
@@ -400,10 +412,10 @@ public struct IssueListParams: Sendable, Hashable {
     public var status: [IssueStatus]?
     /// ORed; nil lists every issue the caller may read.
     public var owner: [IssueOwner]?
-    /// `true`: has an open request assigned to the caller; `false`: has none.
-    public var assignedToMe: Bool?
-    /// Whether any human request is open.
-    public var hasOpenRequests: Bool?
+    /// ORed. On its own, the issues the caller is on in one of these relations; with `memberId`, that member's.
+    public var relation: [IssueMemberRelation]?
+    /// The member whose relations to match instead of the caller's; alone, any relation.
+    public var memberId: String?
     /// The worker task's status.
     public var taskStatus: [TaskStatus]?
     /// Excludes these worker task statuses; an issue without a live task is kept.
@@ -416,28 +428,31 @@ public struct IssueListParams: Sendable, Hashable {
     public var metadata: [String: String]?
     /// Include `totalCount` for the filtered set.
     public var includeTotal: Bool?
+    /// `.members` and `.attachments`.
+    public var include: [IssueInclude]?
 
     public init(
         limit: Int? = nil,
         next: String? = nil,
         status: [IssueStatus]? = nil,
         owner: [IssueOwner]? = nil,
-        assignedToMe: Bool? = nil,
-        hasOpenRequests: Bool? = nil,
+        relation: [IssueMemberRelation]? = nil,
+        memberId: String? = nil,
         taskStatus: [TaskStatus]? = nil,
         excludeTaskStatus: [TaskStatus]? = nil,
         displayIndex: Int? = nil,
         tag: String? = nil,
         metadata: [String: String]? = nil,
-        includeTotal: Bool? = nil
+        includeTotal: Bool? = nil,
+        include: [IssueInclude]? = nil
     ) {
         // jscpd:ignore-start: memberwise init of a public type; the assignments cannot be shared
         self.limit = limit
         self.next = next
         self.status = status
         self.owner = owner
-        self.assignedToMe = assignedToMe
-        self.hasOpenRequests = hasOpenRequests
+        self.relation = relation
+        self.memberId = memberId
         self.taskStatus = taskStatus
         self.excludeTaskStatus = excludeTaskStatus
         self.displayIndex = displayIndex
@@ -445,6 +460,7 @@ public struct IssueListParams: Sendable, Hashable {
         self.metadata = metadata
         self.includeTotal = includeTotal
         // jscpd:ignore-end
+        self.include = include
     }
 
     var query: Query {
@@ -452,14 +468,15 @@ public struct IssueListParams: Sendable, Hashable {
         query.add("limit", limit)
         query.add("status", status)
         query.add("owner", owner)
-        query.add("assigned_to_me", assignedToMe)
-        query.add("has_open_requests", hasOpenRequests)
+        query.add("relation", relation)
+        query.add("member_id", memberId)
         query.add("task_status", taskStatus)
         query.add("exclude_task_status", excludeTaskStatus)
         query.add("display_index", displayIndex)
         query.add("tag", tag)
         query.add("metadata", metadata.map { pairs in pairs.keys.sorted().compactMap { key in pairs[key].map { "\(key):\($0)" } } })
         query.add("include_total", includeTotal)
+        query.add("include", include)
         return query
     }
 }
@@ -481,23 +498,23 @@ public struct IssuesAPI: Sendable {
     }
 
     /// Open an issue on its worker task. It starts `open`; repeating it for the same task is safe.
-    public func create(_ body: IssueCreate) async throws -> Issue {
-        try await http.json("POST", "/v1/issues", body: try .encode(body), as: Issue.self)
+    public func create(_ body: IssueCreate, include: [IssueInclude]? = nil) async throws -> Issue {
+        try await http.json("POST", "/v1/issues", query: includeQuery(include), body: try .encode(body), as: Issue.self)
     }
 
-    /// Read one issue with its evidence and open requests.
-    public func get(_ issueId: String) async throws -> Issue {
-        try await http.json("GET", "/v1/issues/\(pathSegment(issueId))", as: Issue.self)
+    /// Read one issue's brief, with the lists `include` names.
+    public func get(_ issueId: String, include: [IssueInclude]? = nil) async throws -> Issue {
+        try await http.json("GET", "/v1/issues/\(pathSegment(issueId))", query: includeQuery(include), as: Issue.self)
     }
 
-    /// Edit an issue's brief. With `ifMatch` (an ``Issue/etag``), a changed issue is refused with 412.
-    public func update(_ issueId: String, _ body: IssueUpdate, ifMatch: String? = nil) async throws -> Issue {
-        try await patch(issueId, body: try .encode(body), headers: ifMatchHeaders(ifMatch))
-    }
-
-    /// Create or change one human request on an issue. Returns the updated issue.
-    public func update(_ issueId: String, _ body: IssueMutation) async throws -> Issue {
-        try await patch(issueId, body: try .encode(body), headers: [:])
+    /// Edit an issue. With `ifMatch` (an ``Issue/etag``), a changed issue is refused with 412.
+    public func update(
+        _ issueId: String, _ body: IssueUpdate, ifMatch: String? = nil, include: [IssueInclude]? = nil
+    ) async throws -> Issue {
+        try await http.json(
+            "PATCH", "/v1/issues/\(pathSegment(issueId))", query: includeQuery(include), body: try .encode(body),
+            headers: ifMatchHeaders(ifMatch), as: Issue.self
+        )
     }
 
     /// Soft-delete an issue. Its activity history is kept. With `ifMatch`, a changed issue is refused with 412.
@@ -505,13 +522,39 @@ public struct IssuesAPI: Sendable {
         try await http.empty("DELETE", "/v1/issues/\(pathSegment(issueId))", headers: ifMatchHeaders(ifMatch))
     }
 
-    private func patch(_ issueId: String, body: RequestBody, headers: [String: String]) async throws -> Issue {
-        try await http.json("PATCH", "/v1/issues/\(pathSegment(issueId))", body: body, headers: headers, as: Issue.self)
+    /// Comments on an issue.
+    public var comments: IssueCommentsAPI { IssueCommentsAPI(http: http) }
+
+    private func includeQuery(_ include: [IssueInclude]?) -> Query {
+        var query = Query()
+        query.add("include", include)
+        return query
     }
 
     private func ifMatchHeaders(_ tag: String?) -> [String: String] {
         tag.map { ["If-Match": $0] } ?? [:]
     }
+}
+
+/// Comments of an issue (`/v1/issues/{id}/comments`). They are read with `include: [.comments]` on
+/// ``IssuesAPI/get(_:include:)`` or from the issue's events; there is no list route.
+public struct IssueCommentsAPI: Sendable {
+    let http: HTTPClient
+
+    public init(http: HTTPClient) { self.http = http }
+
+    /// Comment on an issue. The comment is recorded as an event and does not change the issue's `etag`; a read
+    /// made straight after may not include it yet.
+    public func create(_ issueId: String, comment: String) async throws -> IssueComment {
+        try await http.json(
+            "POST", "/v1/issues/\(pathSegment(issueId))/comments", body: try .encode(IssueCommentCreate(comment: comment)),
+            as: IssueComment.self
+        )
+    }
+}
+
+private struct IssueCommentCreate: Encodable {
+    let comment: String
 }
 
 extension DataPlaneConnection {
