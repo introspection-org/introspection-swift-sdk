@@ -54,9 +54,6 @@ public struct Project: Codable, Sendable, Hashable {
     public var description: String?
     public var settings: JSONObject?
     public var createdByMemberId: String?
-    /// Where the project's hosted repositories are served: `{gitOrigin}/v1/git/{slug}.git` clones one.
-    /// Only `GET /v1/projects/{project}` fills it, and only when the project's data plane serves hosted Git.
-    public var gitOrigin: String?
 
     public init(
         id: String, orgId: String? = nil, deploymentId: String? = nil, name: String? = nil, slug: String? = nil,
@@ -77,7 +74,6 @@ public struct Project: Codable, Sendable, Hashable {
         case orgId = "org_id"
         case deploymentId = "deployment_id"
         case createdByMemberId = "created_by_member_id"
-        case gitOrigin = "git_origin"
     }
 }
 
