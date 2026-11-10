@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.16.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.15.0...v0.16.0) (2026-11-10)
+
+
+### ⚠ BREAKING CHANGES
+
+* model the project git_origin ([#91](https://github.com/introspection-org/introspection-swift-sdk/issues/91))
+
+### Features
+
+* add opt-in strict decoding of responses ([#87](https://github.com/introspection-org/introspection-swift-sdk/issues/87)) ([d62e039](https://github.com/introspection-org/introspection-swift-sdk/commit/d62e039035f1cbdb362fb1a6b9e2585f7e3f4a19))
+* **projects:** model the project git_origin ([#89](https://github.com/introspection-org/introspection-swift-sdk/issues/89)) ([ad17c0b](https://github.com/introspection-org/introspection-swift-sdk/commit/ad17c0bf937ffabfd2fa4a4c36206879270c593b))
+* the end-to-end walk as an optional introspection-walk executable behind the Walk trait ([#90](https://github.com/introspection-org/introspection-swift-sdk/issues/90)) ([8437fff](https://github.com/introspection-org/introspection-swift-sdk/commit/8437fff4c32763cab23da07b25c8e72aec352aeb))
+
+
+### Reverts
+
+* model the project git_origin ([#91](https://github.com/introspection-org/introspection-swift-sdk/issues/91)) ([c0c10c8](https://github.com/introspection-org/introspection-swift-sdk/commit/c0c10c80a9adf4a7f2eb01ef925a0056721a4804))
+
 ## [0.15.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.14.0...v0.15.0) (2026-11-05)
 
 
