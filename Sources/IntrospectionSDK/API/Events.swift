@@ -287,6 +287,12 @@ public struct AnnotationPayload: Codable, Sendable, Hashable {
 public struct JudgementPayload: Codable, Sendable, Hashable {
     public var judgementId: String?
     public var judgeId: String?
+    public var judgeSlug: String?
+    /// `online`, `offline` or `mission`; absent on historical judgements.
+    public var judgeType: String?
+    /// `verdict.v1` or `question_scores.v1`.
+    public var resultSchema: String?
+    public var runtimeSlug: String?
     /// The verdict.
     public var result: String?
     /// Execution outcome (`ok` or `error`), distinct from the verdict.
@@ -305,11 +311,30 @@ public struct JudgementPayload: Codable, Sendable, Hashable {
     public var outputTokens: Int?
     public var totalTokens: Int?
     public var experimentArmId: String?
+    /// Each answered question's probability of true, 0-100.
+    public var scores: [String: Int]?
+    /// An egress judgement's questions, by name.
+    public var questions: [String: String]?
+    public var policyId: String?
+    public var policyAction: String?
+    public var reason: String?
+    public var requestHost: String?
+    public var requestMethod: String?
+    public var requestPath: String?
 
     private enum CodingKeys: String, CodingKey {
-        case result, status, reasoning
+        case result, status, reasoning, scores, questions, reason
         case judgementId = "judgement_id"
         case judgeId = "judge_id"
+        case judgeSlug = "judge_slug"
+        case judgeType = "judge_type"
+        case resultSchema = "result_schema"
+        case runtimeSlug = "runtime_slug"
+        case policyId = "policy_id"
+        case policyAction = "policy_action"
+        case requestHost = "request_host"
+        case requestMethod = "request_method"
+        case requestPath = "request_path"
         case errorClass = "error_class"
         case errorMessage = "error_message"
         case sourceComponent = "source_component"
