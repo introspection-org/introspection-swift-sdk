@@ -126,6 +126,8 @@ public struct IntrospectionEvent: Codable, Sendable, Hashable {
     public var annotation: AnnotationPayload? { familyPayload(.annotation) }
     /// The payload when this is an `introspection.judgement` row: a `.verdict` or an `.egress` decision.
     public var judgement: JudgementPayload? { familyPayload(.judgement) }
+    /// The payload when this is an `introspection.issue` row, discriminated on its `action`.
+    public var issue: IssueActivityPayload? { familyPayload(.issue) }
     /// The payload when this is an `introspection.track` row.
     public var track: TrackPayload? { familyPayload(.track) }
     /// The payload when this is an `introspection.automation.triggered` row.
@@ -304,9 +306,7 @@ public enum JudgementPayload: Codable, Sendable, Hashable {
         guard case let .object(raw) = value else {
             throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Judgement payload is not an object"))
         }
-        // A data plane that predates `kind` sends one flat payload, told apart by its `result_schema`.
-        let legacyKind = raw["result_schema"]?.stringValue == "question_scores.v1" ? "egress" : "verdict"
-        switch raw["kind"]?.stringValue ?? legacyKind {
+        switch raw["kind"]?.stringValue {
         case "verdict": self = (try? value.decode(JudgementVerdictPayload.self)).map(JudgementPayload.verdict) ?? .unknown(raw)
         case "egress": self = (try? value.decode(JudgementEgressPayload.self)).map(JudgementPayload.egress) ?? .unknown(raw)
         default: self = .unknown(raw)
@@ -319,13 +319,14 @@ public enum JudgementPayload: Codable, Sendable, Hashable {
         case let .egress(payload): try payload.encode(to: encoder)
         case let .unknown(raw): return try JSONValue.object(raw).encode(to: encoder)
         }
-        var container = encoder.container(keyedBy: KindKey.self)
+        var container = encoder.container(keyedBy: DiscriminatorKey.self)
         try container.encode(kind, forKey: .kind)
     }
+}
 
-    private enum KindKey: String, CodingKey {
-        case kind
-    }
+/// The discriminator keys of the event payload unions, written back when one is encoded.
+private enum DiscriminatorKey: String, CodingKey {
+    case kind, action
 }
 
 /// Where a judge runs.
@@ -341,7 +342,7 @@ public struct JudgeType: RawRepresentable, Codable, Sendable, Hashable, Expressi
 
 /// A recipe judge's verdict on a conversation.
 public struct JudgementVerdictPayload: Codable, Sendable, Hashable {
-    public var judgementId: String?
+    public var judgementId: String
     public var judgeId: String?
     public var judgeSlug: String?
     public var judgeType: JudgeType?
@@ -390,7 +391,7 @@ public struct JudgementVerdictPayload: Codable, Sendable, Hashable {
 
 /// The egress policy gate's decision on one outbound request.
 public struct JudgementEgressPayload: Codable, Sendable, Hashable {
-    public var judgementId: String?
+    public var judgementId: String
     public var judgeId: String?
     public var judgeSlug: String?
     public var judgeType: JudgeType?
@@ -435,6 +436,146 @@ public struct JudgementEgressPayload: Codable, Sendable, Hashable {
         case requestHost = "request_host"
         case requestMethod = "request_method"
         case requestPath = "request_path"
+    }
+}
+
+/// One issue event, discriminated on `action`. An action this SDK does not model, or a malformed
+/// payload, decodes as `.unknown` with its raw fields.
+public enum IssueActivityPayload: Codable, Sendable, Hashable {
+    case created(IssueCreatedPayload)
+    case updated(IssueUpdatedPayload)
+    case deleted(IssueDeletedPayload)
+    case requestCreated(IssueRequestCreatedPayload)
+    case requestUpdated(IssueRequestUpdatedPayload)
+    case unknown(JSONObject)
+
+    /// The payload's `action` discriminator.
+    public var action: String {
+        switch self {
+        case .created: return "created"
+        case .updated: return "updated"
+        case .deleted: return "deleted"
+        case .requestCreated: return "request.created"
+        case .requestUpdated: return "request.updated"
+        case let .unknown(raw): return raw["action"]?.stringValue ?? ""
+        }
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let value = try JSONValue(from: decoder)
+        guard case let .object(raw) = value else {
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Issue payload is not an object"))
+        }
+        func attempt<T: Decodable>(_ type: T.Type, _ wrap: (T) -> IssueActivityPayload) -> IssueActivityPayload {
+            (try? value.decode(T.self)).map(wrap) ?? .unknown(raw)
+        }
+        switch raw["action"]?.stringValue {
+        case "created": self = attempt(IssueCreatedPayload.self, IssueActivityPayload.created)
+        case "updated": self = attempt(IssueUpdatedPayload.self, IssueActivityPayload.updated)
+        case "deleted": self = attempt(IssueDeletedPayload.self, IssueActivityPayload.deleted)
+        case "request.created": self = attempt(IssueRequestCreatedPayload.self, IssueActivityPayload.requestCreated)
+        case "request.updated": self = attempt(IssueRequestUpdatedPayload.self, IssueActivityPayload.requestUpdated)
+        default: self = .unknown(raw)
+        }
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        switch self {
+        case let .created(payload): try payload.encode(to: encoder)
+        case let .updated(payload): try payload.encode(to: encoder)
+        case let .deleted(payload): try payload.encode(to: encoder)
+        case let .requestCreated(payload): try payload.encode(to: encoder)
+        case let .requestUpdated(payload): try payload.encode(to: encoder)
+        case let .unknown(raw): return try JSONValue.object(raw).encode(to: encoder)
+        }
+        var container = encoder.container(keyedBy: DiscriminatorKey.self)
+        try container.encode(action, forKey: .action)
+    }
+}
+
+/// One authored field's value on either side of an issue update; nil for JSON null.
+public struct IssueFieldChange: Codable, Sendable, Hashable {
+    public var before: JSONValue?
+    public var after: JSONValue?
+}
+
+/// An issue was created.
+public struct IssueCreatedPayload: Codable, Sendable, Hashable {
+    public var issueId: String
+    /// The issue.
+    public var resourceId: String?
+    public var revision: Int?
+    /// The authored fields the issue was created with.
+    public var data: JSONObject
+
+    private enum CodingKeys: String, CodingKey {
+        case revision, data
+        case issueId = "issue_id"
+        case resourceId = "resource_id"
+    }
+}
+
+/// An issue's authored fields changed.
+public struct IssueUpdatedPayload: Codable, Sendable, Hashable {
+    public var issueId: String
+    /// The issue.
+    public var resourceId: String?
+    public var revision: Int?
+    /// Each changed field, by name.
+    public var changes: [String: IssueFieldChange]
+
+    private enum CodingKeys: String, CodingKey {
+        case revision, changes
+        case issueId = "issue_id"
+        case resourceId = "resource_id"
+    }
+}
+
+/// An issue was deleted.
+public struct IssueDeletedPayload: Codable, Sendable, Hashable {
+    public var issueId: String
+    /// The issue.
+    public var resourceId: String?
+    public var revision: Int?
+
+    private enum CodingKeys: String, CodingKey {
+        case revision
+        case issueId = "issue_id"
+        case resourceId = "resource_id"
+    }
+}
+
+/// A human request was created on an issue.
+public struct IssueRequestCreatedPayload: Codable, Sendable, Hashable {
+    public var issueId: String
+    /// The request.
+    public var resourceId: String?
+    public var revision: Int?
+    /// The request as created.
+    public var request: IssueRequest
+
+    private enum CodingKeys: String, CodingKey {
+        case revision, request
+        case issueId = "issue_id"
+        case resourceId = "resource_id"
+    }
+}
+
+/// A human request on an issue changed.
+public struct IssueRequestUpdatedPayload: Codable, Sendable, Hashable {
+    public var issueId: String
+    /// The request.
+    public var resourceId: String?
+    public var revision: Int?
+    /// The request after the update.
+    public var request: IssueRequest
+    /// Each changed field, by name.
+    public var changes: [String: IssueFieldChange]
+
+    private enum CodingKeys: String, CodingKey {
+        case revision, request, changes
+        case issueId = "issue_id"
+        case resourceId = "resource_id"
     }
 }
 

@@ -254,8 +254,10 @@ private let toolSpanJSON = #"""
 
     @Test func exportCarriesAnnotationsWhenIncluded() async throws {
         let human = #"{"event_id":"ev-1","comment":"see","member_id":"m-1","created_at":"2026-10-01T00:00:00Z"}"#
-        let agent = #"{"event_id":"ev-2","comment":"done","member_id":"m-1","actor_member_id":"m-7","actor_member_type":"agent"}"#
-        let annotation = #"{"trace_id":"t1","span_id":"s1","labels":["bug"],"comment_count":2,"comments":[\#(human),\#(agent)]}"#
+        let agent =
+            #"{"event_id":"ev-2","comment":"done","member_id":"m-1","actor_member_id":"m-7","actor_member_type":"agent","created_at":"2026-10-02T00:00:00Z"}"#
+        let annotation =
+            #"{"trace_id":"t1","span_id":"s1","labels":["bug"],"assignee_member_ids":[],"reviewer_member_ids":[],"comment_count":2,"updated_at":"2026-10-02T00:00:00Z","updated_by_member_id":"m-1","comments":[\#(human),\#(agent)]}"#
         let lines =
             #"{"trace_id":"t1","span_id":"s1","attributes":{},"annotation":\#(annotation)}"# + "\n"
             + #"{"trace_id":"t1","span_id":"s2","attributes":{}}"# + "\n"

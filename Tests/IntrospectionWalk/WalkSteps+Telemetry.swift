@@ -77,7 +77,7 @@ extension Walk {
         let annotations = try await member.annotations.list(AnnotationListParams(conversationId: conversationId)).all()
         // An annotation reads back once the processor has landed it; on the local stack it stays `visible: false`.
         if settings.target != "compose" {
-            try check(annotations.first?.labels?.contains("walk") == true, "the annotation reads back")
+            try check(annotations.first?.labels.contains("walk") == true, "the annotation reads back")
         }
         let params = EventListParams(eventName: .annotation, conversationId: conversationId)
         let events = try await sa.events.list(params).all()

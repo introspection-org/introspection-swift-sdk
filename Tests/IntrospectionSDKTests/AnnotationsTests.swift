@@ -4,28 +4,16 @@ import Testing
 @testable import IntrospectionSDK
 
 @Suite struct AnnotationsTests {
-    @Test func annotationStateDecodesAnOlderDataPlaneRow() throws {
-        let row =
-            #"{"trace_id": "0123456789abcdef0123456789abcdef", "span_id": "0123456789abcdef", "conversation_id": "conv", "labels": ["bug"], "assignee_member_ids": ["m-2"], "annotator_member_ids": ["m-1"], "commenter_member_ids": ["m-1"], "has_comment": true, "human_commenter_member_ids": ["m-3"], "has_human_comment": true, "comment_count": 2, "latest_comment": "see", "latest_comment_member_id": "m-1", "latest_comment_actor_member_id": null, "latest_comment_actor_type": null, "updated_at": "2026-10-01T00:00:00Z", "updated_by_member_id": "m-1", "assignment_event_id": null}"#
-        let state = try JSONCoding.decoder.decode(AnnotationState.self, from: Data(row.utf8))
-        #expect(state.reviewerMemberIds == ["m-3"])
-        #expect(state.updatedByMemberId == "m-1")
-        #expect(state.commentCount == 2)
-        #expect(state.comments == nil)
-
-        let encoded = try JSONCoding.decoder.decode(JSONValue.self, from: JSONCoding.encoder.encode(state))
-        #expect(encoded["reviewer_member_ids"] == .array([.string("m-3")]))
-        #expect(encoded["human_commenter_member_ids"] == nil)
-    }
-
     @Test func annotationListLoadsCommentsWhenIncluded() async throws {
         let human =
             #"{"event_id": "ev-1", "comment": "see", "member_id": "m-1", "actor_member_id": null, "actor_member_type": null, "created_at": "2026-10-01T00:00:00Z"}"#
         let agent =
             #"{"event_id": "ev-2", "comment": "done", "member_id": "m-1", "actor_member_id": "m-7", "actor_member_type": "agent", "created_at": "2026-10-02T00:00:00Z"}"#
+        let rest =
+            #""labels": [], "assignee_member_ids": [], "reviewer_member_ids": [], "updated_at": "2026-10-01T00:00:00Z", "updated_by_member_id": "m-1""#
         let transport = MockTransport(
             json:
-                #"{"records": [{"trace_id": "t1", "span_id": "s1", "comment_count": 2, "comments": [\#(human), \#(agent)]}, {"trace_id": "t1", "span_id": "s2", "comment_count": 0, "comments": []}], "count": 2, "next": null}"#
+                #"{"records": [{"trace_id": "t1", "span_id": "s1", "comment_count": 2, "comments": [\#(human), \#(agent)], \#(rest)}, {"trace_id": "t1", "span_id": "s2", "comment_count": 0, "comments": [], \#(rest)}], "count": 2, "next": null}"#
         )
         let states = try await makeClient(transport).annotations.list(AnnotationListParams(include: [.comments])).collect()
         #expect(transport.last?.query["include"] == ["comments"])
@@ -54,7 +42,7 @@ import Testing
     @Test func annotationNavigation() async throws {
         let transport = MockTransport(
             json:
-                #"{"previous": null, "current": {"trace_id": "t", "span_id": "s"}, "next": null, "current_position": 0, "total_count": 1}"#
+                #"{"previous": null, "current": {"trace_id": "t", "span_id": "s", "comment_count": 0, "labels": [], "assignee_member_ids": [], "reviewer_member_ids": [], "updated_at": "2026-10-01T00:00:00Z", "updated_by_member_id": "m-1"}, "next": null, "current_position": 0, "total_count": 1}"#
         )
         let annotations = makeClient(transport).annotations
         let window = try await annotations.navigation(AnnotationTarget(traceId: "t", spanId: "s"), labels: ["bug"], lookbackDays: 7)
@@ -68,12 +56,12 @@ import Testing
     @Test func annotationListReadsADatasetSizeFromTheTotal() async throws {
         let transport = MockTransport(
             json:
-                #"{"records": [{"trace_id": "t", "span_id": "s", "updated_at": "2026-10-01T00:00:00Z"}], "count": 1, "total_count": 42, "next": "p2"}"#
+                #"{"records": [{"trace_id": "t", "span_id": "s", "comment_count": 0, "labels": [], "assignee_member_ids": [], "reviewer_member_ids": [], "updated_at": "2026-10-01T00:00:00Z", "updated_by_member_id": "m-1"}], "count": 1, "total_count": 42, "next": "p2"}"#
         )
         let params = AnnotationListParams(labels: ["bug"], includeTotal: true, limit: 1, lookbackDays: 30)
         let page = try await makeClient(transport).annotations.list(params).page(at: nil)
         #expect(page.totalCount == 42)
-        #expect(page.records.first?.updatedAt != nil)
+        #expect(page.records.first?.updatedAt == ISO8601.parse("2026-10-01T00:00:00Z"))
         #expect(transport.last?.query["label"] == ["bug"])
         #expect(transport.last?.query["limit"] == ["1"])
         #expect(transport.last?.query["include_total"] == ["true"])

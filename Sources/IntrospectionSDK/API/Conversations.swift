@@ -1104,7 +1104,7 @@ public struct ConversationExportParams: Sendable, Hashable {
 /// JSON-envelope export was removed.
 public enum ConversationExportFormat: String, Sendable, Hashable, CaseIterable {
     /// JSON lines (`application/x-ndjson`): one GenAI span per line, each line a complete JSON object,
-    /// with no envelope, so it can be read as it streams. An older data plane answers 406.
+    /// with no envelope, so it can be read as it streams.
     case jsonl
     /// Apache Arrow IPC stream (returned as raw bytes; this SDK does not decode Arrow).
     case arrow

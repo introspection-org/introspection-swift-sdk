@@ -142,6 +142,40 @@ public struct IssueOpenRequest: Codable, Sendable, Hashable {
     }
 }
 
+/// A human request on an issue, as an `introspection.issue` event recorded it.
+public struct IssueRequest: Codable, Sendable, Hashable {
+    public let id: String
+    public let issueId: String
+    /// The task the request was raised from.
+    public let taskId: String
+    public let question: String
+    public let assigneeId: String
+    public let status: IssueRequestStatus
+    public let resolution: String?
+    public let revision: Int
+    /// The parent issue's revision when the request was written.
+    public let issueRevision: Int
+    /// The owner of the parent issue; nil for a project-owned (Operator) issue.
+    public let issueMemberId: String?
+    public let files: [IssueFile]
+    public let links: [IssueLink]
+    public let events: [IssueEventReference]
+    public let spans: [IssueSpanReference]
+    public let createdAt: Date
+    public let updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id, question, status, resolution, revision, files, links, events, spans
+        case issueId = "issue_id"
+        case taskId = "task_id"
+        case assigneeId = "assignee_id"
+        case issueRevision = "issue_revision"
+        case issueMemberId = "issue_member_id"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+}
+
 /// An issue: its brief, the evidence it cites and its open human requests.
 public struct Issue: Codable, Sendable, Hashable {
     public let id: String
