@@ -546,6 +546,13 @@ private func member(_ id: String, _ email: String?, deactivated: Bool = false) -
         #expect(transport.requests.count == before)
     }
 
+    @Test func tagOfAnUnknownKindDecodes() async throws {
+        let transport = MockTransport { _, _ in .response(.json(#"{"kind": "workflow", "name": "triage"}"#)) }
+        let tag = try await makeClient(transport).tags.get("workflow", "triage")
+        #expect(tag.kind == TagKind(rawValue: "workflow"))
+        #expect(transport.last?.request.url.path == "/v1/tags/workflow/triage")
+    }
+
     // MARK: Organization
 
     @Test func organizationProjectsAndMembers() async throws {
