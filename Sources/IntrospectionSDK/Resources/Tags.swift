@@ -10,16 +10,10 @@ import Foundation
 /// Which catalogue a tag belongs to.
 ///
 /// `access` tags are the values tag shares and member tags carry; `annotation` tags are
-/// the annotation labels. Unknown server values are preserved.
-public struct TagKind: RawRepresentable, Codable, Sendable, Hashable, ExpressibleByStringLiteral {
-    public let rawValue: String
-    public init(rawValue: String) { self.rawValue = rawValue }
-    public init(stringLiteral value: String) { rawValue = value }
-    public init(from decoder: any Decoder) throws { rawValue = try decoder.singleString() }
-    public func encode(to encoder: any Encoder) throws { try encoder.encodeSingle(rawValue) }
-
-    public static let access: TagKind = "access"
-    public static let annotation: TagKind = "annotation"
+/// the annotation labels.
+public enum TagKind: String, Codable, Sendable, Hashable {
+    case access
+    case annotation
 }
 
 /// A tag in the catalogue.
