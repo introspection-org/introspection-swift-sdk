@@ -312,8 +312,6 @@ private let toolSpanJSON = #"""
                 if accept.contains("arrow") {
                     return .stream(status: 200, headers: ["content-type": accept], chunks: [Data([1, 2]), Data([3])], error: nil)
                 }
-                return .response(
-                    .json(#"{"object":"list","first_id":"s2","data":[\#(chatSpanJSON)],"last_id":"s2","has_more":false,"next":null}"#))
             }
             return .response(.json(conversationJSON))
         }
@@ -321,11 +319,6 @@ private let toolSpanJSON = #"""
 
         let conversation = try await client.conversations.get("conv-1")
         #expect(conversation.taskTitle == "Hello")
-
-        let exported = try await client.conversations.exportJSON("conv-1", ConversationExportParams(agent: "root", fromCompaction: true))
-        #expect(exported.data.count == 1)
-        #expect(transport.last?.request.headers["Accept"] == "application/json")
-        #expect(transport.last?.query["from_compaction"] == ["true"])
 
         let trajectory = try await client.conversations.exportTrajectory("conv-1")
         #expect(trajectory.map(\.role) == ["meta", "user", "assistant", "tool"])

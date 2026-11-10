@@ -1042,7 +1042,7 @@ public struct ConversationItemListParams: Sendable, Hashable {
     }
 }
 
-/// Optional expansions of an exported span (repeated `include`), on the JSON and JSON-lines forms only.
+/// Optional expansions of an exported span (repeated `include`), on the JSON-lines form only.
 public struct ConversationExportInclude: RawRepresentable, Codable, Sendable, Hashable, ExpressibleByStringLiteral {
     public let rawValue: String
     public init(rawValue: String) { self.rawValue = rawValue }
@@ -1101,10 +1101,8 @@ public struct ConversationExportParams: Sendable, Hashable {
 
 /// The representation `exportStream` asks for.
 public enum ConversationExportFormat: String, Sendable, Hashable, CaseIterable {
-    /// One GenAI span per line, with no envelope. The preferred raw form; an older data plane answers 406.
+    /// One GenAI span per line, with no envelope. An older data plane answers 406.
     case jsonl
-    /// The GenAI-span list envelope. Prefer `jsonl`.
-    case json
     /// Apache Arrow IPC stream (returned as raw bytes; this SDK does not decode Arrow).
     case arrow
     /// trajectory-v1.
@@ -1116,7 +1114,6 @@ public enum ConversationExportFormat: String, Sendable, Hashable, CaseIterable {
     public var accept: String {
         switch self {
         case .jsonl: return "application/x-ndjson"
-        case .json: return "application/json"
         case .arrow: return "application/vnd.apache.arrow.stream"
         case .trajectory: return "application/vnd.letta.trajectory+json;version=1"
         case .replay: return "application/vnd.introspection.conversation-replay+json;version=1"
@@ -1191,19 +1188,6 @@ public struct ConversationsAPI: Sendable {
         var query = Query()
         query.add("annotation_id", annotationId)
         return try await http.json("GET", "/v1/conversations/\(pathSegment(conversationId))", query: query)
-    }
-
-    /// Export the complete conversation as one GenAI-span list, buffered whole.
-    /// Deprecated: use ``exportJSONLines(_:_:)``, which decodes the spans as they arrive.
-    public func exportJSON(
-        _ conversationId: String, _ params: ConversationExportParams = ConversationExportParams()
-    ) async throws -> GenAISpanList {
-        var list = try await http.json(
-            "GET", "/v1/conversations/\(pathSegment(conversationId))/export",
-            query: params.query, headers: ["Accept": ConversationExportFormat.json.accept], as: GenAISpanList.self
-        )
-        list.data = list.data.map { $0.normalizingLegacyToolResults() }
-        return list
     }
 
     /// Export the complete conversation as trajectory-v1 records. A conversation that cannot be
