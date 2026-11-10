@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import Testing
 
 @testable import IntrospectionSDK
@@ -34,6 +35,38 @@ private let toolSpanJSON = #"""
     {"trace_id":"t1","span_id":"s1","start_time":"2026-10-01T12:00:01Z",
      "attributes":{"gen_ai":{"operation":{"name":"execute_tool"},"tool":{"name":"search","call":{"id":"call-1"}}}}}
     """#
+
+/// A body that is produced only as it is pulled, one line per chunk, counting what it has produced.
+private final class CountingLineSource: HTTPTransport, Sendable {
+    private let produced = Mutex(0)
+    private let total: Int
+
+    /// How many lines the body has produced so far.
+    var count: Int { produced.withLock { $0 } }
+
+    init(total: Int) { self.total = total }
+
+    func send(_: HTTPRequest) async throws -> HTTPResponse {
+        HTTPResponse(status: 500, headers: [:], body: Data())
+    }
+
+    func stream(_: HTTPRequest) async throws -> HTTPStreamResponse {
+        HTTPStreamResponse(status: 200, headers: [:], bytes: AsyncThrowingStream(unfolding: { self.line() }))
+    }
+
+    private func line() -> Data? {
+        let row = produced.withLock { count -> Int? in
+            guard count < total else { return nil }
+            count += 1
+            return count
+        }
+        return row.map { Data(#"{"trace_id":"t1","span_id":"s\#($0)","attributes":{}}"#.utf8) + Data("\n".utf8) }
+    }
+
+    var conversations: ConversationsAPI {
+        ConversationsAPI(http: HTTPClient(baseURL: URL(string: "https://dp.test")!, transport: self))
+    }
+}
 
 @Suite struct ConversationsTests {
     @Test func listSerializesReadWindowAndMetadata() async throws {
@@ -278,6 +311,32 @@ private let toolSpanJSON = #"""
         #expect(transport.last?.query["include"] == ["annotations", "comments"])
         _ = try await conversations.exportStream("conv-1", format: .jsonl).collect()
         #expect(transport.last?.query["include"] == nil)
+    }
+
+    @Test func exportJSONLinesReadsOnlyAsFarAsItIsConsumed() async throws {
+        let source = CountingLineSource(total: 10_000)
+        var iterator = source.conversations.exportJSONLines("conv-1").makeAsyncIterator()
+        #expect(source.count == 0)
+        for row in 1...3 {
+            let span = try await iterator.next()
+            #expect(span?.spanId == "s\(row)")
+            #expect(source.count <= row + 1)
+        }
+    }
+
+    @Test func exportJSONLinesStopsReadingWhenItsTaskIsCancelled() async throws {
+        let source = CountingLineSource(total: 10_000)
+        let spans = source.conversations.exportJSONLines("conv-1")
+        let reader = Task { () -> Int in
+            var read = 0
+            for try await _ in spans {
+                read += 1
+                if read == 5 { withUnsafeCurrentTask { $0?.cancel() } }
+            }
+            return read
+        }
+        await #expect(throws: CancellationError.self) { try await reader.value }
+        #expect(source.count <= 6)
     }
 
     @Test func exportJSONLinesSurfacesAnOlderDataPlaneAndACutBody() async throws {
