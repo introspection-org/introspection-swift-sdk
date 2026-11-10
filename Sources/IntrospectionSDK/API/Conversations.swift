@@ -146,12 +146,14 @@ public struct GenAISpan: Codable, Sendable, Hashable {
     /// Present when requested with the `events` include.
     public var events: [GenAISpanEvent]?
     public var attributes: JSONObject
+    /// The span's current annotation state, on an export asked for `include: [.annotations]`; nil when it has none.
+    public var annotation: AnnotationState?
 
     public init(
         traceId: String, spanId: String? = nil, parentSpanId: String? = nil, name: String? = nil,
         kind: GenAISpanKind? = nil, startTime: Date? = nil, endTime: Date? = nil, durationNs: Int64? = nil,
         status: GenAISpanStatus? = nil, resource: JSONObject? = nil, events: [GenAISpanEvent]? = nil,
-        attributes: JSONObject = [:]
+        attributes: JSONObject = [:], annotation: AnnotationState? = nil
     ) {
         self.traceId = traceId
         self.spanId = spanId
@@ -165,10 +167,11 @@ public struct GenAISpan: Codable, Sendable, Hashable {
         self.resource = resource
         self.events = events
         self.attributes = attributes
+        self.annotation = annotation
     }
 
     private enum CodingKeys: String, CodingKey {
-        case name, kind, status, resource, events, attributes
+        case name, kind, status, resource, events, attributes, annotation
         case traceId = "trace_id"
         case spanId = "span_id"
         case parentSpanId = "parent_span_id"
@@ -191,6 +194,7 @@ public struct GenAISpan: Codable, Sendable, Hashable {
         resource = try container.decodeIfPresent(JSONObject.self, forKey: .resource)
         events = try container.decodeIfPresent([GenAISpanEvent].self, forKey: .events)
         attributes = try container.decodeIfPresent(JSONObject.self, forKey: .attributes) ?? [:]
+        annotation = try container.decodeIfPresent(AnnotationState.self, forKey: .annotation)
     }
 
     /// The attribute at a dotted semantic-convention path, walking the nested tree
@@ -1038,6 +1042,18 @@ public struct ConversationItemListParams: Sendable, Hashable {
     }
 }
 
+/// Optional expansions of an exported span (repeated `include`), on the JSON and JSON-lines forms only.
+public struct ConversationExportInclude: RawRepresentable, Codable, Sendable, Hashable, ExpressibleByStringLiteral {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+    public init(stringLiteral value: String) { rawValue = value }
+
+    /// Each annotated span carries its current `annotation`. Needs the annotations read scope.
+    public static let annotations: ConversationExportInclude = "annotations"
+    /// With `annotations`: that annotation's `comments`, oldest first.
+    public static let comments: ConversationExportInclude = "comments"
+}
+
 /// Filters for `GET /v1/conversations/{id}/export`, which assembles the whole conversation.
 public struct ConversationExportParams: Sendable, Hashable {
     public var agent: String?
@@ -1048,11 +1064,12 @@ public struct ConversationExportParams: Sendable, Hashable {
     public var startDate: Date?
     public var endDate: Date?
     public var fromCompaction: Bool?
+    public var include: [ConversationExportInclude]?
 
     public init(
         agent: String? = nil, serviceName: String? = nil, operationName: String? = nil, lookbackDays: Int? = nil,
         annotationId: String? = nil, startDate: Date? = nil, endDate: Date? = nil,
-        fromCompaction: Bool? = nil
+        fromCompaction: Bool? = nil, include: [ConversationExportInclude]? = nil
     ) {
         // jscpd:ignore-start: memberwise init of a public type; the assignments cannot be shared
         self.agent = agent
@@ -1064,6 +1081,7 @@ public struct ConversationExportParams: Sendable, Hashable {
         self.endDate = endDate
         self.fromCompaction = fromCompaction
         // jscpd:ignore-end
+        self.include = include
     }
 
     var query: Query {
@@ -1076,6 +1094,7 @@ public struct ConversationExportParams: Sendable, Hashable {
         q.add("start_date", startDate)
         q.add("end_date", endDate)
         q.add("from_compaction", fromCompaction)
+        q.add("include", include)
         return q
     }
 }
