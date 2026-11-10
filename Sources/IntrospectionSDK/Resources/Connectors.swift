@@ -732,6 +732,8 @@ public struct ConnectionToken: Codable, Sendable, Hashable {
 public enum ConnectionTokenResult: Codable, Sendable, Hashable {
     case token(ConnectionToken)
     case authorizationPending(missionId: String, approvalUrl: String)
+    /// A result this SDK does not model, such as a new `status`, as received.
+    case unknown(JSONObject)
 
     /// The token, when one was released.
     public var token: ConnectionToken? {
@@ -746,14 +748,20 @@ public enum ConnectionTokenResult: Codable, Sendable, Hashable {
     }
 
     public init(from decoder: any Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        if try container.decodeIfPresent(String.self, forKey: .status) == "authorization_pending" {
+        let value = try JSONValue(from: decoder)
+        guard case let .object(raw) = value else {
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Token result is not an object"))
+        }
+        switch raw["status"]?.stringValue {
+        case "authorization_pending":
             self = .authorizationPending(
-                missionId: try container.decodeIfPresent(String.self, forKey: .missionId) ?? "",
-                approvalUrl: try container.decodeIfPresent(String.self, forKey: .approvalUrl) ?? ""
+                missionId: raw["mission_id"]?.stringValue ?? "",
+                approvalUrl: raw["approval_url"]?.stringValue ?? ""
             )
-        } else {
-            self = .token(try ConnectionToken(from: decoder))
+        case nil:
+            self = (try? value.decode(ConnectionToken.self)).map(ConnectionTokenResult.token) ?? .unknown(raw)
+        default:
+            self = .unknown(raw)
         }
     }
 
@@ -766,6 +774,8 @@ public enum ConnectionTokenResult: Codable, Sendable, Hashable {
             try container.encode("authorization_pending", forKey: .status)
             try container.encode(missionId, forKey: .missionId)
             try container.encode(approvalUrl, forKey: .approvalUrl)
+        case let .unknown(raw):
+            try JSONValue.object(raw).encode(to: encoder)
         }
     }
 }
