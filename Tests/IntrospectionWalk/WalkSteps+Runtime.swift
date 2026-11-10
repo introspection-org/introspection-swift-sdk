@@ -526,6 +526,65 @@ extension Walk {
         try check((conversation.metrics?.traceCount ?? 0) >= 2, "two traces, one per turn")
         try check((conversation.usage?.totalTokens ?? 0) > 0, "tokens used")
         try await evidenceItems()
+        try await evidenceIssue()
+    }
+
+    /// An issue owned by the walk's task, with its output as evidence: open, read, list, close under its etag,
+    /// delete.
+    private func evidenceIssue() async throws {
+        let issue = try await sa.issues.create(
+            IssueCreate(
+                title: "The walk's issue", description: "The greeting the walk's task wrote.", taskId: task.id,
+                priority: .high, files: [IssueFile(fileId: outputFile.id)], tags: ["suite:\(WALK.tagName)"]))
+        snap(try stable(issueBrief(issue))) {
+            """
+            {
+              "description" : "The greeting the walk's task wrote.",
+              "files" : [
+                "[uuid]"
+              ],
+              "priority" : "high",
+              "status" : "open",
+              "tags" : [
+                "suite:walk"
+              ],
+              "task_id" : "[uuid]",
+              "title" : "The walk's issue"
+            }
+            """
+        }
+        try check(issue.taskId == task.id, "the issue is on the walk's task")
+        try check(issue.files?.first?.fileId == outputFile.id, "the issue cites the output file")
+
+        let read = try await sa.issues.get(issue.id)
+        try check(read.id == issue.id, "the issue reads back")
+        let listed = try await sa.issues.list(IssueListParams(tag: "suite:\(WALK.tagName)")).all()
+        try check(listed.contains { $0.id == issue.id }, "the issue is listed by its tag")
+
+        let closed = try await sa.issues.update(
+            issue.id, IssueUpdate(description: "The greeting the walk's task wrote, checked.", status: .closed),
+            ifMatch: read.etag)
+        try check(closed.status == .closed, "the issue is closed")
+        try check(closed.closedAt != nil, "the issue records when it closed")
+        // The etag it was read under is stale now, so a second edit is refused.
+        _ = try await refusal(412, "an edit under a stale etag") {
+            try await sa.issues.update(issue.id, IssueUpdate(priority: .low), ifMatch: read.etag)
+        }
+
+        try await sa.issues.delete(issue.id, ifMatch: closed.etag)
+        try await expectNotFound({ try await sa.issues.get(issue.id) }, "the deleted issue")
+    }
+
+    /// What an issue says, without what the server stamps on it.
+    private func issueBrief(_ issue: Issue) -> JSONObject {
+        [
+            "title": .string(issue.title), "description": .string(issue.description),
+            "status": issue.status.map { .string($0.rawValue) } ?? .null,
+            "priority": issue.priority.map { .string($0.rawValue) } ?? .null,
+            "task_id": issue.taskId.map { .string($0) } ?? .null,
+            "tags": .array((issue.tags ?? []).map { .string($0) }),
+            "files": .array((issue.files ?? []).map { .string($0.fileId) }),
+        ]
     }
 
     private func evidenceItems() async throws {
