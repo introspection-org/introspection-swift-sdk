@@ -27,6 +27,12 @@ public struct Tag: Codable, Sendable, Hashable {
     /// Set on an `annotation` tag; never on an `access` tag.
     public var color: String?
     public var description: String?
+    /// When a rename archived this tag; `nil` on a live tag.
+    public var archivedAt: Date?
+    /// The tag an archived one was renamed to.
+    public var replacedBy: String?
+    /// The archived names renamed to this tag, which its dataset also covers.
+    public var archivedNames: [String]?
     public var createdAt: Date?
     public var updatedAt: Date?
 
@@ -35,6 +41,9 @@ public struct Tag: Codable, Sendable, Hashable {
         name: String,
         color: String? = nil,
         description: String? = nil,
+        archivedAt: Date? = nil,
+        replacedBy: String? = nil,
+        archivedNames: [String]? = nil,
         createdAt: Date? = nil,
         updatedAt: Date? = nil
     ) {
@@ -42,15 +51,31 @@ public struct Tag: Codable, Sendable, Hashable {
         self.name = name
         self.color = color
         self.description = description
+        self.archivedAt = archivedAt
+        self.replacedBy = replacedBy
+        self.archivedNames = archivedNames
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
 
     private enum CodingKeys: String, CodingKey {
         case kind, name, color, description
+        case archivedAt = "archived_at"
+        case replacedBy = "replaced_by"
+        case archivedNames = "archived_names"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
+}
+
+/// Rows a tag list leaves out unless asked for.
+public struct TagInclude: RawRepresentable, Codable, Sendable, Hashable, ExpressibleByStringLiteral {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+    public init(stringLiteral value: String) { rawValue = value }
+
+    /// The tags a rename archived.
+    public static let archived: TagInclude = "archived"
 }
 
 /// An access tag to add. Its name is opaque and kept verbatim, so it may contain `/`.
@@ -125,13 +150,19 @@ public enum TagCreate: Encodable, Sendable, Hashable {
 /// The API tells an omitted field from a null, so a field left `nil` here is left alone
 /// and `description: .some(nil)` clears it. Prefer the constructors below.
 public struct TagUpdate: Encodable, Sendable, Hashable {
+    /// Rename an annotation tag: this one is archived and the tag that replaces it comes back.
+    public var name: String?
     public var color: String?
     public var description: String??
 
-    public init(color: String? = nil, description: String?? = nil) {
+    public init(name: String? = nil, color: String? = nil, description: String?? = nil) {
+        self.name = name
         self.color = color
         self.description = description
     }
+
+    /// Rename an annotation tag, archiving the old name.
+    public static func rename(_ name: String) -> TagUpdate { TagUpdate(name: name) }
 
     /// Recolour an annotation tag.
     public static func color(_ value: String) -> TagUpdate { TagUpdate(color: value) }
@@ -144,12 +175,13 @@ public struct TagUpdate: Encodable, Sendable, Hashable {
     /// Clear the description.
     public static let clearDescription = TagUpdate(description: .some(nil))
 
-    var namesAField: Bool { color != nil || description != nil }
+    var namesAField: Bool { name != nil || color != nil || description != nil }
 
-    private enum CodingKeys: String, CodingKey { case color, description }
+    private enum CodingKeys: String, CodingKey { case name, color, description }
 
     public func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(name, forKey: .name)
         try container.encodeIfPresent(color, forKey: .color)
         // An omitted key leaves the description; an explicit null clears it.
         if let description {
@@ -165,12 +197,18 @@ public struct TagUpdate: Encodable, Sendable, Hashable {
 public struct TagListParams: Sendable, Hashable {
     public var kind: TagKind
     public var search: String?
+    /// `.archived` also returns the tags a rename archived.
+    public var include: [TagInclude]?
     public var limit: Int?
     public var next: String?
 
-    public init(kind: TagKind, search: String? = nil, limit: Int? = nil, next: String? = nil) {
+    public init(
+        kind: TagKind, search: String? = nil, include: [TagInclude]? = nil, limit: Int? = nil,
+        next: String? = nil
+    ) {
         self.kind = kind
         self.search = search
+        self.include = include
         self.limit = limit
         self.next = next
     }
@@ -187,6 +225,7 @@ public struct TagsAPI: Sendable {
         var query = Query()
         query.add("kind", params.kind.rawValue)
         query.add("search", params.search)
+        query.add("include", params.include)
         query.add("limit", params.limit)
         return http.paginate("/v1/tags", query: query, start: params.next)
     }
@@ -202,17 +241,24 @@ public struct TagsAPI: Sendable {
         try await http.json("GET", path(kind, name))
     }
 
-    /// Change a tag's colour or description.
+    /// Change a tag's name, colour or description. A new name archives this tag and returns
+    /// the tag that replaces it.
     public func update(_ kind: TagKind, _ name: String, _ body: TagUpdate) async throws -> Tag {
         guard body.namesAField else {
             throw tagValidationError(
-                "A tag update must name a color or a description", code: "invalid_tag_update"
+                "A tag update must name a new name, a color or a description", code: "invalid_tag_update"
             )
         }
         if kind == .access, body.color != nil {
             throw tagValidationError("An access tag has no color", code: "invalid_tag_color")
         }
+        if kind == .access, body.name != nil {
+            throw tagValidationError("An access tag cannot be renamed", code: "invalid_tag_rename")
+        }
         var body = body
+        if let newName = body.name {
+            body.name = try trimmedName(newName)
+        }
         if let color = body.color {
             body.color = try lowercasedHex(color)
         }
