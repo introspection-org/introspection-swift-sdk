@@ -196,6 +196,20 @@ private let automationJSON = #"""
         #expect(skipped.reason == "Target task is archived")
     }
 
+    @Test func handTriggerOfASynthesisReportsWhatItQueued() async throws {
+        let body = #"""
+            {"status":"triggered","automation_id":"a1","task_id":null,"reason":null,"run_id":null,"enqueued":1,
+             "conversations":[{"conversation_id":"conv-1","completed_at":"2026-10-05T09:00:00Z"}]}
+            """#
+        #expect(try StrictSchema.unmodelled(AutomationTriggerResponse.self, in: Data(body.utf8)).isEmpty)
+        let transport = MockTransport(status: 202, json: body)
+        let triggered = try await makeClient(transport).automations.trigger("a1")
+        #expect(triggered.runId == nil)
+        #expect(triggered.enqueued == 1)
+        #expect(triggered.conversations?.first?.conversationId == "conv-1")
+        #expect(triggered.conversations?.first?.completedAt == ISO8601.parse("2026-10-05T09:00:00Z"))
+    }
+
     @Test func readsTriggerAndSkipEvents() async throws {
         let triggered = #"""
             {"id":"0199a1b2-0000-5000-8000-000000000001","timestamp":"2026-10-05T09:00:02Z",
