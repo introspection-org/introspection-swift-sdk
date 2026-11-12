@@ -40,7 +40,6 @@ enum WALK {
     static let adminName = "Drew"
     static let personaFileName = "walk-avery-notes.txt"
     static let idpIssuer = "https://idp.walk.example.com"
-    static let registeredToken = "walk-registered-token-0001"
     static let apiEndpointName = "walk-api"
     static let apiEndpointHost = "walk-api.example.com"
     static let imageName = "walk/busybox"
@@ -276,10 +275,21 @@ func stable<T: Encodable>(_ value: T, removing keys: [String] = []) throws -> JS
 // MARK: Steps
 
 extension Walk {
-    /// A project's display ID prefixes postdate the recording: absent on replay, the server defaults live.
-    func checkDefaultDisplayIdPrefixes(_ project: Project) throws {
+    /// A project's display ID prefixes and connection integrations postdate the recording: absent on replay, the
+    /// server defaults live. The snapshot leaves them out.
+    func stableProject(_ project: Project, removing keys: [String] = []) throws -> JSONValue {
         let defaults = DisplayIdPrefixes(issue: "I", report: "R", observation: "F", task: "T")
         try check([nil, defaults].contains(project.displayIdPrefixes), "the project's display ID prefixes are the defaults")
+        try check([nil, []].contains(project.connectionIntegrations), "the project allows no member connections")
+        return try stable(project, removing: keys + ["display_id_prefixes", "connection_integrations"])
+    }
+
+    /// The project's grant on the walk's connector. Its runtime group and token expiry postdate the recording:
+    /// absent on replay, the runtime's group and the provider's expiry live. The snapshot leaves them out.
+    func stableGrant(_ grant: AppConnection) throws -> JSONValue {
+        try check([nil, runtime.runtimeGroupId].contains(grant.runtimeGroupId), "the grant answers the runtime's group")
+        try check(grant.integrationId == nil, "the grant is on a connector, not an integration")
+        return try stable(grant, removing: ["runtime_group_id", "token_expires_at"])
     }
 }
 

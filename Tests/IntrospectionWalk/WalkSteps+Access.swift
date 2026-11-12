@@ -197,9 +197,10 @@ extension Walk {
         try check(keys.contains { $0.id == apiKey.key.id }, "the key is listed")
         _ = try await sa.apiKeys.update(apiKey.key.id, ApiKeyUpdate(name: "\(WALK.apiKeyName) (renamed)"), project: project.id)
         _ = try await sa.apiKeys.acknowledge(apiKey.key.id, project: project.id)
-        // The organisation's name and slug are whoever is running the walk.
+        // The organisation's name and slug are whoever is running the walk, and whether its subscription is paid
+        // depends on its plan (and postdates the recording).
         try check(org.slug?.isEmpty == false, "the organisation has a slug")
-        snap(try stable(org, removing: ["name", "slug"])) {
+        snap(try stable(org, removing: ["name", "slug", "subscription_live"])) {
             """
             {
               "external_org_id" : "[id]",
@@ -292,9 +293,7 @@ extension Walk {
         }
         for connector in try await owner.connectors.list(ConnectorListParams(project: project.id)).all()
         where connector.slug == WALK.connectorName {
-            for connection in try await owner.connectors.connections.list(connector.id).all() {
-                try await owner.connectors.connections.revoke(connector.id, connection.id)
-            }
+            // The delete revokes the connector's connections in the same transaction.
             try await owner.connectors.delete(connector.id, project: project.id)
         }
         for variable in try await owner.variables.list(RuntimeSettingListParams(project: project.id)).all()

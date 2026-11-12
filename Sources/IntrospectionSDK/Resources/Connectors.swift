@@ -367,6 +367,8 @@ public struct ConnectorOAuthDiscovery: Codable, Sendable, Hashable {
     public var authorizationEndpoint: String?
     public var tokenEndpoint: String?
     public var registrationEndpoint: String?
+    /// The RFC 7009 token revocation endpoint, when the provider advertises one.
+    public var revocationEndpoint: String?
     public var tokenEndpointAuthMethodsSupported: [String]?
     public var codeChallengeMethodsSupported: [String]?
     public var scopesSupported: [String]?
@@ -407,6 +409,7 @@ public struct ConnectorOAuthDiscovery: Codable, Sendable, Hashable {
         case authorizationEndpoint = "authorization_endpoint"
         case tokenEndpoint = "token_endpoint"
         case registrationEndpoint = "registration_endpoint"
+        case revocationEndpoint = "revocation_endpoint"
         case tokenEndpointAuthMethodsSupported = "token_endpoint_auth_methods_supported"
         case codeChallengeMethodsSupported = "code_challenge_methods_supported"
         case scopesSupported = "scopes_supported"
@@ -480,11 +483,18 @@ public struct ConnectorAuthorizeParams: Sendable, Hashable {
 }
 
 struct ConnectorAuthorizeBody: Encodable {
-    let connectorId: String
+    /// What the consent is for: a connector, or an organization integration to install.
+    enum Target {
+        case connector(String)
+        case integration(String)
+    }
+
+    let target: Target
     let params: ConnectorAuthorizeParams
 
     private enum CodingKeys: String, CodingKey {
         case connectorId = "connector_id"
+        case integrationId = "integration_id"
         case app, identity, runtime, binding, subject
         case allowProgressiveScopes = "allow_progressive_scopes"
         case returnUrl = "return_url"
@@ -493,7 +503,10 @@ struct ConnectorAuthorizeBody: Encodable {
 
     func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(connectorId, forKey: .connectorId)
+        switch target {
+        case let .connector(id): try container.encode(id, forKey: .connectorId)
+        case let .integration(id): try container.encode(id, forKey: .integrationId)
+        }
         try container.encodeIfPresent(params.app, forKey: .app)
         try container.encodeIfPresent(params.allowProgressiveScopes, forKey: .allowProgressiveScopes)
         try container.encodeIfPresent(params.identity, forKey: .identity)
@@ -525,114 +538,6 @@ public struct ConnectorAuthorization: Codable, Sendable, Hashable {
 }
 
 // MARK: Connections
-
-/// One authorized subject under a connector. Tokens are never returned.
-public struct Connection: Codable, Sendable, Hashable {
-    public var id: String
-    public var orgId: String?
-    public var connectorId: String?
-    /// Nil for an org-owned (`app`) connection.
-    public var memberId: String?
-    /// The member who performed the grant, as distinct from `memberId`.
-    public var createdByMemberId: String?
-    /// Runtime group answering this connection's channels.
-    public var runtimeGroupId: String?
-    public var subjectType: ConnectionSubjectType?
-    /// App slug within a multiplexing provider.
-    public var providerApp: String?
-    public var providerAccountId: String?
-    public var scopesGranted: [String]?
-    public var status: ConnectionStatus?
-    public var tokenExpiresAt: Date?
-    public var createdAt: Date?
-    public var updatedAt: Date?
-    public var projectId: String?
-    public var providerAccountName: String?
-    public var lastVerifiedAt: Date?
-
-    public init(
-        id: String, orgId: String? = nil, connectorId: String? = nil, memberId: String? = nil,
-        createdByMemberId: String? = nil, runtimeGroupId: String? = nil, subjectType: ConnectionSubjectType? = nil,
-        providerApp: String? = nil, providerAccountId: String? = nil, scopesGranted: [String]? = nil,
-        status: ConnectionStatus? = nil, tokenExpiresAt: Date? = nil, createdAt: Date? = nil, updatedAt: Date? = nil
-    ) {
-        // jscpd:ignore-start: memberwise init of a public type; the assignments cannot be shared
-        self.id = id
-        self.orgId = orgId
-        self.connectorId = connectorId
-        self.memberId = memberId
-        self.createdByMemberId = createdByMemberId
-        self.runtimeGroupId = runtimeGroupId
-        self.subjectType = subjectType
-        self.providerApp = providerApp
-        self.providerAccountId = providerAccountId
-        self.scopesGranted = scopesGranted
-        self.status = status
-        self.tokenExpiresAt = tokenExpiresAt
-        self.createdAt = createdAt
-        self.updatedAt = updatedAt
-        // jscpd:ignore-end
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case id, status
-        case orgId = "org_id"
-        case connectorId = "connector_id"
-        case memberId = "member_id"
-        case createdByMemberId = "created_by_member_id"
-        case runtimeGroupId = "runtime_group_id"
-        case subjectType = "subject_type"
-        case providerApp = "provider_app"
-        case providerAccountId = "provider_account_id"
-        case scopesGranted = "scopes_granted"
-        case tokenExpiresAt = "token_expires_at"
-        case createdAt = "created_at"
-        case updatedAt = "updated_at"
-        case projectId = "project_id"
-        case providerAccountName = "provider_account_name"
-        case lastVerifiedAt = "last_verified_at"
-    }
-}
-
-/// Registered-mode create: register a provider token the caller already holds.
-public struct ConnectionCreate: Encodable, Sendable, Hashable {
-    public var accessToken: String
-    /// `app` (default) or `user`.
-    public var subjectType: ConnectionSubjectType?
-    public var scopesGranted: [String]?
-    public var refreshToken: String?
-    public var tokenExpiresAt: Date?
-
-    public init(
-        accessToken: String, subjectType: ConnectionSubjectType? = nil, scopesGranted: [String]? = nil, refreshToken: String? = nil,
-        tokenExpiresAt: Date? = nil
-    ) {
-        self.accessToken = accessToken
-        self.subjectType = subjectType
-        self.scopesGranted = scopesGranted
-        self.refreshToken = refreshToken
-        self.tokenExpiresAt = tokenExpiresAt
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case accessToken = "access_token"
-        case subjectType = "subject_type"
-        case scopesGranted = "scopes_granted"
-        case refreshToken = "refresh_token"
-        case tokenExpiresAt = "token_expires_at"
-    }
-}
-
-/// Paging for a connector's connections.
-public struct ConnectionListParams: Sendable, Hashable {
-    public var limit: Int?
-    public var next: String?
-
-    public init(limit: Int? = nil, next: String? = nil) {
-        self.limit = limit
-        self.next = next
-    }
-}
 
 /// Deterministic, non-PII envelope for a person-authorized action.
 public struct ConnectionMissionConstraints: Codable, Sendable, Hashable {
@@ -792,58 +697,12 @@ func cpProjectQuery(_ project: String?) -> Query {
 
 // MARK: APIs
 
-/// Connections nested under a connector (`/v1/connectors/{id}/connections`). There is no update.
-public struct ConnectionsAPI: Sendable {
-    let http: HTTPClient
-
-    public init(http: HTTPClient) { self.http = http }
-
-    private func base(_ connectorId: String) -> String {
-        "/v1/connectors/\(pathSegment(connectorId))/connections"
-    }
-
-    /// List a connector's connections.
-    public func list(_ connectorId: String, _ params: ConnectionListParams = ConnectionListParams()) -> Paginator<Connection> {
-        var query = Query()
-        query.add("limit", params.limit)
-        return http.paginate(base(connectorId), query: query, start: params.next)
-    }
-
-    /// Register a connection from a token the caller already holds. For consent, use `connectors.authorize`.
-    public func create(_ connectorId: String, _ body: ConnectionCreate, project: String? = nil) async throws -> Connection {
-        try await http.json("POST", base(connectorId), query: cpProjectQuery(project), body: .encode(body))
-    }
-
-    /// Fetch one connection.
-    public func get(_ connectorId: String, _ connectionId: String) async throws -> Connection {
-        try await http.json("GET", "\(base(connectorId))/\(pathSegment(connectionId))")
-    }
-
-    /// Revoke a connection, destroying the provider token behind it; the subject must consent again.
-    public func revoke(_ connectorId: String, _ connectionId: String) async throws {
-        try await http.empty("DELETE", "\(base(connectorId))/\(pathSegment(connectionId))")
-    }
-
-    /// `POST /v1/oauth/connections/token`: resolve the subject's provider token, or a pending approval.
-    public func getToken(
-        _ connectorId: String, _ params: ConnectionTokenParams = ConnectionTokenParams(), project: String? = nil
-    ) async throws -> ConnectionTokenResult {
-        try await http.json(
-            "POST", "/v1/oauth/connections/token", query: cpProjectQuery(project),
-            body: .encode(ConnectionTokenBody(connectorId: connectorId, params: params))
-        )
-    }
-}
-
 /// CRUD on `/v1/connectors`, catalogue search, OAuth discovery and consent URLs.
 /// Connector routes use the credential's project unless `project` is given.
 public struct ConnectorsAPI: Sendable {
     let http: HTTPClient
 
     public init(http: HTTPClient) { self.http = http }
-
-    /// Connections nested under a connector.
-    public var connections: ConnectionsAPI { ConnectionsAPI(http: http) }
 
     /// List connectors.
     public func list(_ params: ConnectorListParams = ConnectorListParams()) -> Paginator<Connector> {
@@ -908,12 +767,33 @@ public struct ConnectorsAPI: Sendable {
     ) async throws -> ConnectorAuthorization {
         try await http.json(
             "POST", "/v1/oauth/connections/authorize", query: cpProjectQuery(project),
-            body: .encode(ConnectorAuthorizeBody(connectorId: connectorId, params: params))
+            body: .encode(ConnectorAuthorizeBody(target: .connector(connectorId), params: params))
+        )
+    }
+
+    /// `POST /v1/oauth/connections/authorize` for an organization integration (Google Workspace, Microsoft 365)
+    /// instead of a connector: mint the consent URL that installs it. Needs `integrations:write`.
+    public func authorize(
+        integration integrationId: String, _ params: ConnectorAuthorizeParams = ConnectorAuthorizeParams(), project: String? = nil
+    ) async throws -> ConnectorAuthorization {
+        try await http.json(
+            "POST", "/v1/oauth/connections/authorize", query: cpProjectQuery(project),
+            body: .encode(ConnectorAuthorizeBody(target: .integration(integrationId), params: params))
+        )
+    }
+
+    /// `POST /v1/oauth/connections/token`: resolve the subject's provider token on a connector, or a pending approval.
+    public func getToken(
+        _ connectorId: String, _ params: ConnectionTokenParams = ConnectionTokenParams(), project: String? = nil
+    ) async throws -> ConnectionTokenResult {
+        try await http.json(
+            "POST", "/v1/oauth/connections/token", query: cpProjectQuery(project),
+            body: .encode(ConnectionTokenBody(connectorId: connectorId, params: params))
         )
     }
 }
 
 extension IntrospectionClient {
-    /// Connectors, their connections, consent URLs and the connection token broker.
+    /// Connectors, consent URLs and the connection token broker. Connections are `client.connections`.
     public var connectors: ConnectorsAPI { ConnectorsAPI(http: controlPlane) }
 }

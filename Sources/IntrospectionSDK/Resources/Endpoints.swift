@@ -28,6 +28,9 @@ public struct EndpointMetadata: Codable, Sendable, Hashable {
     public var extraHosts: [String]?
     /// The stable application-auth audience of a logical MCP server.
     public var authAudience: String?
+    /// The organization integration whose task member's own connection authenticates this endpoint; exclusive with
+    /// `connectorId`.
+    public var integrationId: String?
 
     public init(
         mcpServerId: String? = nil, connectorId: String? = nil, providerApp: String? = nil, extraHosts: [String]? = nil,
@@ -46,6 +49,7 @@ public struct EndpointMetadata: Codable, Sendable, Hashable {
         case providerApp = "provider_app"
         case extraHosts = "extra_hosts"
         case authAudience = "auth_audience"
+        case integrationId = "integration_id"
     }
 }
 

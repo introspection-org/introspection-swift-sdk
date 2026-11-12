@@ -86,11 +86,11 @@ The package has two products. `IntrospectionSDK`, documented here, is the client
 
 ### App connections
 
-The apps members connected for themselves, at `/v1/connections` on `client.connections` or `runner.connections`.
-A member who is not an administrator only ever sees and changes their own. On a runner,
-``AppConnectionsAPI/create(app:runtime:returnURL:)`` connects the app for the runner's runtime group; on the client, pass
-`runtime`. A connector's connections, which a business manages for its customers, are ``ConnectorsAPI/connections`` on
-the Control Plane.
+The apps and accounts members connected for themselves, and the project's own grants, at `/v1/connections` on
+`client.connections` or `runner.connections`: the one connections resource. A member who is not an administrator only
+ever sees and changes their own. On a runner, ``AppConnectionsAPI/create(app:runtime:returnURL:)`` connects the app for
+the runner's runtime group; on the client, pass `runtime`. ``AppConnectionsAPI/create(integration:returnURL:)`` connects
+the member's own account through an organization integration such as Google Workspace.
 
 - ``AppConnectionsAPI``
 - ``AppConnection``
@@ -152,7 +152,6 @@ with ``IssueCommentsAPI/create(_:comment:)``.
 
 - ``RecipesAPI``
 - ``ConnectorsAPI``
-- ``ConnectionsAPI``
 - ``RepositoriesAPI``
 - ``AnnotationsAPI``
 - ``TagsAPI``

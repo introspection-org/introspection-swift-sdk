@@ -47,6 +47,46 @@ private func runner(_ transport: MockTransport, runtimeGroupId: String? = "rg-1"
         #expect(query == ["member_id": ["m-2"], "app": ["gmail"], "limit": ["10"], "next": ["c1"]])
     }
 
+    @Test func listSearchesAccountsAndFiltersByIntegration() async throws {
+        let transport = MockTransport(json: #"{"records": [], "count": 0}"#)
+        let connections = makeClient(transport).connections
+        _ = try await connections.list(app: "gmail", search: "ada@").firstPage()
+        #expect(transport.last?.query == ["app": ["gmail"], "search": ["ada@"]])
+
+        _ = try await connections.list(AppConnectionListParams(integrationId: "int-1", search: "example.com", limit: 5)).firstPage()
+        #expect(transport.last?.query == ["integration_id": ["int-1"], "search": ["example.com"], "limit": ["5"]])
+    }
+
+    @Test func aConnectionThroughAnIntegrationDecodes() async throws {
+        let json = #"""
+            {"id": "c3", "owner": "member", "member_id": "m-1", "connector": null, "integration_id": "int-1",
+             "subject_type": "user", "app": "google_workspace", "provider_account_id": "1077", "account_name": "ada@example.com",
+             "healthy": true, "status": "active", "last_verified_at": null, "runtime_group_id": "rg-1",
+             "token_expires_at": "2026-10-06T13:00:00Z", "created_by_member_id": "m-1", "created_at": "2026-10-06T12:00:00Z",
+             "updated_at": null}
+            """#
+        var options = HTTPClient.Options()
+        options.strictSchema = true
+        let http = HTTPClient(baseURL: URL(string: "https://dp.test")!, transport: MockTransport(json: json), options: options)
+        let connection = try await AppConnectionsAPI(http: http).get("c3")
+        #expect(connection.integrationId == "int-1")
+        #expect(connection.connector == nil)
+        #expect(connection.runtimeGroupId == "rg-1")
+        #expect(connection.tokenExpiresAt == Date(timeIntervalSince1970: 1_791_291_600))
+
+        let older = try JSONCoding.decoder.decode(AppConnection.self, from: Data(connectionJSON.utf8))
+        #expect(older.integrationId == nil && older.runtimeGroupId == nil && older.tokenExpiresAt == nil)
+    }
+
+    @Test func createThroughAnIntegrationSendsNoAppOrRuntime() async throws {
+        let transport = MockTransport(json: #"{"authorize_url": "https://accounts.google.test/o", "expires_in": 600}"#)
+        let page = try await runner(transport).connections.create(integration: "int-1", returnURL: URL(string: "ark://connected"))
+        #expect(transport.last?.request.method == "POST")
+        #expect(transport.last?.path == "/v1/connections")
+        #expect(transport.last?.json == ["integration_id": "int-1", "return_url": "ark://connected"])
+        #expect(page.authorizeUrl == "https://accounts.google.test/o")
+    }
+
     @Test func createOnARunnerSendsItsRuntimeGroup() async throws {
         let transport = MockTransport(
             status: 201,

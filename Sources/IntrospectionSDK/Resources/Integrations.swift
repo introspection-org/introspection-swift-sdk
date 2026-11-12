@@ -12,6 +12,8 @@ public struct IntegrationType: RawRepresentable, Codable, Sendable, Hashable, Ex
     public static let jira: IntegrationType = "jira"
     public static let notion: IntegrationType = "notion"
     public static let vercel: IntegrationType = "vercel"
+    public static let googleWorkspace: IntegrationType = "google_workspace"
+    public static let microsoft365: IntegrationType = "microsoft_365"
     public static let custom: IntegrationType = "custom"
 }
 
