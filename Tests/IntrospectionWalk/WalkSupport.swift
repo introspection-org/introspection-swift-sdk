@@ -275,6 +275,14 @@ func stable<T: Encodable>(_ value: T, removing keys: [String] = []) throws -> JS
 
 // MARK: Steps
 
+extension Walk {
+    /// A project's display ID prefixes postdate the recording: absent on replay, the server defaults live.
+    func checkDefaultDisplayIdPrefixes(_ project: Project) throws {
+        let defaults = DisplayIdPrefixes(issue: "I", report: "R", observation: "F", task: "T")
+        try check([nil, defaults].contains(project.displayIdPrefixes), "the project's display ID prefixes are the defaults")
+    }
+}
+
 /// The per-run report the SDK matrix reads: the same JSON shape in every SDK.
 struct WalkReport: Encodable {
     struct Step: Encodable {

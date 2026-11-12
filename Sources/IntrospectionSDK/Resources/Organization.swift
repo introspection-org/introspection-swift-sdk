@@ -10,6 +10,8 @@ public struct Organization: Codable, Sendable, Hashable {
     public var externalOrgId: String?
     public var imageUrl: String?
     public var hostedGit: Bool?
+    /// How members sign in and who can be invited; present only with Enterprise sign-in.
+    public var signIn: SignInSettings?
 
     public init(
         id: String, name: String? = nil, slug: String? = nil, externalOrgId: String? = nil, imageUrl: String? = nil, hostedGit: Bool? = nil
@@ -27,6 +29,38 @@ public struct Organization: Codable, Sendable, Hashable {
         case externalOrgId = "external_org_id"
         case imageUrl = "image_url"
         case hostedGit = "hosted_git"
+        case signIn = "sign_in"
+    }
+}
+
+/// When an organization's members must sign in with a passkey. Unknown server values are preserved.
+public struct PasskeyRequirement: RawRepresentable, Codable, Sendable, Hashable, ExpressibleByStringLiteral {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+    public init(stringLiteral value: String) { self.rawValue = value }
+
+    /// The server default.
+    public static let off: PasskeyRequirement = "off"
+    public static let always: PasskeyRequirement = "always"
+    /// Members who sign in through SSO need no passkey.
+    public static let exceptSso: PasskeyRequirement = "except_sso"
+}
+
+/// How an organization's members sign in and who can be invited.
+public struct SignInSettings: Codable, Sendable, Hashable {
+    /// The server default is `.off`.
+    public var passkeyRequirement: PasskeyRequirement?
+    /// Invitations only to the organization's own email domains; the server default is false.
+    public var restrictInvitesToDomains: Bool?
+
+    public init(passkeyRequirement: PasskeyRequirement? = nil, restrictInvitesToDomains: Bool? = nil) {
+        self.passkeyRequirement = passkeyRequirement
+        self.restrictInvitesToDomains = restrictInvitesToDomains
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case passkeyRequirement = "passkey_requirement"
+        case restrictInvitesToDomains = "restrict_invites_to_domains"
     }
 }
 

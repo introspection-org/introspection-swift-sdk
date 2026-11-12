@@ -118,6 +118,39 @@ import Testing
         #expect(await drift(issue, as: Issue.self, route: "/v1/issues/i") == nil)
     }
 
+    @Test func signInIssueWarningsAndDiagnosticSeverityAreModelled() async throws {
+        let org = #"""
+            {"id":"o","name":"Acme","slug":"acme","external_org_id":null,"image_url":null,"hosted_git":true,
+             "sign_in":{"passkey_requirement":"except_sso","restrict_invites_to_domains":true}}
+            """#
+        #expect(await drift(org, as: Organization.self, route: "/v1/organizations/me") == nil)
+        let decoded = try await client(org, strict: true).json("GET", "/v1/organizations/me", as: Organization.self)
+        #expect(decoded.signIn == SignInSettings(passkeyRequirement: .exceptSso, restrictInvitesToDomains: true))
+        let unknown = try JSONCoding.decoder.decode(SignInSettings.self, from: Data(#"{"passkey_requirement":"hardware_key"}"#.utf8))
+        #expect(unknown.passkeyRequirement == "hardware_key")
+        #expect(unknown.restrictInvitesToDomains == nil)
+
+        let issue = #"""
+            {"id":"i","org_id":"o","project_id":"p","title":"t","description":"d","priority":"medium","status":"open",
+             "revision":1,"tags":[],"metadata":{},"warnings":["comments beyond 500 were left out"]}
+            """#
+        #expect(await drift(issue, as: Issue.self, route: "/v1/issues/i") == nil)
+        let read = try await client(issue, strict: true).json("GET", "/v1/issues/i", as: Issue.self)
+        #expect(read.warnings == ["comments beyond 500 were left out"])
+
+        let recipe = #"""
+            {"id":"r","validation":{"status":"valid","diagnostics":[
+              {"code":"R001","path":"agents/agent.yaml","span":{"line":1,"column":2},"message":"m","help":null,"severity":"warning"}]},
+             "git_commit_sha":"543b8db50a83aa1e2f3c4d5e6f708192a3b4c5d6"}
+            """#
+        let pinned = try await client(recipe, strict: true).json("GET", "/v1/recipes/r", as: Recipe.self)
+        #expect(pinned.validation?.diagnostics?.first?.severity == .warning)
+        #expect(RecipeValidationDiagnostic().severity == nil)
+
+        let runtime = #"{"id":"rt","recipe_ref":"main","git_commit_sha":"543b8db50a83aa1e2f3c4d5e6f708192a3b4c5d6"}"#
+        #expect(await drift(runtime, as: Runtime.self, route: "/v1/runtimes/rt") == nil)
+    }
+
     @Test func openMapsNeverReport() async throws {
         let spans = #"""
             {"object":"list","data":[{"trace_id":"t","span_id":"s","name":"chat",

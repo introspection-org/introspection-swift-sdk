@@ -105,7 +105,9 @@ extension Walk {
         let versionedRuntime = try require(versioned)
         runtime = versionedRuntime
         try check(runtime.imageBuildStatus == .ready, runtime.imageBuildErrorMessage ?? "the runtime baked")
-        snap(try stable(runtime)) {
+        // The build's commit postdates the recording: absent on replay, the recipe's commit live.
+        try check([nil, recipe.gitCommitSha].contains(runtime.gitCommitSha), "the runtime is built from the recipe's commit")
+        snap(try stable(runtime, removing: ["git_commit_sha"])) {
             """
             {
               "config_json" : {

@@ -169,6 +169,8 @@ public struct Runtime: Codable, Sendable, Hashable {
     public var recipeId: String?
     public var recipeKind: RuntimeRecipeKind?
     public var recipeRef: String?
+    /// The commit this version was built from; nil when it has no recipe.
+    public var gitCommitSha: String?
     /// Environments this version currently serves.
     public var environments: [RuntimeEnvironment]?
     public var imageBuildStatus: RuntimeImageStatus?
@@ -242,6 +244,7 @@ public struct Runtime: Codable, Sendable, Hashable {
         case imageRevision = "image_revision"
         case imageCommitSubject = "image_commit_subject"
         case imageRepository = "image_repository"
+        case gitCommitSha = "git_commit_sha"
         case id, name, slug, description, kind, environments
         case orgId = "org_id"
         case projectId = "project_id"
@@ -271,6 +274,10 @@ public struct RuntimeListParams: Sendable, Hashable {
     /// Runtime group slug or id.
     public var runtime: String?
     public var recipeId: String?
+    /// Only versions built from this git ref, exactly: `main` or `pr/<branch>`.
+    public var recipeRef: String?
+    /// Only versions whose recipe is at this full 40-character commit sha.
+    public var gitCommitSha: String?
     /// Only versions serving this environment. An API key already selects one, so passing both is a 400.
     public var environment: RuntimeEnvironment?
     /// Page size (1 to 1000).
@@ -292,6 +299,25 @@ public struct RuntimeListParams: Sendable, Hashable {
         self.environment = environment
         self.limit = limit
         self.next = next
+    }
+
+    /// Versions built from one git ref.
+    public init(
+        project: String? = nil, runtime: String? = nil, recipeId: String? = nil, recipeRef: String,
+        environment: RuntimeEnvironment? = nil, limit: Int? = nil, next: String? = nil
+    ) {
+        self.init(project: project, runtime: runtime, recipeId: recipeId, environment: environment, limit: limit, next: next)
+        self.recipeRef = recipeRef
+    }
+
+    /// Versions built from one commit, optionally on one git ref.
+    public init(
+        project: String? = nil, runtime: String? = nil, recipeId: String? = nil, recipeRef: String? = nil, gitCommitSha: String,
+        environment: RuntimeEnvironment? = nil, limit: Int? = nil, next: String? = nil
+    ) {
+        self.init(project: project, runtime: runtime, recipeId: recipeId, environment: environment, limit: limit, next: next)
+        self.recipeRef = recipeRef
+        self.gitCommitSha = gitCommitSha
     }
 }
 
@@ -396,6 +422,8 @@ public struct RuntimesAPI: Sendable {
         query.add("project", params.project)
         query.add("runtime", params.runtime)
         query.add("recipe_id", params.recipeId)
+        query.add("recipe_ref", params.recipeRef)
+        query.add("git_commit_sha", params.gitCommitSha)
         query.add("environment", params.environment)
         query.add("limit", params.limit)
         return http.paginate("/v1/runtimes", query: query, start: params.next)

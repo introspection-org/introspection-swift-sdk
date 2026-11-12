@@ -12,6 +12,17 @@ public struct RecipeValidationStatus: RawRepresentable, Codable, Sendable, Hasha
     public static let failed: RecipeValidationStatus = "failed"
 }
 
+/// Whether a diagnostic fails validation or only reports a finding. Unknown server values are preserved.
+public struct RecipeValidationSeverity: RawRepresentable, Codable, Sendable, Hashable, ExpressibleByStringLiteral {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+    public init(stringLiteral value: String) { self.rawValue = value }
+
+    /// The server default.
+    public static let error: RecipeValidationSeverity = "error"
+    public static let warning: RecipeValidationSeverity = "warning"
+}
+
 /// One validation finding, located in the recipe source.
 public struct RecipeValidationDiagnostic: Codable, Sendable, Hashable {
     public struct Span: Codable, Sendable, Hashable {
@@ -29,6 +40,7 @@ public struct RecipeValidationDiagnostic: Codable, Sendable, Hashable {
     public var span: Span?
     public var message: String?
     public var help: String?
+    public var severity: RecipeValidationSeverity?
 
     public init(code: String? = nil, path: String? = nil, span: Span? = nil, message: String? = nil, help: String? = nil) {
         self.code = code

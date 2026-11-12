@@ -87,6 +87,38 @@ private func specJSON(endpoint: String = "https://dp-gcp01.test", token: String 
         #expect(runtime.createdAt != nil)
     }
 
+    @Test func runtimeListFiltersByRefAndCommit() async throws {
+        let sha = "543b8db50a83aa1e2f3c4d5e6f708192a3b4c5d6"
+        let built = runtimeJSON.replacingOccurrences(of: #""recipe_ref""#, with: #""git_commit_sha": "\#(sha)", "recipe_ref""#)
+        let transport = MockTransport(json: #"{"records": [\#(built)], "count": 1, "next": null}"#)
+        let runtimes = makeClient(transport).runtimes
+
+        let page = try await runtimes.list(RuntimeListParams(project: "acme", recipeRef: "pr/fix")).firstPage()
+        #expect(transport.last?.query == ["project": ["acme"], "recipe_ref": ["pr/fix"]])
+        #expect(page.records.first?.gitCommitSha == sha)
+
+        _ = try await runtimes.list(RuntimeListParams(recipeRef: "main", gitCommitSha: sha, limit: 2)).firstPage()
+        #expect(transport.last?.query == ["recipe_ref": ["main"], "git_commit_sha": [sha], "limit": ["2"]])
+
+        var params = RuntimeListParams()
+        params.gitCommitSha = sha
+        _ = try await runtimes.list(params).firstPage()
+        #expect(transport.last?.query == ["git_commit_sha": [sha]])
+
+        let older = try JSONCoding.decoder.decode(Runtime.self, from: Data(runtimeJSON.utf8))
+        #expect(older.gitCommitSha == nil)
+    }
+
+    @Test func callerTimezoneIsSentAndEchoed() throws {
+        let caller = RunCaller(locale: "en-US", timezone: "America/Los_Angeles", extra: ["app": ["name": "ios"]])
+        let wire = try JSONCoding.decoder.decode(JSONValue.self, from: JSONCoding.encoder.encode(caller))
+        #expect(wire == ["locale": "en-US", "timezone": "America/Los_Angeles", "app": ["name": "ios"]])
+        let echoed = try JSONCoding.decoder.decode(RunCaller.self, from: JSONCoding.encoder.encode(caller))
+        #expect(echoed == caller)
+        #expect(echoed.extra == ["app": ["name": "ios"]])
+        #expect(RunCaller(locale: "en-US").timezone == nil)
+    }
+
     @Test func getRuntimeWithInclude() async throws {
         let body = runtimeJSON.replacingOccurrences(
             of: #""some_new_field": 42"#,

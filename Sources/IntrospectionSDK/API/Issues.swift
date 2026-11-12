@@ -218,6 +218,8 @@ public struct Issue: Codable, Sendable, Hashable {
     public let spans: [IssueSpanReference]?
     /// With `.comments`: oldest first, at most 500. Page the issue's events for more.
     public let comments: [IssueComment]?
+    /// What this read left out, such as the comments beyond the include's cap.
+    public let warnings: [String]?
     public let createdAt: Date?
     public var updatedAt: Date? { updatedAtStamp?.date }
     private let updatedAtStamp: WireTimestamp?
@@ -237,7 +239,7 @@ public struct Issue: Codable, Sendable, Hashable {
         case assigneeMemberId = "assignee_member_id"
         case reviewerMemberId = "reviewer_member_id"
         case closedAt = "closed_at"
-        case members, links, files, events, spans, comments
+        case members, links, files, events, spans, comments, warnings
         case createdAt = "created_at"
         case updatedAtStamp = "updated_at"
     }
