@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.19.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.18.0...v0.19.0) (2026-11-12)
+
+
+### ⚠ BREAKING CHANGES
+
+* **tags:** model a tag's archived_at, replaced_by and archived_names; rename and list archived tags ([#104](https://github.com/introspection-org/introspection-swift-sdk/issues/104))
+
+### Features
+
+* model the response fields and filters introspection-cloud v0.84.0 added ([#105](https://github.com/introspection-org/introspection-swift-sdk/issues/105)) ([b6a35df](https://github.com/introspection-org/introspection-swift-sdk/commit/b6a35df173bb61dc77a087ed3c43f76be6c47449))
+* **tags:** model a tag's archived_at, replaced_by and archived_names; rename and list archived tags ([#104](https://github.com/introspection-org/introspection-swift-sdk/issues/104)) ([a3215da](https://github.com/introspection-org/introspection-swift-sdk/commit/a3215daef2bdf79723dabaee455a4e657ff7f24e))
+
 ## [0.18.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.17.0...v0.18.0) (2026-11-10)
 
 
