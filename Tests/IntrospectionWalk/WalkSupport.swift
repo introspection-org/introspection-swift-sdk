@@ -69,6 +69,12 @@ enum WALK {
         "variables:delete", "judges:read", "judges:write", "telemetry:write",
     ]
 
+    /// The scopes a development key allowed `runtimes` holds that an SDK runner relies on.
+    static let apiKeyScopes = [
+        "telemetry:write", "projects:read", "runtimes:read", "runtimes:write", "tasks:read", "tasks:write",
+        "files:read", "files:write", "conversations:read",
+    ]
+
     /// The scripted model's directive, byte for byte the JSON the JS walk sends (`JSON.stringify` key order).
     static let scriptedDirective =
         #"<<SCRIPT {"reply":"Echoed the message through hello-mcp and wrote it to the outputs file.","#

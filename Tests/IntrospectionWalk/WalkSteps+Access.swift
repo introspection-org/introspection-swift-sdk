@@ -170,7 +170,10 @@ extension Walk {
         let apiKey = try await sa.apiKeys.create(
             ApiKeyCreate(name: WALK.apiKeyName, environment: .development, allow: [.runtimes]), project: project.id)
         try check(apiKey.apiKey != nil, "the plaintext key is returned once")
-        snap(try stable(apiKey, removing: ["api_key"])) {
+        // The platform's default scope set grows; the snapshot leaves it out and holds the scopes the key is for.
+        let granted = Set(apiKey.key.scope?.split(separator: " ").map(String.init) ?? [])
+        try check(Set(WALK.apiKeyScopes).isSubset(of: granted), "the key holds the runtimes scopes: \(granted.sorted())")
+        snap(try stable(apiKey, removing: ["api_key", "scope"])) {
             """
             {
               "allow" : [
@@ -188,7 +191,6 @@ extension Walk {
               "prefix" : "[redacted]",
               "project_id" : "[uuid]",
               "redacted_key" : "[redacted]",
-              "scope" : "telemetry:write projects:read repositories:read recipes:read recipes:write runtimes:read runtimes:write experiments:read experiments:write tasks:read tasks:write tasks:delete files:read files:write conversations:read events:read metrics:read shares:read shares:write shares:delete connectors:read connectors:write annotations:read approvals:read approvals:write",
               "status" : "active"
             }
             """
