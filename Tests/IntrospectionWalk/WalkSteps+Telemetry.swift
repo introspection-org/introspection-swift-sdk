@@ -103,32 +103,8 @@ extension Walk {
         try await expectNotFound({ try await sa.approvals.get(WALK.noSuchId) }, "an approval")
         try await expectNotFound(
             { try await sa.approvals.decide(WALK.noSuchId, ApprovalDecision(status: .denied, decidedBy: .member(decider))) }, "a decision")
-        // `/v1/connections` holds the project's own grant from step 8, with no member; an app connector is what a member
-        // connects through, which needs that provider's credentials, so with none on the project the other routes answer 404.
-        let held = try await member.connections.list(AppConnectionListParams(connectorId: connector.id)).all()
-        let grant = try require(held.first { $0.owner == .project }, "the project's grant is listed")
-        try check(grant.memberId == nil && grant.connector?.slug == WALK.connectorName, "the grant is the project's, on the connector")
-        snap(try stableGrant(grant)) {
-            """
-            {
-              "app" : "hello-mcp",
-              "connector" : {
-                "id" : "[uuid]",
-                "provider" : "hello-mcp",
-                "slug" : "hello-mcp"
-              },
-              "created_at" : "[timestamp]",
-              "created_by_member_id" : "[uuid]",
-              "healthy" : true,
-              "id" : "[uuid]",
-              "last_verified_at" : "[timestamp]",
-              "owner" : "project",
-              "status" : "active",
-              "subject_type" : "app",
-              "updated_at" : "[timestamp]"
-            }
-            """
-        }
+        // With no app connector on the project, the member routes of `/v1/connections` answer 404; an app connector
+        // needs that provider's credentials.
         try await expectNotFound({ try await member.connections.get("019a1000-0000-7000-8000-0000000000c1") }, "an app connection")
         try await expectNotFound({ try await member.connections.delete("019a1000-0000-7000-8000-0000000000c1") }, "a deleted connection")
         try await expectNotFound({ try await member.connections.create(app: "gmail", runtime: WALK.runtimeSlug) }, "a new connection")

@@ -293,9 +293,7 @@ extension Walk {
         }
         for connector in try await owner.connectors.list(ConnectorListParams(project: project.id)).all()
         where connector.slug == WALK.connectorName {
-            for connection in try await member.connections.list(AppConnectionListParams(connectorId: connector.id)).all() {
-                try await ignoringNotFound { try await member.connections.delete(connection.id) }
-            }
+            // The delete revokes the connector's connections in the same transaction.
             try await owner.connectors.delete(connector.id, project: project.id)
         }
         for variable in try await owner.variables.list(RuntimeSettingListParams(project: project.id)).all()

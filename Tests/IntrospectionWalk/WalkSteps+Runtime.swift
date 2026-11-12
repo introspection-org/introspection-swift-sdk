@@ -159,8 +159,12 @@ extension Walk {
         let landedQuery = Dictionary((landed.queryItems ?? []).map { ($0.name, $0.value ?? "") }, uniquingKeysWith: { $1 })
         try check(landedQuery["status"] == "active", "the grant lands active")
         let connectionId = try require(landedQuery["connection_id"])
-        // The grant is the project's own, read on the Data Plane's one connections resource.
-        let connection = try await member.connections.get(connectionId)
+        // The grant is the project's own, listed on the Data Plane's one connections resource with no member.
+        let held = try await member.connections.list(AppConnectionListParams(connectorId: connector.id)).all()
+        let connection = try require(held.first { $0.id == connectionId }, "the grant is listed")
+        try check(
+            connection.owner == .project && connection.memberId == nil && connection.connector?.slug == WALK.connectorName,
+            "the grant is the project's, on the connector")
         snap(try stableGrant(connection)) {
             """
             {
@@ -182,8 +186,6 @@ extension Walk {
             }
             """
         }
-        let connections = try await member.connections.list(AppConnectionListParams(connectorId: connector.id)).all()
-        try check(connections.contains { $0.id == connectionId }, "the connection is listed")
 
         let endpoints = try await sa.endpoints.list(EndpointListParams(project: project.id, mcpServerId: WALK.mcpServerId)).firstPage()
         let bound = try require(endpoints.records.first, "the grant bound an endpoint")
