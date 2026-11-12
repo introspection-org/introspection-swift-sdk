@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.20.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.19.0...v0.20.0) (2026-11-12)
+
+
+### ⚠ BREAKING CHANGES
+
+* ConnectorsAPI.connections, ConnectionsAPI, Connection, ConnectionCreate and ConnectionListParams are removed with the Control Plane routes they called; use client.connections (AppConnectionsAPI) instead. ConnectionsAPI.getToken moved to ConnectorsAPI.getToken with the same parameters and types. ProjectCreate and ProjectUpdate each have one initializer, with displayIdPrefixes and connectionIntegrations defaulted. AppConnectionsAPI.list(memberId:app:limit:next:) is now list(memberId:app:search:limit:next:), and AppConnectionListParams' initializer takes integrationId and search.
+
+### Features
+
+* drop connectors.connections and model introspection-cloud's connection integrations ([#110](https://github.com/introspection-org/introspection-swift-sdk/issues/110)) ([0215e12](https://github.com/introspection-org/introspection-swift-sdk/commit/0215e12d787282e6d0fa22ae6d7935f4d2a1646d))
+
 ## [0.19.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.18.0...v0.19.0) (2026-11-12)
 
 
