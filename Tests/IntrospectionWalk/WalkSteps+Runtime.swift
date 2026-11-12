@@ -111,6 +111,8 @@ extension Walk {
         // so only the modelled build metadata is pinned.
         var pinned: Runtime = runtime
         pinned.imageBuildMetadata?.extra = [:]
+        // The server lists a runtime's environments in the order it was promoted to them, which varies by run.
+        pinned.environments = pinned.environments?.sorted { $0.rawValue < $1.rawValue }
         snap(try stable(pinned, removing: ["git_commit_sha"])) {
             """
             {
@@ -123,8 +125,8 @@ extension Walk {
               "created_by_member_id" : "[uuid]",
               "description" : "Harbor E2B task calling a development MCP server",
               "environments" : [
-                "staging",
-                "production"
+                "production",
+                "staging"
               ],
               "id" : "[uuid]",
               "image_build_metadata" : {
