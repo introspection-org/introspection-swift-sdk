@@ -121,13 +121,6 @@ public struct RunCaller: Codable, Sendable, Hashable {
         case locale, timezone, library, page
     }
 
-    private struct AnyKey: CodingKey {
-        var stringValue: String
-        var intValue: Int? { nil }
-        init(stringValue: String) { self.stringValue = stringValue }
-        init?(intValue: Int) { nil }
-    }
-
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         ip = try container.decodeIfPresent(String.self, forKey: .ip)
@@ -136,19 +129,11 @@ public struct RunCaller: Codable, Sendable, Hashable {
         timezone = try container.decodeIfPresent(String.self, forKey: .timezone)
         library = try? container.decodeIfPresent(RunCallerLibrary.self, forKey: .library)
         page = try? container.decodeIfPresent(RunCallerPage.self, forKey: .page)
-        let all = try decoder.container(keyedBy: AnyKey.self)
-        var extra: JSONObject = [:]
-        for key in all.allKeys where CodingKeys(rawValue: key.stringValue) == nil {
-            extra[key.stringValue] = try all.decode(JSONValue.self, forKey: key)
-        }
-        self.extra = extra
+        extra = try decoder.unknownMembers(besides: CodingKeys.self)
     }
 
     public func encode(to encoder: any Encoder) throws {
-        var all = encoder.container(keyedBy: AnyKey.self)
-        for (key, value) in extra where CodingKeys(rawValue: key) == nil {
-            try all.encode(value, forKey: AnyKey(stringValue: key))
-        }
+        try encoder.encodeUnknownMembers(extra, besides: CodingKeys.self)
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encodeIfPresent(ip, forKey: .ip)
         try container.encodeIfPresent(userAgent, forKey: .userAgent)

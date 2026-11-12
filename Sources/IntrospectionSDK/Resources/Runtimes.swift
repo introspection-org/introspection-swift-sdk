@@ -56,6 +56,9 @@ public struct RuntimeInclude: RawRepresentable, Codable, Sendable, Hashable, Exp
 }
 
 /// Metadata of a runtime's last image build.
+///
+/// Beyond the fields modelled here, the data plane reports its own image metadata (such as `cli_version`), kept
+/// as received in ``extra``.
 public struct RuntimeImageBuildMetadata: Codable, Sendable, Hashable {
     public var imageTag: String?
     public var builtAt: Date?
@@ -64,6 +67,8 @@ public struct RuntimeImageBuildMetadata: Codable, Sendable, Hashable {
     public var externalArtifacts: [String: String]?
     /// The deadline an accepted warmup bake promised its verdict by.
     public var verdictBy: Date?
+    /// The data plane's other image metadata, as reported.
+    public var extra: JSONObject = [:]
 
     public init(
         imageTag: String? = nil, builtAt: Date? = nil, sizeBytes: Int? = nil, externalImageName: String? = nil,
@@ -83,6 +88,30 @@ public struct RuntimeImageBuildMetadata: Codable, Sendable, Hashable {
         case externalImageName = "external_image_name"
         case externalArtifacts = "external_artifacts"
         case verdictBy = "verdict_by"
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        // jscpd:ignore-start: Codable witnesses of a public type; one decode and one encode per stored property
+        imageTag = try container.decodeIfPresent(String.self, forKey: .imageTag)
+        builtAt = try container.decodeIfPresent(Date.self, forKey: .builtAt)
+        sizeBytes = try container.decodeIfPresent(Int.self, forKey: .sizeBytes)
+        externalImageName = try container.decodeIfPresent(String.self, forKey: .externalImageName)
+        externalArtifacts = try container.decodeIfPresent([String: String].self, forKey: .externalArtifacts)
+        verdictBy = try container.decodeIfPresent(Date.self, forKey: .verdictBy)
+        extra = try decoder.unknownMembers(besides: CodingKeys.self)
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        try encoder.encodeUnknownMembers(extra, besides: CodingKeys.self)
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(imageTag, forKey: .imageTag)
+        try container.encodeIfPresent(builtAt, forKey: .builtAt)
+        try container.encodeIfPresent(sizeBytes, forKey: .sizeBytes)
+        try container.encodeIfPresent(externalImageName, forKey: .externalImageName)
+        try container.encodeIfPresent(externalArtifacts, forKey: .externalArtifacts)
+        try container.encodeIfPresent(verdictBy, forKey: .verdictBy)
+        // jscpd:ignore-end
     }
 }
 

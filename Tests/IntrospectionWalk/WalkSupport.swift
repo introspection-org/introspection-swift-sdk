@@ -225,7 +225,7 @@ enum Stable {
     private static let idKey = regex(#"_id$"#)
     private static let digit = regex(#"\d"#)
     // A dependency version the server reports moves with the server's pin, not the API.
-    private static let versionKey = regex(#"^validator_version$"#)
+    private static let versionKey = regex(#"_version$"#)
     private static let measuredKey = regex(#"(_ms$|_count$|_tokens$|^max_turn$|^display_index$)"#)
     private static let volatileKey = regex(
         #"(^id$|_at$|_sha$|token$|secret$|^key$|_key$|cookie$|^url$|_url$|^expires_in$|^client_id$|_prefix$|_suffix$|^prefix$|^key_display$|image_tag$|_image_name$|_bytes$)"#

@@ -79,3 +79,33 @@ extension Encoder {
         try container.encode(value)
     }
 }
+
+/// Any member name, for a type that keeps the members it does not model in an open `extra` map.
+private struct MemberKey: CodingKey {
+    var stringValue: String
+    var intValue: Int? { nil }
+    init(stringValue: String) { self.stringValue = stringValue }
+    init?(intValue: Int) { nil }
+}
+
+extension Decoder {
+    /// The object's members that `Known` does not name.
+    func unknownMembers<Known: CodingKey>(besides _: Known.Type) throws -> JSONObject {
+        let all = try container(keyedBy: MemberKey.self)
+        var members: JSONObject = [:]
+        for key in all.allKeys where Known(stringValue: key.stringValue) == nil {
+            members[key.stringValue] = try all.decode(JSONValue.self, forKey: key)
+        }
+        return members
+    }
+}
+
+extension Encoder {
+    /// Write `members`, skipping any that `Known` names: the modelled value wins.
+    func encodeUnknownMembers<Known: CodingKey>(_ members: JSONObject, besides _: Known.Type) throws {
+        var all = container(keyedBy: MemberKey.self)
+        for (key, value) in members where Known(stringValue: key) == nil {
+            try all.encode(value, forKey: MemberKey(stringValue: key))
+        }
+    }
+}

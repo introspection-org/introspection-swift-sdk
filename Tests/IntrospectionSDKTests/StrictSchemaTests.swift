@@ -151,6 +151,32 @@ import Testing
         #expect(await drift(runtime, as: Runtime.self, route: "/v1/runtimes/rt") == nil)
     }
 
+    @Test func imageBuildMetadataKeepsTheDataPlanesOwnMembers() async throws {
+        let page = #"""
+            {"records":[{"id":"rt","image_build_status":"ready","image_build_metadata":{"image_tag":"t","built_at":"2026-11-12T00:00:00Z",
+              "size_bytes":1024,"external_image_name":"img","verdict_by":"2026-11-12T00:10:00Z",
+              "cli_version":"0.81.0","harbor_adapter_version":"0.16.0","future_flag":true}}],"count":1,"next":null}
+            """#
+        #expect(await drift(page, as: Page<Runtime>.self, route: "/v1/runtimes") == nil)
+        let runtimes = try await client(page, strict: true).json("GET", "/v1/runtimes", as: Page<Runtime>.self)
+        let metadata = try #require(runtimes.records.first?.imageBuildMetadata)
+        #expect(metadata.imageTag == "t")
+        #expect(metadata.sizeBytes == 1024)
+        #expect(metadata.verdictBy == ISO8601.parse("2026-11-12T00:10:00Z"))
+        #expect(metadata.extra == ["cli_version": "0.81.0", "harbor_adapter_version": "0.16.0", "future_flag": true])
+        let wire = try JSONCoding.decoder.decode(JSONValue.self, from: JSONCoding.encoder.encode(metadata))
+        #expect(wire["cli_version"] == "0.81.0")
+        #expect(wire["image_tag"] == "t")
+        #expect(try JSONCoding.decoder.decode(RuntimeImageBuildMetadata.self, from: JSONCoding.encoder.encode(metadata)) == metadata)
+        #expect(RuntimeImageBuildMetadata(imageTag: "t").extra == [:])
+
+        // A modelled field wins over an `extra` member of the same name.
+        var shadowed = RuntimeImageBuildMetadata(imageTag: "t")
+        shadowed.extra = ["image_tag": "other"]
+        let written = try JSONCoding.decoder.decode(JSONValue.self, from: JSONCoding.encoder.encode(shadowed))
+        #expect(written == ["image_tag": "t"])
+    }
+
     @Test func openMapsNeverReport() async throws {
         let spans = #"""
             {"object":"list","data":[{"trace_id":"t","span_id":"s","name":"chat",
