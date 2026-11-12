@@ -189,6 +189,8 @@ public struct Issue: Codable, Sendable, Hashable {
     public let revision: Int
     /// Project-scoped display ID.
     public let displayIndex: Int?
+    /// The display ID with the project's issue prefix, e.g. `I-7`; nil without a display index.
+    public let displayKey: String?
     /// Free-form tags, conventionally `key:value`.
     public let tags: [String]
     /// Caller-defined attributes; values are strings, numbers, booleans or null.
@@ -216,6 +218,8 @@ public struct Issue: Codable, Sendable, Hashable {
     public let spans: [IssueSpanReference]?
     /// With `.comments`: oldest first, at most 500. Page the issue's events for more.
     public let comments: [IssueComment]?
+    /// What this read left out, such as the comments beyond the include's cap.
+    public let warnings: [String]?
     public let createdAt: Date?
     public var updatedAt: Date? { updatedAtStamp?.date }
     private let updatedAtStamp: WireTimestamp?
@@ -226,6 +230,7 @@ public struct Issue: Codable, Sendable, Hashable {
         case projectId = "project_id"
         case title, description, priority, status, revision
         case displayIndex = "display_index"
+        case displayKey = "display_key"
         case tags, metadata
         case taskId = "task_id"
         case taskStatus = "task_status"
@@ -234,7 +239,7 @@ public struct Issue: Codable, Sendable, Hashable {
         case assigneeMemberId = "assignee_member_id"
         case reviewerMemberId = "reviewer_member_id"
         case closedAt = "closed_at"
-        case members, links, files, events, spans, comments
+        case members, links, files, events, spans, comments, warnings
         case createdAt = "created_at"
         case updatedAtStamp = "updated_at"
     }
@@ -422,6 +427,8 @@ public struct IssueListParams: Sendable, Hashable {
     public var excludeTaskStatus: [TaskStatus]?
     /// Project-scoped display ID.
     public var displayIndex: Int?
+    /// The display ID with the project's issue prefix, e.g. `I-7`.
+    public var displayKey: String?
     /// A `key:value` tag, e.g. `customer:acme`.
     public var tag: String?
     /// Issues whose metadata holds every pair (at most 16 keys). Sent as repeated `metadata=key:value`.
@@ -463,6 +470,31 @@ public struct IssueListParams: Sendable, Hashable {
         self.include = include
     }
 
+    /// Filters that also match the display key, e.g. `I-7`.
+    public init(
+        limit: Int? = nil,
+        next: String? = nil,
+        status: [IssueStatus]? = nil,
+        owner: [IssueOwner]? = nil,
+        relation: [IssueMemberRelation]? = nil,
+        memberId: String? = nil,
+        taskStatus: [TaskStatus]? = nil,
+        excludeTaskStatus: [TaskStatus]? = nil,
+        displayIndex: Int? = nil,
+        displayKey: String,
+        tag: String? = nil,
+        metadata: [String: String]? = nil,
+        includeTotal: Bool? = nil,
+        include: [IssueInclude]? = nil
+    ) {
+        self.init(
+            limit: limit, next: next, status: status, owner: owner, relation: relation, memberId: memberId, taskStatus: taskStatus,
+            excludeTaskStatus: excludeTaskStatus, displayIndex: displayIndex, tag: tag, metadata: metadata,
+            includeTotal: includeTotal, include: include
+        )
+        self.displayKey = displayKey
+    }
+
     var query: Query {
         var query = Query()
         query.add("limit", limit)
@@ -473,6 +505,7 @@ public struct IssueListParams: Sendable, Hashable {
         query.add("task_status", taskStatus)
         query.add("exclude_task_status", excludeTaskStatus)
         query.add("display_index", displayIndex)
+        query.add("display_key", displayKey)
         query.add("tag", tag)
         query.add("metadata", metadata.map { pairs in pairs.keys.sorted().compactMap { key in pairs[key].map { "\(key):\($0)" } } })
         query.add("include_total", includeTotal)

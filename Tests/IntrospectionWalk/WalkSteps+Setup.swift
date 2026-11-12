@@ -34,8 +34,10 @@ extension Walk {
     }
 
     func step1Project() async throws {
-        // The slug is new on every live run, so the snapshot leaves it out.
-        snap(try stable(project, removing: ["name", "slug", "description"])) {
+        // The slug is new on every live run, so the snapshot leaves it out. The display ID prefixes postdate the
+        // recording, so they are checked beside the snapshot: absent on replay, the defaults live.
+        try checkDefaultDisplayIdPrefixes(project)
+        snap(try stable(project, removing: ["name", "slug", "description", "display_id_prefixes"])) {
             """
             {
               "created_by_member_id" : "[uuid]",
@@ -63,7 +65,8 @@ extension Walk {
                 name: "\(project.name ?? "") (walk)", deploymentId: project.deploymentId ?? "",
                 slug: "\(project.slug ?? "")\(WALK.siblingSuffix)"))
         try check(sibling.deploymentId == project.deploymentId, "the sibling is on the same deployment")
-        snap(try stable(sibling, removing: ["name", "slug"])) {
+        try checkDefaultDisplayIdPrefixes(sibling)
+        snap(try stable(sibling, removing: ["name", "slug", "display_id_prefixes"])) {
             """
             {
               "created_by_member_id" : "[uuid]",
@@ -341,8 +344,9 @@ extension Walk {
             done: { $0 != nil })
         let versionedRecipe = try require(versioned)
         recipe = versionedRecipe
-        // The slug carries the commit's hash, new whenever the recipe's repository moves.
-        snap(try stable(recipe, removing: ["slug"])) {
+        // The slug carries the commit's hash, new whenever the recipe's repository moves. The agents and issue
+        // providers postdate the recording and depend on the recipe, so the snapshot leaves them out.
+        snap(try stable(recipe, removing: ["slug", "agents", "issue_providers"])) {
             """
             {
               "created_at" : "[timestamp]",

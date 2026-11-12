@@ -96,6 +96,87 @@ import Testing
         #expect(await drift(run, as: TaskRun.self) == nil)
     }
 
+    @Test func displayIdsRecipeAgentsAndTagArchivesAreModelled() async throws {
+        let project = #"""
+            {"id":"p","org_id":"o","deployment_id":"d","name":"Main","slug":"main","description":null,"settings":{},
+             "created_by_member_id":null,"display_id_prefixes":{"issue":"BUG","report":"R","observation":"F","task":"T"}}
+            """#
+        #expect(await drift(project, as: Project.self, route: "/v1/projects/p") == nil)
+        let recipe = #"""
+            {"id":"r","name":"walk","agents":["agent","triage"],"issue_providers":["linear"],"created_at":"2026-11-01T00:00:00Z"}
+            """#
+        #expect(await drift(recipe, as: Recipe.self, route: "/v1/recipes/r") == nil)
+        let tag = #"""
+            {"kind":"access","name":"acme-old","color":null,"description":null,"created_at":"2026-11-01T00:00:00Z",
+             "updated_at":"2026-11-02T00:00:00Z","archived_at":"2026-11-02T00:00:00.123456Z","replaced_by":"acme","archived_names":[]}
+            """#
+        #expect(await drift(tag, as: SDKTag.self, route: "/v1/tags/access/acme-old") == nil)
+        let issue = #"""
+            {"id":"i","org_id":"o","project_id":"p","title":"t","description":"d","priority":"medium","status":"open",
+             "revision":1,"display_index":7,"display_key":"BUG-7","tags":[],"metadata":{}}
+            """#
+        #expect(await drift(issue, as: Issue.self, route: "/v1/issues/i") == nil)
+    }
+
+    @Test func signInIssueWarningsAndDiagnosticSeverityAreModelled() async throws {
+        let org = #"""
+            {"id":"o","name":"Acme","slug":"acme","external_org_id":null,"image_url":null,"hosted_git":true,
+             "sign_in":{"passkey_requirement":"except_sso","restrict_invites_to_domains":true}}
+            """#
+        #expect(await drift(org, as: Organization.self, route: "/v1/organizations/me") == nil)
+        let decoded = try await client(org, strict: true).json("GET", "/v1/organizations/me", as: Organization.self)
+        #expect(decoded.signIn == SignInSettings(passkeyRequirement: .exceptSso, restrictInvitesToDomains: true))
+        let unknown = try JSONCoding.decoder.decode(SignInSettings.self, from: Data(#"{"passkey_requirement":"hardware_key"}"#.utf8))
+        #expect(unknown.passkeyRequirement == "hardware_key")
+        #expect(unknown.restrictInvitesToDomains == nil)
+
+        let issue = #"""
+            {"id":"i","org_id":"o","project_id":"p","title":"t","description":"d","priority":"medium","status":"open",
+             "revision":1,"tags":[],"metadata":{},"warnings":["comments beyond 500 were left out"]}
+            """#
+        #expect(await drift(issue, as: Issue.self, route: "/v1/issues/i") == nil)
+        let read = try await client(issue, strict: true).json("GET", "/v1/issues/i", as: Issue.self)
+        #expect(read.warnings == ["comments beyond 500 were left out"])
+
+        let recipe = #"""
+            {"id":"r","validation":{"status":"valid","diagnostics":[
+              {"code":"R001","path":"agents/agent.yaml","span":{"line":1,"column":2},"message":"m","help":null,"severity":"warning"}]},
+             "git_commit_sha":"543b8db50a83aa1e2f3c4d5e6f708192a3b4c5d6"}
+            """#
+        let pinned = try await client(recipe, strict: true).json("GET", "/v1/recipes/r", as: Recipe.self)
+        #expect(pinned.validation?.diagnostics?.first?.severity == .warning)
+        #expect(RecipeValidationDiagnostic().severity == nil)
+
+        let runtime = #"{"id":"rt","recipe_ref":"main","git_commit_sha":"543b8db50a83aa1e2f3c4d5e6f708192a3b4c5d6"}"#
+        #expect(await drift(runtime, as: Runtime.self, route: "/v1/runtimes/rt") == nil)
+    }
+
+    @Test func imageBuildMetadataKeepsTheDataPlanesOwnMembers() async throws {
+        let page = #"""
+            {"records":[{"id":"rt","image_build_status":"ready","image_build_metadata":{"image_tag":"t","built_at":"2026-11-12T00:00:00Z",
+              "size_bytes":1024,"external_image_name":"img","verdict_by":"2026-11-12T00:10:00Z",
+              "cli_version":"0.81.0","harbor_adapter_version":"0.16.0","future_flag":true}}],"count":1,"next":null}
+            """#
+        #expect(await drift(page, as: Page<Runtime>.self, route: "/v1/runtimes") == nil)
+        let runtimes = try await client(page, strict: true).json("GET", "/v1/runtimes", as: Page<Runtime>.self)
+        let metadata = try #require(runtimes.records.first?.imageBuildMetadata)
+        #expect(metadata.imageTag == "t")
+        #expect(metadata.sizeBytes == 1024)
+        #expect(metadata.verdictBy == ISO8601.parse("2026-11-12T00:10:00Z"))
+        #expect(metadata.extra == ["cli_version": "0.81.0", "harbor_adapter_version": "0.16.0", "future_flag": true])
+        let wire = try JSONCoding.decoder.decode(JSONValue.self, from: JSONCoding.encoder.encode(metadata))
+        #expect(wire["cli_version"] == "0.81.0")
+        #expect(wire["image_tag"] == "t")
+        #expect(try JSONCoding.decoder.decode(RuntimeImageBuildMetadata.self, from: JSONCoding.encoder.encode(metadata)) == metadata)
+        #expect(RuntimeImageBuildMetadata(imageTag: "t").extra == [:])
+
+        // A modelled field wins over an `extra` member of the same name.
+        var shadowed = RuntimeImageBuildMetadata(imageTag: "t")
+        shadowed.extra = ["image_tag": "other"]
+        let written = try JSONCoding.decoder.decode(JSONValue.self, from: JSONCoding.encoder.encode(shadowed))
+        #expect(written == ["image_tag": "t"])
+    }
+
     @Test func openMapsNeverReport() async throws {
         let spans = #"""
             {"object":"list","data":[{"trace_id":"t","span_id":"s","name":"chat",

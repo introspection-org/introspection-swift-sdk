@@ -12,7 +12,9 @@ extension Walk {
 
         // Access tags are an administrator's to write: the owner's token, not the service account.
         let tag = try await member.tags.create(.access(name: "walk", description: "the walk's tag"))
-        snap(try stable(tag)) {
+        // The archive fields postdate the recording: absent on replay, a live tag with no archived names live.
+        try check(tag.archivedAt == nil && tag.replacedBy == nil && (tag.archivedNames ?? []).isEmpty, "the tag is live")
+        snap(try stable(tag, removing: ["archived_names"])) {
             """
             {
               "created_at" : "[timestamp]",

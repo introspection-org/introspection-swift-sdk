@@ -78,6 +78,8 @@ public struct RunCaller: Codable, Sendable, Hashable {
     public var ip: String?
     public var userAgent: String?
     public var locale: String?
+    /// IANA time zone, such as `America/Los_Angeles`; the agent reads its current date in it.
+    public var timezone: String?
     public var library: RunCallerLibrary?
     public var page: RunCallerPage?
     /// Any other keys (`app`, `device`, `os`, `campaign`, ...), sent verbatim.
@@ -99,17 +101,24 @@ public struct RunCaller: Codable, Sendable, Hashable {
         self.extra = extra
     }
 
+    /// A caller in a time zone.
+    public init(
+        ip: String? = nil,
+        userAgent: String? = nil,
+        locale: String? = nil,
+        timezone: String,
+        library: RunCallerLibrary? = nil,
+        page: RunCallerPage? = nil,
+        extra: JSONObject = [:]
+    ) {
+        self.init(ip: ip, userAgent: userAgent, locale: locale, library: library, page: page, extra: extra)
+        self.timezone = timezone
+    }
+
     private enum CodingKeys: String, CodingKey {
         case ip
         case userAgent = "user_agent"
-        case locale, library, page
-    }
-
-    private struct AnyKey: CodingKey {
-        var stringValue: String
-        var intValue: Int? { nil }
-        init(stringValue: String) { self.stringValue = stringValue }
-        init?(intValue: Int) { nil }
+        case locale, timezone, library, page
     }
 
     public init(from decoder: any Decoder) throws {
@@ -117,25 +126,19 @@ public struct RunCaller: Codable, Sendable, Hashable {
         ip = try container.decodeIfPresent(String.self, forKey: .ip)
         userAgent = try container.decodeIfPresent(String.self, forKey: .userAgent)
         locale = try container.decodeIfPresent(String.self, forKey: .locale)
+        timezone = try container.decodeIfPresent(String.self, forKey: .timezone)
         library = try? container.decodeIfPresent(RunCallerLibrary.self, forKey: .library)
         page = try? container.decodeIfPresent(RunCallerPage.self, forKey: .page)
-        let all = try decoder.container(keyedBy: AnyKey.self)
-        var extra: JSONObject = [:]
-        for key in all.allKeys where CodingKeys(rawValue: key.stringValue) == nil {
-            extra[key.stringValue] = try all.decode(JSONValue.self, forKey: key)
-        }
-        self.extra = extra
+        extra = try decoder.unknownMembers(besides: CodingKeys.self)
     }
 
     public func encode(to encoder: any Encoder) throws {
-        var all = encoder.container(keyedBy: AnyKey.self)
-        for (key, value) in extra where CodingKeys(rawValue: key) == nil {
-            try all.encode(value, forKey: AnyKey(stringValue: key))
-        }
+        try encoder.encodeUnknownMembers(extra, besides: CodingKeys.self)
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encodeIfPresent(ip, forKey: .ip)
         try container.encodeIfPresent(userAgent, forKey: .userAgent)
         try container.encodeIfPresent(locale, forKey: .locale)
+        try container.encodeIfPresent(timezone, forKey: .timezone)
         try container.encodeIfPresent(library, forKey: .library)
         try container.encodeIfPresent(page, forKey: .page)
     }

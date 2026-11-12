@@ -23,6 +23,7 @@ private let issueJSON = #"""
       "tags": ["customer:acme"],
       "metadata": {"source": "slack", "count": 3, "ratio": 0.5, "triaged": true, "owner": null},
       "display_index": 42,
+      "display_key": "I-42",
       "status": "waiting",
       "revision": 3,
       "task_id": "0199a1b2-0000-7000-8000-0000000000dd",
@@ -71,6 +72,7 @@ private func issueTransport(status: Int = 200) -> MockTransport {
         #expect(issue.status == .waiting)
         #expect(issue.revision == 3)
         #expect(issue.displayIndex == 42)
+        #expect(issue.displayKey == "I-42")
         #expect(
             issue.files == [
                 IssueFile(
@@ -111,6 +113,7 @@ private func issueTransport(status: Int = 200) -> MockTransport {
         #expect(brief.spans == nil)
         #expect(brief.comments == nil)
         #expect(brief.metadata == [:])
+        #expect(brief.displayKey == nil)
     }
 
     @Test func listEncodesRepeatedFiltersAndPaginates() async throws {
@@ -143,6 +146,19 @@ private func issueTransport(status: Int = 200) -> MockTransport {
             ])
         #expect(transport.requests[2].query["next"] == ["cur-2"])
         #expect(transport.requests[2].query["status"] == ["open", "waiting"])
+    }
+
+    @Test func listFiltersByDisplayKey() async throws {
+        let transport = MockTransport(json: #"{"records":[\#(issueJSON)],"count":1,"next":null}"#)
+        let api = makeClient(transport).issues
+        let found = try await api.list(IssueListParams(limit: 1, displayKey: "I-42", include: [.members])).collect()
+        #expect(found.map(\.displayKey) == ["I-42"])
+        #expect(transport.last?.query == ["limit": ["1"], "display_key": ["I-42"], "include": ["members"]])
+
+        var params = IssueListParams()
+        params.displayKey = "I-7"
+        _ = try await api.list(params).collect()
+        #expect(transport.last?.query == ["display_key": ["I-7"]])
     }
 
     @Test func listWithoutFiltersSendsNoQuery() async throws {

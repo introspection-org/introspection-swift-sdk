@@ -105,7 +105,13 @@ extension Walk {
         let versionedRuntime = try require(versioned)
         runtime = versionedRuntime
         try check(runtime.imageBuildStatus == .ready, runtime.imageBuildErrorMessage ?? "the runtime baked")
-        snap(try stable(runtime)) {
+        // The build's commit postdates the recording: absent on replay, the recipe's commit live.
+        try check([nil, recipe.gitCommitSha].contains(runtime.gitCommitSha), "the runtime is built from the recipe's commit")
+        // The data plane's own image metadata (tool versions) postdates the recording and moves with every release,
+        // so only the modelled build metadata is pinned.
+        var pinned: Runtime = runtime
+        pinned.imageBuildMetadata?.extra = [:]
+        snap(try stable(pinned, removing: ["git_commit_sha"])) {
             """
             {
               "config_json" : {

@@ -10,6 +10,8 @@ public struct Organization: Codable, Sendable, Hashable {
     public var externalOrgId: String?
     public var imageUrl: String?
     public var hostedGit: Bool?
+    /// How members sign in and who can be invited; present only with Enterprise sign-in.
+    public var signIn: SignInSettings?
 
     public init(
         id: String, name: String? = nil, slug: String? = nil, externalOrgId: String? = nil, imageUrl: String? = nil, hostedGit: Bool? = nil
@@ -27,6 +29,38 @@ public struct Organization: Codable, Sendable, Hashable {
         case externalOrgId = "external_org_id"
         case imageUrl = "image_url"
         case hostedGit = "hosted_git"
+        case signIn = "sign_in"
+    }
+}
+
+/// When an organization's members must sign in with a passkey. Unknown server values are preserved.
+public struct PasskeyRequirement: RawRepresentable, Codable, Sendable, Hashable, ExpressibleByStringLiteral {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+    public init(stringLiteral value: String) { self.rawValue = value }
+
+    /// The server default.
+    public static let off: PasskeyRequirement = "off"
+    public static let always: PasskeyRequirement = "always"
+    /// Members who sign in through SSO need no passkey.
+    public static let exceptSso: PasskeyRequirement = "except_sso"
+}
+
+/// How an organization's members sign in and who can be invited.
+public struct SignInSettings: Codable, Sendable, Hashable {
+    /// The server default is `.off`.
+    public var passkeyRequirement: PasskeyRequirement?
+    /// Invitations only to the organization's own email domains; the server default is false.
+    public var restrictInvitesToDomains: Bool?
+
+    public init(passkeyRequirement: PasskeyRequirement? = nil, restrictInvitesToDomains: Bool? = nil) {
+        self.passkeyRequirement = passkeyRequirement
+        self.restrictInvitesToDomains = restrictInvitesToDomains
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case passkeyRequirement = "passkey_requirement"
+        case restrictInvitesToDomains = "restrict_invites_to_domains"
     }
 }
 
@@ -54,6 +88,8 @@ public struct Project: Codable, Sendable, Hashable {
     public var description: String?
     public var settings: JSONObject?
     public var createdByMemberId: String?
+    /// The prefixes of the project's display IDs, such as `I` in `I-7`. Nil from a server that predates them.
+    public var displayIdPrefixes: DisplayIdPrefixes?
 
     public init(
         id: String, orgId: String? = nil, deploymentId: String? = nil, name: String? = nil, slug: String? = nil,
@@ -74,6 +110,29 @@ public struct Project: Codable, Sendable, Hashable {
         case orgId = "org_id"
         case deploymentId = "deployment_id"
         case createdByMemberId = "created_by_member_id"
+        case displayIdPrefixes = "display_id_prefixes"
+    }
+}
+
+/// The prefixes a project puts before its display indexes: `I-7` is issue 7.
+///
+/// A project read carries all four. In a ``ProjectCreate`` one left nil takes the server default (`I`, `R`, `F`,
+/// `T`); in a ``ProjectUpdate`` one left nil keeps its current value.
+public struct DisplayIdPrefixes: Codable, Sendable, Hashable {
+    /// Issues; the server default is `I`.
+    public var issue: String?
+    /// Reports; the server default is `R`.
+    public var report: String?
+    /// Observations; the server default is `F`.
+    public var observation: String?
+    /// Tasks; the server default is `T`.
+    public var task: String?
+
+    public init(issue: String? = nil, report: String? = nil, observation: String? = nil, task: String? = nil) {
+        self.issue = issue
+        self.report = report
+        self.observation = observation
+        self.task = task
     }
 }
 
@@ -102,6 +161,8 @@ public struct ProjectCreate: Encodable, Sendable, Hashable {
     public var settings: JSONObject?
     /// Seed the Ark runtime. Unset, an organization's first project takes it and later ones do not.
     public var includeArk: Bool?
+    /// The display ID prefixes; one left nil takes the server default.
+    public var displayIdPrefixes: DisplayIdPrefixes?
 
     public init(
         name: String, deploymentId: String, slug: String? = nil, description: String? = nil, settings: JSONObject? = nil,
@@ -115,10 +176,20 @@ public struct ProjectCreate: Encodable, Sendable, Hashable {
         self.includeArk = includeArk
     }
 
+    /// A project with its own display ID prefixes.
+    public init(
+        name: String, deploymentId: String, slug: String? = nil, description: String? = nil, settings: JSONObject? = nil,
+        includeArk: Bool? = nil, displayIdPrefixes: DisplayIdPrefixes
+    ) {
+        self.init(name: name, deploymentId: deploymentId, slug: slug, description: description, settings: settings, includeArk: includeArk)
+        self.displayIdPrefixes = displayIdPrefixes
+    }
+
     private enum CodingKeys: String, CodingKey {
         case name, slug, description, settings
         case deploymentId = "deployment_id"
         case includeArk = "include_ark"
+        case displayIdPrefixes = "display_id_prefixes"
     }
 }
 
@@ -127,11 +198,26 @@ public struct ProjectUpdate: Encodable, Sendable, Hashable {
     public var name: String?
     public var description: String?
     public var settings: JSONObject?
+    /// The prefixes to change; one left nil keeps its current value.
+    public var displayIdPrefixes: DisplayIdPrefixes?
 
     public init(name: String? = nil, description: String? = nil, settings: JSONObject? = nil) {
         self.name = name
         self.description = description
         self.settings = settings
+    }
+
+    /// An update that also changes display ID prefixes.
+    public init(
+        name: String? = nil, description: String? = nil, settings: JSONObject? = nil, displayIdPrefixes: DisplayIdPrefixes
+    ) {
+        self.init(name: name, description: description, settings: settings)
+        self.displayIdPrefixes = displayIdPrefixes
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case name, description, settings
+        case displayIdPrefixes = "display_id_prefixes"
     }
 }
 

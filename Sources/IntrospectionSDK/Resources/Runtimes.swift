@@ -56,6 +56,9 @@ public struct RuntimeInclude: RawRepresentable, Codable, Sendable, Hashable, Exp
 }
 
 /// Metadata of a runtime's last image build.
+///
+/// Beyond the fields modelled here, the data plane reports its own image metadata (such as `cli_version`), kept
+/// as received in ``extra``.
 public struct RuntimeImageBuildMetadata: Codable, Sendable, Hashable {
     public var imageTag: String?
     public var builtAt: Date?
@@ -64,6 +67,8 @@ public struct RuntimeImageBuildMetadata: Codable, Sendable, Hashable {
     public var externalArtifacts: [String: String]?
     /// The deadline an accepted warmup bake promised its verdict by.
     public var verdictBy: Date?
+    /// The data plane's other image metadata, as reported.
+    public var extra: JSONObject = [:]
 
     public init(
         imageTag: String? = nil, builtAt: Date? = nil, sizeBytes: Int? = nil, externalImageName: String? = nil,
@@ -83,6 +88,30 @@ public struct RuntimeImageBuildMetadata: Codable, Sendable, Hashable {
         case externalImageName = "external_image_name"
         case externalArtifacts = "external_artifacts"
         case verdictBy = "verdict_by"
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        // jscpd:ignore-start: Codable witnesses of a public type; one decode and one encode per stored property
+        imageTag = try container.decodeIfPresent(String.self, forKey: .imageTag)
+        builtAt = try container.decodeIfPresent(Date.self, forKey: .builtAt)
+        sizeBytes = try container.decodeIfPresent(Int.self, forKey: .sizeBytes)
+        externalImageName = try container.decodeIfPresent(String.self, forKey: .externalImageName)
+        externalArtifacts = try container.decodeIfPresent([String: String].self, forKey: .externalArtifacts)
+        verdictBy = try container.decodeIfPresent(Date.self, forKey: .verdictBy)
+        extra = try decoder.unknownMembers(besides: CodingKeys.self)
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        try encoder.encodeUnknownMembers(extra, besides: CodingKeys.self)
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(imageTag, forKey: .imageTag)
+        try container.encodeIfPresent(builtAt, forKey: .builtAt)
+        try container.encodeIfPresent(sizeBytes, forKey: .sizeBytes)
+        try container.encodeIfPresent(externalImageName, forKey: .externalImageName)
+        try container.encodeIfPresent(externalArtifacts, forKey: .externalArtifacts)
+        try container.encodeIfPresent(verdictBy, forKey: .verdictBy)
+        // jscpd:ignore-end
     }
 }
 
@@ -169,6 +198,8 @@ public struct Runtime: Codable, Sendable, Hashable {
     public var recipeId: String?
     public var recipeKind: RuntimeRecipeKind?
     public var recipeRef: String?
+    /// The commit this version was built from; nil when it has no recipe.
+    public var gitCommitSha: String?
     /// Environments this version currently serves.
     public var environments: [RuntimeEnvironment]?
     public var imageBuildStatus: RuntimeImageStatus?
@@ -242,6 +273,7 @@ public struct Runtime: Codable, Sendable, Hashable {
         case imageRevision = "image_revision"
         case imageCommitSubject = "image_commit_subject"
         case imageRepository = "image_repository"
+        case gitCommitSha = "git_commit_sha"
         case id, name, slug, description, kind, environments
         case orgId = "org_id"
         case projectId = "project_id"
@@ -271,6 +303,10 @@ public struct RuntimeListParams: Sendable, Hashable {
     /// Runtime group slug or id.
     public var runtime: String?
     public var recipeId: String?
+    /// Only versions built from this git ref, exactly: `main` or `pr/<branch>`.
+    public var recipeRef: String?
+    /// Only versions whose recipe is at this full 40-character commit sha.
+    public var gitCommitSha: String?
     /// Only versions serving this environment. An API key already selects one, so passing both is a 400.
     public var environment: RuntimeEnvironment?
     /// Page size (1 to 1000).
@@ -292,6 +328,25 @@ public struct RuntimeListParams: Sendable, Hashable {
         self.environment = environment
         self.limit = limit
         self.next = next
+    }
+
+    /// Versions built from one git ref.
+    public init(
+        project: String? = nil, runtime: String? = nil, recipeId: String? = nil, recipeRef: String,
+        environment: RuntimeEnvironment? = nil, limit: Int? = nil, next: String? = nil
+    ) {
+        self.init(project: project, runtime: runtime, recipeId: recipeId, environment: environment, limit: limit, next: next)
+        self.recipeRef = recipeRef
+    }
+
+    /// Versions built from one commit, optionally on one git ref.
+    public init(
+        project: String? = nil, runtime: String? = nil, recipeId: String? = nil, recipeRef: String? = nil, gitCommitSha: String,
+        environment: RuntimeEnvironment? = nil, limit: Int? = nil, next: String? = nil
+    ) {
+        self.init(project: project, runtime: runtime, recipeId: recipeId, environment: environment, limit: limit, next: next)
+        self.recipeRef = recipeRef
+        self.gitCommitSha = gitCommitSha
     }
 }
 
@@ -396,6 +451,8 @@ public struct RuntimesAPI: Sendable {
         query.add("project", params.project)
         query.add("runtime", params.runtime)
         query.add("recipe_id", params.recipeId)
+        query.add("recipe_ref", params.recipeRef)
+        query.add("git_commit_sha", params.gitCommitSha)
         query.add("environment", params.environment)
         query.add("limit", params.limit)
         return http.paginate("/v1/runtimes", query: query, start: params.next)
