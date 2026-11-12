@@ -512,14 +512,38 @@ private func member(_ id: String, _ email: String?, deactivated: Bool = false) -
             let error = await #expect(throws: IntrospectionError.self) { try await tags.create(bad) }
             #expect(error?.kind == .validation)
         }
-        // An access tag has no colour, and an update must name a field.
-        for bad: TagUpdate in [.color("#f97316"), TagUpdate()] {
+        // An access tag has no colour and cannot be renamed, and an update must name a field.
+        for bad: TagUpdate in [.color("#f97316"), .rename("acme/us"), TagUpdate()] {
             let error = await #expect(throws: IntrospectionError.self) {
                 try await tags.update(.access, "acme/eu", bad)
             }
             #expect(error?.kind == .validation)
         }
         #expect(transport.requests.count == before)
+    }
+
+    @Test func tagRenameAndArchivedTags() async throws {
+        let replacement =
+            ##"{"kind": "annotation", "name": "defect", "color": "#f97316", "description": null, "archived_at": null, "replaced_by": null, "archived_names": ["bug"], "created_at": "2026-09-01T00:00:00Z", "updated_at": "2026-09-01T00:00:00Z"}"##
+        let archived =
+            ##"{"kind": "annotation", "name": "bug", "color": "#f97316", "description": null, "archived_at": "2026-11-10T12:00:00Z", "replaced_by": "defect", "archived_names": [], "created_at": "2026-09-01T00:00:00Z", "updated_at": "2026-09-01T00:00:00Z"}"##
+        let transport = MockTransport { request, _ in
+            request.method == "GET"
+                ? .response(.json(#"{"records": [\#(archived)], "count": 1}"#))
+                : .response(.json(replacement))
+        }
+        let tags = makeClient(transport).tags
+
+        let renamed = try await tags.update(.annotation, "bug", .rename(" defect "))
+        #expect(transport.last?.json == ["name": "defect"])
+        #expect(renamed.name == "defect")
+        #expect(renamed.archivedAt == nil)
+        #expect(renamed.archivedNames == ["bug"])
+
+        let listed = try await tags.list(TagListParams(kind: .annotation, include: [.archived])).collect()
+        #expect(transport.last?.query["include"] == ["archived"])
+        #expect(listed.first?.replacedBy == "defect")
+        #expect(listed.first?.archivedAt != nil)
     }
 
     // MARK: Organization
