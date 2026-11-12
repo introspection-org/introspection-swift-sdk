@@ -96,6 +96,28 @@ import Testing
         #expect(await drift(run, as: TaskRun.self) == nil)
     }
 
+    @Test func displayIdsRecipeAgentsAndTagArchivesAreModelled() async throws {
+        let project = #"""
+            {"id":"p","org_id":"o","deployment_id":"d","name":"Main","slug":"main","description":null,"settings":{},
+             "created_by_member_id":null,"display_id_prefixes":{"issue":"BUG","report":"R","observation":"F","task":"T"}}
+            """#
+        #expect(await drift(project, as: Project.self, route: "/v1/projects/p") == nil)
+        let recipe = #"""
+            {"id":"r","name":"walk","agents":["agent","triage"],"issue_providers":["linear"],"created_at":"2026-11-01T00:00:00Z"}
+            """#
+        #expect(await drift(recipe, as: Recipe.self, route: "/v1/recipes/r") == nil)
+        let tag = #"""
+            {"kind":"access","name":"acme-old","color":null,"description":null,"created_at":"2026-11-01T00:00:00Z",
+             "updated_at":"2026-11-02T00:00:00Z","archived_at":"2026-11-02T00:00:00.123456Z","replaced_by":"acme","archived_names":[]}
+            """#
+        #expect(await drift(tag, as: SDKTag.self, route: "/v1/tags/access/acme-old") == nil)
+        let issue = #"""
+            {"id":"i","org_id":"o","project_id":"p","title":"t","description":"d","priority":"medium","status":"open",
+             "revision":1,"display_index":7,"display_key":"BUG-7","tags":[],"metadata":{}}
+            """#
+        #expect(await drift(issue, as: Issue.self, route: "/v1/issues/i") == nil)
+    }
+
     @Test func openMapsNeverReport() async throws {
         let spans = #"""
             {"object":"list","data":[{"trace_id":"t","span_id":"s","name":"chat",

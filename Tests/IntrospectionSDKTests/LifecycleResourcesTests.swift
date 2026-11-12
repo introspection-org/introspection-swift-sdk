@@ -16,7 +16,8 @@ private func page(_ record: String, next: String? = nil) -> String {
 
 private let projectJSON = #"""
     {"id": "p-1", "org_id": "o", "deployment_id": "d-1", "name": "Walk", "slug": "walk", "description": null,
-     "settings": null, "created_by_member_id": "m"}
+     "settings": null, "created_by_member_id": "m",
+     "display_id_prefixes": {"issue": "BUG", "report": "R", "observation": "F", "task": "T"}}
     """#
 
 private let peeringJSON = #"""
@@ -29,7 +30,7 @@ private let recipeJSON = #"""
     {"id": "r-1", "org_id": "o", "project_id": "p-1", "repository_id": "repo-1", "name": "hello-mcp", "description": null,
      "git_ref": "main", "git_commit_sha": "\#(sha)", "sub_path": ".", "slug": "hello-mcp-main-543b8db50a83",
      "created_by_member_id": "m", "created_at": "\#(now)", "updated_at": "\#(now)",
-     "validation": {"status": "pending", "diagnostics": []}}
+     "validation": {"status": "pending", "diagnostics": []}, "agents": ["agent", "triage"], "issue_providers": ["linear"]}
     """#
 
 private let runtimeJSON = #"""
@@ -97,6 +98,28 @@ private let approvalJSON = #"""
         #expect(transport.last?.request.url.absoluteString == "https://cp.test/v1/projects/p%2F1")
     }
 
+    @Test func projectDisplayIdPrefixesAreReadSetOnCreateAndPartlyUpdated() async throws {
+        let transport = MockTransport { request, _ in .response(.json(projectJSON, status: request.method == "POST" ? 201 : 200)) }
+        let projects = makeClient(transport).projects
+
+        let created = try await projects.create(
+            ProjectCreate(name: "Walk", deploymentId: "d-1", displayIdPrefixes: DisplayIdPrefixes(issue: "BUG")))
+        #expect(created.displayIdPrefixes == DisplayIdPrefixes(issue: "BUG", report: "R", observation: "F", task: "T"))
+        #expect(transport.last?.json == ["name": "Walk", "deployment_id": "d-1", "display_id_prefixes": ["issue": "BUG"]])
+
+        var update = ProjectUpdate()
+        update.displayIdPrefixes = DisplayIdPrefixes(report: "RPT", task: "TSK")
+        _ = try await projects.update("walk", update)
+        #expect(transport.last?.request.method == "PATCH")
+        #expect(transport.last?.json == ["display_id_prefixes": ["report": "RPT", "task": "TSK"]])
+
+        _ = try await projects.update("walk", ProjectUpdate(name: "Walk 2", displayIdPrefixes: DisplayIdPrefixes(observation: "OBS")))
+        #expect(transport.last?.json == ["name": "Walk 2", "display_id_prefixes": ["observation": "OBS"]])
+
+        let older = try JSONCoding.decoder.decode(Project.self, from: Data(#"{"id": "p-1", "name": "Walk"}"#.utf8))
+        #expect(older.displayIdPrefixes == nil)
+    }
+
     @Test func peeringsAreReadUnderTheProjectAndNarrowByRuntimeOrGrant() async throws {
         let transport = MockTransport { request, _ in
             .response(.json(request.url.path.hasSuffix("/peerings") ? page(peeringJSON) : peeringJSON))
@@ -138,6 +161,9 @@ private let approvalJSON = #"""
         let pinned = try await recipes.create(
             RecipeCreate(name: "hello-mcp", project: "p-1", repositoryId: "repo-1", gitRef: "main", gitCommitSha: sha))
         #expect(pinned.gitCommitSha == sha)
+        #expect(pinned.agents == ["agent", "triage"])
+        #expect(pinned.issueProviders == ["linear"])
+        #expect(Recipe(id: "r-1").agents == nil)
         #expect(transport.last?.path == "/v1/recipes")
         #expect(transport.last?.query.isEmpty == true)
         #expect(
@@ -153,6 +179,32 @@ private let approvalJSON = #"""
         try await recipes.delete("r-1")
         #expect(transport.last?.request.method == "DELETE")
         #expect(transport.last?.query.isEmpty == true)
+    }
+
+    // MARK: Tags
+
+    @Test func archivedTagsAreListedWithInclude() async throws {
+        let live = #"""
+            {"kind": "access", "name": "acme", "color": null, "description": null, "created_at": "2026-09-01T00:00:00Z",
+             "updated_at": "2026-11-02T00:00:00Z", "archived_at": null, "replaced_by": null, "archived_names": ["acme-old"]}
+            """#
+        let archived = #"""
+            {"kind": "access", "name": "acme-old", "color": null, "description": null, "created_at": "2026-09-01T00:00:00Z",
+             "updated_at": "2026-11-02T00:00:00Z", "archived_at": "2026-11-02T00:00:00Z", "replaced_by": "acme", "archived_names": []}
+            """#
+        let transport = MockTransport(json: #"{"records": [\#(live), \#(archived)], "count": 2}"#)
+        let all = try await makeClient(transport).tags.list(TagListParams(kind: .access, include: [.archived], limit: 10)).collect()
+        #expect(transport.last?.query == ["kind": ["access"], "include": ["archived"], "limit": ["10"]])
+        #expect(all.first?.archivedAt == nil)
+        #expect(all.first?.replacedBy == nil)
+        #expect(all.first?.archivedNames == ["acme-old"])
+        #expect(all.last?.archivedAt == ISO8601.parse("2026-11-02T00:00:00Z"))
+        #expect(all.last?.replacedBy == "acme")
+        #expect(all.last?.archivedNames == [])
+        #expect(TagInclude(rawValue: "archived") == .archived)
+
+        _ = try await makeClient(transport).tags.list(TagListParams(kind: .annotation)).collect()
+        #expect(transport.last?.query == ["kind": ["annotation"]])
     }
 
     // MARK: Runtimes

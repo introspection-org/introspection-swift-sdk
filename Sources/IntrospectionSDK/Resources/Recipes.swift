@@ -110,6 +110,10 @@ public struct Recipe: Codable, Sendable, Hashable {
     public var validation: RecipeValidation?
     /// The recipe's Cedar policies (`schema`, `policies`, `routes`).
     public var policies: JSONObject?
+    /// The agents this version defines, from `agents/<name>.yaml`, the default first. Nil until checked.
+    public var agents: [String]?
+    /// The issue providers this version declares.
+    public var issueProviders: [String]?
     public var createdByMemberId: String?
     public var createdAt: Date?
     public var updatedAt: Date?
@@ -139,7 +143,7 @@ public struct Recipe: Codable, Sendable, Hashable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, slug, description, validation, policies
+        case id, name, slug, description, validation, policies, agents
         case orgId = "org_id"
         case projectId = "project_id"
         case repositoryId = "repository_id"
@@ -148,6 +152,7 @@ public struct Recipe: Codable, Sendable, Hashable {
         case gitCommitSubject = "git_commit_subject"
         case subPath = "sub_path"
         case mcpServers = "mcp_servers"
+        case issueProviders = "issue_providers"
         case createdByMemberId = "created_by_member_id"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
