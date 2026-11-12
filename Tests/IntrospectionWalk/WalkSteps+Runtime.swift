@@ -12,7 +12,7 @@ extension Walk {
             ConnectorCreate(
                 name: WALK.connectorName, provider: WALK.connectorName, authMode: .oauthStored, slug: WALK.connectorName,
                 apiHosts: [URL(string: WALK.mcpEndpoint)?.host ?? ""], issuer: WALK.mcpIssuer))
-        snap(try stable(connector)) {
+        snap(try stableConnector(connector)) {
             """
             {
               "agent_member_id" : "[uuid]",

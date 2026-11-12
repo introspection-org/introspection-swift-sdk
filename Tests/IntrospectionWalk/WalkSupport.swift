@@ -284,6 +284,21 @@ extension Walk {
         return try stable(project, removing: keys + ["display_id_prefixes", "connection_integrations"])
     }
 
+    /// A connector's OAuth metadata gained the provider's revocation endpoint after the recording: absent on replay,
+    /// a URL live when the provider advertises one. The snapshot leaves it out.
+    func stableConnector(_ connector: Connector) throws -> JSONValue {
+        var pinned = connector
+        if var oauth = pinned.metadata?["oauth"]?.objectValue {
+            if let revocation = oauth.removeValue(forKey: "revocation_endpoint"), revocation != .null {
+                try check(
+                    revocation.stringValue.flatMap(URL.init(string:))?.scheme?.hasPrefix("http") == true,
+                    "the revocation endpoint is a URL: \(revocation)")
+            }
+            pinned.metadata?["oauth"] = .object(oauth)
+        }
+        return try stable(pinned)
+    }
+
     /// The project's grant on the walk's connector. Its runtime group and token expiry postdate the recording:
     /// absent on replay, the runtime's group and the provider's expiry live. The snapshot leaves them out.
     func stableGrant(_ grant: AppConnection) throws -> JSONValue {
