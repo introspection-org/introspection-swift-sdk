@@ -108,7 +108,7 @@ extension Walk {
         let held = try await member.connections.list(AppConnectionListParams(connectorId: connector.id)).all()
         let grant = try require(held.first { $0.owner == .project }, "the project's grant is listed")
         try check(grant.memberId == nil && grant.connector?.slug == WALK.connectorName, "the grant is the project's, on the connector")
-        snap(try stable(grant)) {
+        snap(try stableGrant(grant)) {
             """
             {
               "app" : "hello-mcp",

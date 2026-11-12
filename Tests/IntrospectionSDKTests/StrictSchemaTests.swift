@@ -177,6 +177,25 @@ import Testing
         #expect(written == ["image_tag": "t"])
     }
 
+    @Test func connectionIntegrationsSubscriptionAndEndpointIntegrationAreModelled() async throws {
+        let project = #"""
+            {"id":"p","org_id":"o","deployment_id":"d","name":"Main","slug":"main","description":null,"settings":{},
+             "created_by_member_id":null,"display_id_prefixes":{"issue":"I","report":"R","observation":"F","task":"T"},
+             "connection_integrations":["google_workspace","microsoft_365","future_suite"]}
+            """#
+        #expect(await drift(project, as: Project.self, route: "/v1/projects/p") == nil)
+        let read = try await client(project, strict: true).json("GET", "/v1/projects/p", as: Project.self)
+        #expect(read.connectionIntegrations == [.googleWorkspace, .microsoft365, "future_suite"])
+
+        let org = #"{"id":"o","name":"Acme","slug":"acme","hosted_git":true,"sign_in":null,"subscription_live":true}"#
+        #expect(await drift(org, as: Organization.self, route: "/v1/organizations/me") == nil)
+        #expect(try await client(org, strict: true).json("GET", "/v1/organizations/me", as: Organization.self).subscriptionLive == true)
+
+        let metadata = #"{"mcp_server_id":"gmail","connector_id":null,"integration_id":"int-1","extra_hosts":[]}"#
+        #expect(await drift(metadata, as: EndpointMetadata.self) == nil)
+        #expect(try JSONCoding.decoder.decode(EndpointMetadata.self, from: Data(metadata.utf8)).integrationId == "int-1")
+    }
+
     @Test func openMapsNeverReport() async throws {
         let spans = #"""
             {"object":"list","data":[{"trace_id":"t","span_id":"s","name":"chat",

@@ -118,6 +118,21 @@ private let approvalJSON = #"""
 
         let older = try JSONCoding.decoder.decode(Project.self, from: Data(#"{"id": "p-1", "name": "Walk"}"#.utf8))
         #expect(older.displayIdPrefixes == nil)
+        #expect(older.connectionIntegrations == nil)
+    }
+
+    @Test func projectConnectionIntegrationsAreSetOnCreateAndUpdate() async throws {
+        let transport = MockTransport { request, _ in .response(.json(projectJSON, status: request.method == "POST" ? 201 : 200)) }
+        let projects = makeClient(transport).projects
+
+        _ = try await projects.create(ProjectCreate(name: "Walk", deploymentId: "d-1", connectionIntegrations: [.googleWorkspace]))
+        #expect(transport.last?.json == ["name": "Walk", "deployment_id": "d-1", "connection_integrations": ["google_workspace"]])
+
+        _ = try await projects.update("walk", ProjectUpdate(connectionIntegrations: [.googleWorkspace, .microsoft365]))
+        #expect(transport.last?.json == ["connection_integrations": ["google_workspace", "microsoft_365"]])
+
+        _ = try await projects.update("walk", ProjectUpdate(connectionIntegrations: []))
+        #expect(transport.last?.json == ["connection_integrations": []])
     }
 
     @Test func peeringsAreReadUnderTheProjectAndNarrowByRuntimeOrGrant() async throws {

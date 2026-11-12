@@ -25,15 +25,6 @@ private let connectorJSON = #"""
     }
     """#
 
-private let connectionJSON = #"""
-    {
-      "id": "cx-1", "org_id": "o", "created_at": "2026-09-01T00:00:00Z", "updated_at": "2026-09-01T00:00:00Z",
-      "subject_type": "workspace", "scopes_granted": ["chat:write"], "connector_id": "con-1",
-      "member_id": "m-ws", "created_by_member_id": "m-op", "runtime_group_id": "g", "provider_app": null,
-      "provider_account_id": "T1", "status": "active", "token_expires_at": null
-    }
-    """#
-
 private func member(_ id: String, _ email: String?, deactivated: Bool = false) -> String {
     let emailJSON = email.map { "\"\($0)\"" } ?? "null"
     return
@@ -155,6 +146,7 @@ private func member(_ id: String, _ email: String?, deactivated: Bool = false) -
                         #"""
                         {"issuer": "https://auth.example", "authorization_endpoint": "https://auth.example/authorize",
                          "token_endpoint": "https://auth.example/token", "registration_endpoint": null,
+                         "revocation_endpoint": "https://auth.example/revoke",
                          "token_endpoint_auth_methods_supported": ["none"], "code_challenge_methods_supported": ["S256"],
                          "scopes_supported": [], "client_id_metadata_document_supported": true, "resource": "https://mcp.example/mcp",
                          "redirect_uri": "https://cp.test/v1/oauth/connections/callback", "client_id": "https://cp.test/client.json",
@@ -179,6 +171,7 @@ private func member(_ id: String, _ email: String?, deactivated: Bool = false) -
         #expect(transport.last?.json == ["issuer": "https://mcp.example/mcp"])
         #expect(discovery.clientRegistration == .clientIdMetadataDocument)
         #expect(discovery.codeChallengeMethodsSupported == ["S256"])
+        #expect(discovery.revocationEndpoint == "https://auth.example/revoke")
     }
 
     @Test func authorizeBody() async throws {
@@ -207,47 +200,33 @@ private func member(_ id: String, _ email: String?, deactivated: Bool = false) -
         #expect(body["return_url"]?.stringValue == "https://app.example/done")
         #expect(body["expires_in"]?.intValue == 3600)
         #expect(body["app"] == nil)
+        #expect(body["integration_id"] == nil)
+
+        _ = try await makeClient(transport).connectors.authorize(integration: "int-1", ConnectorAuthorizeParams(returnUrl: "ark://done"))
+        #expect(transport.last?.path == "/v1/oauth/connections/authorize")
+        #expect(transport.last?.json == ["integration_id": "int-1", "return_url": "ark://done"])
     }
 
-    @Test func connectionsAndTokenBroker() async throws {
+    @Test func tokenBroker() async throws {
         let transport = MockTransport { request, _ in
-            if request.method == "DELETE" { return noContent() }
-            if request.url.path == "/v1/oauth/connections/token" {
-                let body = request.body.flatMap { try? JSONCoding.decoder.decode(JSONValue.self, from: $0) }
-                if body?["subject"]?.stringValue == "person" {
-                    return .response(
-                        .json(
-                            #"{"status": "authorization_pending", "mission_id": "mis-1", "approval_url": "https://consent.test/m/mis-1?cap=x"}"#,
-                            status: 202))
-                }
-                return .response(.json(#"{"token": "xoxb-1", "token_type": "bearer", "expires_at": null, "scopes": ["chat:write"]}"#))
+            let body = request.body.flatMap { try? JSONCoding.decoder.decode(JSONValue.self, from: $0) }
+            if body?["subject"]?.stringValue == "person" {
+                return .response(
+                    .json(
+                        #"{"status": "authorization_pending", "mission_id": "mis-1", "approval_url": "https://consent.test/m/mis-1?cap=x"}"#,
+                        status: 202))
             }
-            if request.url.path.hasSuffix("/connections") && request.method == "GET" {
-                return .response(.json(#"{"records": [\#(connectionJSON)], "count": 1}"#))
-            }
-            return .response(.json(connectionJSON))
+            return .response(.json(#"{"token": "xoxb-1", "token_type": "bearer", "expires_at": null, "scopes": ["chat:write"]}"#))
         }
-        let connections = makeClient(transport).connectors.connections
+        let connectors = makeClient(transport).connectors
 
-        let listed = try await connections.list("con-1", ConnectionListParams(limit: 10)).collect()
-        #expect(listed.first?.subjectType == .workspace)
-        #expect(listed.first?.providerAccountId == "T1")
-        #expect(transport.last?.path == "/v1/connectors/con-1/connections")
-
-        _ = try await connections.create("con-1", ConnectionCreate(accessToken: "tok", subjectType: .app, scopesGranted: ["a"]))
-        #expect(transport.last?.json?["access_token"]?.stringValue == "tok")
-        #expect(transport.last?.json?["subject_type"]?.stringValue == "app")
-
-        _ = try await connections.get("con-1", "cx-1")
-        #expect(transport.last?.path == "/v1/connectors/con-1/connections/cx-1")
-        try await connections.revoke("con-1", "cx-1")
-        #expect(transport.last?.request.method == "DELETE")
-
-        let token = try await connections.getToken("con-1")
+        let token = try await connectors.getToken("con-1")
+        #expect(transport.last?.request.method == "POST")
+        #expect(transport.last?.path == "/v1/oauth/connections/token")
         #expect(token.token?.token == "xoxb-1")
         #expect(transport.last?.json == ["connector_id": "con-1"])
 
-        let pending = try await connections.getToken(
+        let pending = try await connectors.getToken(
             "con-1",
             ConnectionTokenParams(
                 subject: .person, action: "booking.reserve",

@@ -34,10 +34,8 @@ extension Walk {
     }
 
     func step1Project() async throws {
-        // The slug is new on every live run, so the snapshot leaves it out. The display ID prefixes postdate the
-        // recording, so they are checked beside the snapshot: absent on replay, the defaults live.
-        try checkDefaultDisplayIdPrefixes(project)
-        snap(try stable(project, removing: ["name", "slug", "description", "display_id_prefixes"])) {
+        // The slug is new on every live run, so the snapshot leaves it out.
+        snap(try stableProject(project, removing: ["name", "slug", "description"])) {
             """
             {
               "created_by_member_id" : "[uuid]",
@@ -65,8 +63,7 @@ extension Walk {
                 name: "\(project.name ?? "") (walk)", deploymentId: project.deploymentId ?? "",
                 slug: "\(project.slug ?? "")\(WALK.siblingSuffix)"))
         try check(sibling.deploymentId == project.deploymentId, "the sibling is on the same deployment")
-        try checkDefaultDisplayIdPrefixes(sibling)
-        snap(try stable(sibling, removing: ["name", "slug", "display_id_prefixes"])) {
+        snap(try stableProject(sibling, removing: ["name", "slug"])) {
             """
             {
               "created_by_member_id" : "[uuid]",

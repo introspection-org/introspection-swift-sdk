@@ -66,31 +66,6 @@ extension Walk {
         let listings = try await sa.connectors.searchCustomApps(query: "everything", limit: 5)
         try check(listings.allSatisfy { $0.name?.isEmpty == false }, "every listing is named")
         try await refusal(422, "the apps of an issuer connector") { try await sa.connectors.listApps(connector.id, query: "mcp") }
-
-        // A connection registered with a caller-supplied token, read and revoked before the OAuth grant makes the runtime's own.
-        let registered = try await sa.connectors.connections.create(connector.id, ConnectionCreate(accessToken: WALK.registeredToken))
-        snap(try stable(registered)) {
-            """
-            {
-              "connector_id" : "[uuid]",
-              "created_at" : "[timestamp]",
-              "id" : "[uuid]",
-              "org_id" : "[uuid]",
-              "project_id" : "[uuid]",
-              "scopes_granted" : [
-
-              ],
-              "status" : "active",
-              "subject_type" : "app",
-              "updated_at" : "[timestamp]"
-            }
-            """
-        }
-        let readBack = try await sa.connectors.connections.get(connector.id, registered.id)
-        try check(readBack.id == registered.id, "the registered connection reads back")
-        // `connectors:delete` is the owner's.
-        try await owner.connectors.connections.revoke(connector.id, registered.id)
-        try await expectNotFound({ try await sa.connectors.connections.get(connector.id, registered.id) }, "the revoked connection")
     }
 
     func step7Runtime() async throws {
@@ -184,29 +159,30 @@ extension Walk {
         let landedQuery = Dictionary((landed.queryItems ?? []).map { ($0.name, $0.value ?? "") }, uniquingKeysWith: { $1 })
         try check(landedQuery["status"] == "active", "the grant lands active")
         let connectionId = try require(landedQuery["connection_id"])
-        let connection = try await sa.connectors.connections.get(connector.id, connectionId)
-        snap(try stable(connection)) {
+        // The grant is the project's own, read on the Data Plane's one connections resource.
+        let connection = try await member.connections.get(connectionId)
+        snap(try stableGrant(connection)) {
             """
             {
-              "connector_id" : "[uuid]",
+              "app" : "hello-mcp",
+              "connector" : {
+                "id" : "[uuid]",
+                "provider" : "hello-mcp",
+                "slug" : "hello-mcp"
+              },
               "created_at" : "[timestamp]",
               "created_by_member_id" : "[uuid]",
+              "healthy" : true,
               "id" : "[uuid]",
               "last_verified_at" : "[timestamp]",
-              "org_id" : "[uuid]",
-              "project_id" : "[uuid]",
-              "runtime_group_id" : "[uuid]",
-              "scopes_granted" : [
-
-              ],
+              "owner" : "project",
               "status" : "active",
               "subject_type" : "app",
-              "token_expires_at" : "[timestamp]",
               "updated_at" : "[timestamp]"
             }
             """
         }
-        let connections = try await sa.connectors.connections.list(connector.id).all()
+        let connections = try await member.connections.list(AppConnectionListParams(connectorId: connector.id)).all()
         try check(connections.contains { $0.id == connectionId }, "the connection is listed")
 
         let endpoints = try await sa.endpoints.list(EndpointListParams(project: project.id, mcpServerId: WALK.mcpServerId)).firstPage()
@@ -255,7 +231,7 @@ extension Walk {
         try await apiEndpoint()
 
         // The broker resolves the grant from the service account's own credential.
-        let token = try await sa.connectors.connections.getToken(connector.id)
+        let token = try await sa.connectors.getToken(connector.id)
         snap(try stable(token)) {
             """
             {

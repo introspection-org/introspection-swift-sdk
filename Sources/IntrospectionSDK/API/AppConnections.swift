@@ -32,28 +32,36 @@ public struct AppConnectionListParams: Sendable, Hashable {
     public var memberId: String?
     public var app: String?
     public var connectorId: String?
+    /// Only members' own connections through this organization integration.
+    public var integrationId: String?
     public var subjectType: ConnectionSubjectType?
     public var peering: String?
+    /// Only accounts whose name, such as an email, contains this, ignoring case (1 to 128 characters).
+    public var search: String?
     public var limit: Int?
     public var next: String?
 
     public init(
-        memberId: String? = nil, app: String? = nil, connectorId: String? = nil, subjectType: ConnectionSubjectType? = nil,
-        peering: String? = nil, limit: Int? = nil, next: String? = nil
+        memberId: String? = nil, app: String? = nil, connectorId: String? = nil, integrationId: String? = nil,
+        subjectType: ConnectionSubjectType? = nil, peering: String? = nil, search: String? = nil, limit: Int? = nil,
+        next: String? = nil
     ) {
+        // jscpd:ignore-start: memberwise init of a public type; the assignments cannot be shared
         self.memberId = memberId
         self.app = app
         self.connectorId = connectorId
+        self.integrationId = integrationId
         self.subjectType = subjectType
         self.peering = peering
+        self.search = search
         self.limit = limit
         self.next = next
+        // jscpd:ignore-end
     }
 }
 
-/// One connection a project's members can see (`/v1/connections`): an app a member connected for themself, or a grant
-/// the project holds. Named apart from the Control Plane's
-/// ``Connection``, which is a connector's authorized subject.
+/// One connection a project's members can see (`/v1/connections`): an app or account a member connected for themself,
+/// or a grant the project holds.
 public struct AppConnection: Codable, Sendable, Hashable {
     public var id: String
     /// The member who connected the app; nil for a connection the project owns.
@@ -67,10 +75,16 @@ public struct AppConnection: Codable, Sendable, Hashable {
     public var createdAt: Date
     public var owner: AppConnectionOwner?
     public var connector: AppConnectionConnector?
+    /// The organization integration a member's own account is connected through; nil for a connector's.
+    public var integrationId: String?
     public var subjectType: ConnectionSubjectType?
     public var providerAccountId: String?
     public var status: ConnectionStatus?
     public var lastVerifiedAt: Date?
+    /// The runtime group whose channels the connection answers, if any.
+    public var runtimeGroupId: String?
+    /// When the provider's access token expires, if it does.
+    public var tokenExpiresAt: Date?
     public var createdByMemberId: String?
     public var updatedAt: Date?
 
@@ -91,6 +105,9 @@ public struct AppConnection: Codable, Sendable, Hashable {
         case subjectType = "subject_type"
         case providerAccountId = "provider_account_id"
         case lastVerifiedAt = "last_verified_at"
+        case integrationId = "integration_id"
+        case runtimeGroupId = "runtime_group_id"
+        case tokenExpiresAt = "token_expires_at"
         case createdByMemberId = "created_by_member_id"
         case updatedAt = "updated_at"
     }
@@ -119,12 +136,14 @@ public struct ConnectPage: Codable, Sendable, Hashable {
 
 /// Body of `POST /v1/connections`.
 struct AppConnectionCreate: Encodable, Sendable, Hashable {
-    var app: String
-    var runtime: String
+    var app: String?
+    var runtime: String?
+    var integrationId: String?
     var returnUrl: String?
 
     enum CodingKeys: String, CodingKey {
         case app, runtime
+        case integrationId = "integration_id"
         case returnUrl = "return_url"
     }
 }
@@ -142,11 +161,12 @@ public struct AppConnectionsAPI: Sendable {
         self.defaultRuntime = defaultRuntime
     }
 
-    /// List connections: the caller's own, unless an administrator names another member.
+    /// List connections: the caller's own, unless an administrator names another member. `search` keeps the
+    /// accounts whose name, such as an email, contains it.
     public func list(
-        memberId: String? = nil, app: String? = nil, limit: Int? = nil, next: String? = nil
+        memberId: String? = nil, app: String? = nil, search: String? = nil, limit: Int? = nil, next: String? = nil
     ) -> Paginator<AppConnection> {
-        list(AppConnectionListParams(memberId: memberId, app: app, limit: limit, next: next))
+        list(AppConnectionListParams(memberId: memberId, app: app, search: search, limit: limit, next: next))
     }
 
     /// List connections matching `params`.
@@ -155,8 +175,10 @@ public struct AppConnectionsAPI: Sendable {
         query.add("member_id", params.memberId)
         query.add("app", params.app)
         query.add("connector_id", params.connectorId)
+        query.add("integration_id", params.integrationId)
         query.add("subject_type", params.subjectType)
         query.add("peering", params.peering)
+        query.add("search", params.search)
         query.add("limit", params.limit)
         return http.paginate("/v1/connections", query: query, start: params.next)
     }
@@ -178,6 +200,17 @@ public struct AppConnectionsAPI: Sendable {
         }
         return try await http.json(
             "POST", "/v1/connections", body: .encode(AppConnectionCreate(app: app, runtime: runtime, returnUrl: returnURL?.absoluteString)))
+    }
+
+    /// A connect page for the caller's own account through an organization integration (Google Workspace,
+    /// Microsoft 365), connected once for every project that allows the integration's type.
+    /// - Parameters:
+    ///   - integrationId: The organization integration.
+    ///   - returnURL: The app's own link the page ends on, as for ``create(app:runtime:returnURL:)``.
+    public func create(integration integrationId: String, returnURL: URL? = nil) async throws -> ConnectPage {
+        try await http.json(
+            "POST", "/v1/connections",
+            body: .encode(AppConnectionCreate(integrationId: integrationId, returnUrl: returnURL?.absoluteString)))
     }
 
     /// Read one connection.

@@ -12,6 +12,8 @@ public struct Organization: Codable, Sendable, Hashable {
     public var hostedGit: Bool?
     /// How members sign in and who can be invited; present only with Enterprise sign-in.
     public var signIn: SignInSettings?
+    /// Whether the subscription is paid and grants the organization's roles their full scopes.
+    public var subscriptionLive: Bool?
 
     public init(
         id: String, name: String? = nil, slug: String? = nil, externalOrgId: String? = nil, imageUrl: String? = nil, hostedGit: Bool? = nil
@@ -30,6 +32,7 @@ public struct Organization: Codable, Sendable, Hashable {
         case imageUrl = "image_url"
         case hostedGit = "hosted_git"
         case signIn = "sign_in"
+        case subscriptionLive = "subscription_live"
     }
 }
 
@@ -90,6 +93,8 @@ public struct Project: Codable, Sendable, Hashable {
     public var createdByMemberId: String?
     /// The prefixes of the project's display IDs, such as `I` in `I-7`. Nil from a server that predates them.
     public var displayIdPrefixes: DisplayIdPrefixes?
+    /// The integration types whose members' own connections this project's agents may use.
+    public var connectionIntegrations: [IntegrationType]?
 
     public init(
         id: String, orgId: String? = nil, deploymentId: String? = nil, name: String? = nil, slug: String? = nil,
@@ -111,6 +116,7 @@ public struct Project: Codable, Sendable, Hashable {
         case deploymentId = "deployment_id"
         case createdByMemberId = "created_by_member_id"
         case displayIdPrefixes = "display_id_prefixes"
+        case connectionIntegrations = "connection_integrations"
     }
 }
 
@@ -163,26 +169,23 @@ public struct ProjectCreate: Encodable, Sendable, Hashable {
     public var includeArk: Bool?
     /// The display ID prefixes; one left nil takes the server default.
     public var displayIdPrefixes: DisplayIdPrefixes?
+    /// The integration types whose members' own connections the project's agents may use; none by default.
+    public var connectionIntegrations: [IntegrationType]?
 
     public init(
         name: String, deploymentId: String, slug: String? = nil, description: String? = nil, settings: JSONObject? = nil,
-        includeArk: Bool? = nil
+        includeArk: Bool? = nil, displayIdPrefixes: DisplayIdPrefixes? = nil, connectionIntegrations: [IntegrationType]? = nil
     ) {
+        // jscpd:ignore-start: memberwise init of a public type; the assignments cannot be shared
         self.name = name
         self.deploymentId = deploymentId
         self.slug = slug
         self.description = description
         self.settings = settings
         self.includeArk = includeArk
-    }
-
-    /// A project with its own display ID prefixes.
-    public init(
-        name: String, deploymentId: String, slug: String? = nil, description: String? = nil, settings: JSONObject? = nil,
-        includeArk: Bool? = nil, displayIdPrefixes: DisplayIdPrefixes
-    ) {
-        self.init(name: name, deploymentId: deploymentId, slug: slug, description: description, settings: settings, includeArk: includeArk)
         self.displayIdPrefixes = displayIdPrefixes
+        self.connectionIntegrations = connectionIntegrations
+        // jscpd:ignore-end
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -190,6 +193,7 @@ public struct ProjectCreate: Encodable, Sendable, Hashable {
         case deploymentId = "deployment_id"
         case includeArk = "include_ark"
         case displayIdPrefixes = "display_id_prefixes"
+        case connectionIntegrations = "connection_integrations"
     }
 }
 
@@ -200,24 +204,24 @@ public struct ProjectUpdate: Encodable, Sendable, Hashable {
     public var settings: JSONObject?
     /// The prefixes to change; one left nil keeps its current value.
     public var displayIdPrefixes: DisplayIdPrefixes?
+    /// The integration types whose members' own connections the project's agents may use; `[]` allows none.
+    public var connectionIntegrations: [IntegrationType]?
 
-    public init(name: String? = nil, description: String? = nil, settings: JSONObject? = nil) {
+    public init(
+        name: String? = nil, description: String? = nil, settings: JSONObject? = nil, displayIdPrefixes: DisplayIdPrefixes? = nil,
+        connectionIntegrations: [IntegrationType]? = nil
+    ) {
         self.name = name
         self.description = description
         self.settings = settings
-    }
-
-    /// An update that also changes display ID prefixes.
-    public init(
-        name: String? = nil, description: String? = nil, settings: JSONObject? = nil, displayIdPrefixes: DisplayIdPrefixes
-    ) {
-        self.init(name: name, description: description, settings: settings)
         self.displayIdPrefixes = displayIdPrefixes
+        self.connectionIntegrations = connectionIntegrations
     }
 
     private enum CodingKeys: String, CodingKey {
         case name, description, settings
         case displayIdPrefixes = "display_id_prefixes"
+        case connectionIntegrations = "connection_integrations"
     }
 }
 
