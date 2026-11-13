@@ -390,6 +390,9 @@ extension Walk {
               ],
               "task_id" : "[uuid]",
               "trigger_type" : "manual",
+              "triggers" : [
+
+              ],
               "updated_at" : "[timestamp]"
             }
             """#

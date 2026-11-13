@@ -172,6 +172,46 @@ for comment in issue.comments ?? [] { print(comment.memberId ?? "", comment.comm
 let inbox = try await runner.issues.list(IssueListParams(relation: [.assignee, .reviewer])).collect()
 ```
 
+### Routine triggers
+
+A routine runs on its schedule, by hand, or when an event arrives. To start
+one from your own systems, create a `webhook` connector: its secret is
+returned once, in the create response (`rotateSigningSecret` in a
+`ConnectorUpdate` issues a new one the same way), and your systems post to
+`/v1/webhooks/connectors/{id}` signed with it.
+
+```swift
+let hook = try await client.connectors.create(.webhook(name: "CI alerts", slug: "ci-alerts"))
+let secret = hook.signingSecret  // store it now: no read returns it
+```
+
+A trigger names the connector by slug. Its `parameters` read named values
+out of the event's body by JSON pointer, and each `@parameters.<name>` in
+the prompt is replaced by its value as JSON (`null` when absent):
+
+```swift
+let routine = try await client.routines.create(
+    RoutineCreate(
+        name: "Triage failed deploys", triggerType: .manual,
+        prompt: "Deploy @parameters.deploy_id of @parameters.service failed. Find out why.",
+        runtimeGroupId: runtimeGroupId,
+        triggers: [
+            .connector(
+                "ci-alerts", eventTypes: ["deploy.failed"],
+                filter: RoutineTriggerFilter(payloadFields: ["environment": ["production"]]),
+                parameters: ["deploy_id": "/data/id", "service": "/data/service"])
+        ]))
+```
+
+A manual run takes its parameters as a JSON object, under the same contract:
+
+```swift
+let run = try await client.routines.trigger(routine.id, parameters: ["deploy_id": "dep_42", "service": "billing"])
+```
+
+`RoutineUpdate(triggers:)` replaces the routine's triggers: keep one with
+`RoutineTriggerSpec(keeping:)`, and `[]` removes them all.
+
 ## End users signed in with Introspection
 
 An app whose users sign in with the platform's own email code needs no identity

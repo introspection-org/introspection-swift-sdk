@@ -609,9 +609,11 @@ public struct RoutineTriggeredPayload: Codable, Sendable, Hashable {
     public var runtimeGroupId: String?
     /// The person who triggered it by hand.
     public var triggeredByMemberId: String?
+    /// The event trigger and delivery it answered; nil for a scheduled or hand trigger.
+    public var event: RoutineTriggerEventRef?
 
     private enum CodingKeys: String, CodingKey {
-        case prompt, slot, posted
+        case prompt, slot, posted, event
         case routineId = "routine_id"
         case routineName = "routine_name"
         case triggerType = "trigger_type"
@@ -622,17 +624,20 @@ public struct RoutineTriggeredPayload: Codable, Sendable, Hashable {
     }
 }
 
-/// One scheduled routine trigger that ran nothing.
+/// One scheduled slot or event delivery of a routine that ran nothing.
 public struct RoutineSkippedPayload: Codable, Sendable, Hashable {
     public var routineId: String?
     public var triggerType: RoutineTriggerType?
+    /// The scheduled slot skipped; nil for a skipped event delivery.
     public var slot: Date?
     /// Set only when the routine targets an existing task.
     public var taskId: String?
     public var reason: RoutineSkipReason?
+    /// The event trigger and delivery skipped, such as one that arrived while the trigger was busy.
+    public var event: RoutineTriggerEventRef?
 
     private enum CodingKeys: String, CodingKey {
-        case slot, reason
+        case slot, reason, event
         case routineId = "routine_id"
         case triggerType = "trigger_type"
         case taskId = "task_id"

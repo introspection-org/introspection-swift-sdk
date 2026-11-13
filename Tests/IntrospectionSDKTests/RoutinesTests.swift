@@ -181,6 +181,7 @@ private let routineJSON = #"""
 
         let triggered = try await api.trigger("a/1")
         #expect(transport.last?.request.url.absoluteString == "https://dp.test/v1/routines/a%2F1/trigger")
+        #expect(transport.last?.request.body == nil, "a trigger without parameters sends no body")
         #expect(triggered.status == .triggered)
         #expect(triggered.taskId == "t-9")
         #expect(triggered.reason == nil)
@@ -198,13 +199,15 @@ private let routineJSON = #"""
 
     @Test func handTriggerOfASynthesisReportsWhatItQueued() async throws {
         let body = #"""
-            {"status":"triggered","routine_id":"a1","task_id":null,"reason":null,"run_id":null,"enqueued":1,
-             "conversations":[{"conversation_id":"conv-1","completed_at":"2026-10-05T09:00:00Z"}]}
+            {"status":"triggered","routine_id":"a1","task_id":null,"run_id":null,"reason":null,
+             "result":{"enqueued":1,"conversations":[{"conversation_id":"conv-1","completed_at":"2026-10-05T09:00:00Z"}]}}
             """#
         #expect(try StrictSchema.unmodelled(RoutineTriggerResponse.self, in: Data(body.utf8)).isEmpty)
         let transport = MockTransport(status: 202, json: body)
-        let triggered = try await makeClient(transport).routines.trigger("a1")
+        let triggered = try await makeClient(transport).routines.trigger("a1", parameters: ["conversation_ids": ["conv-1"]])
+        #expect(transport.last?.json == ["parameters": ["conversation_ids": ["conv-1"]]])
         #expect(triggered.runId == nil)
+        #expect(triggered.result?["enqueued"] == 1)
         #expect(triggered.enqueued == 1)
         #expect(triggered.conversations?.first?.conversationId == "conv-1")
         #expect(triggered.conversations?.first?.completedAt == ISO8601.parse("2026-10-05T09:00:00Z"))

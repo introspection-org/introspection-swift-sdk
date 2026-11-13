@@ -77,6 +77,8 @@ public struct RoutineSkipReason: RawRepresentable, Codable, Sendable, Hashable, 
     public static let targetTaskRefused: RoutineSkipReason = "target_task_refused"
     /// The target task stayed mid-turn through every retry.
     public static let targetBusy: RoutineSkipReason = "target_busy"
+    /// An event arrived while the trigger's previous run was still in flight.
+    public static let triggerBusy: RoutineSkipReason = "trigger_busy"
 }
 
 // MARK: Metadata
@@ -179,6 +181,8 @@ public struct Routine: Codable, Sendable, Hashable {
     public let canManage: Bool?
     /// `operator` for one that runs as a task (a prompt routine or `projectCheckIn`), nil otherwise.
     public let ownerRole: String?
+    /// Events that start a run, beside the schedule and a hand trigger.
+    public let triggers: [RoutineTrigger]?
     public let createdAt: Date?
     public let updatedAt: Date?
 
@@ -198,6 +202,7 @@ public struct Routine: Codable, Sendable, Hashable {
         case executionBlockedReason = "execution_blocked_reason"
         case canManage = "can_manage"
         case ownerRole = "owner_role"
+        case triggers
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
@@ -228,6 +233,8 @@ public struct RoutineCreate: Encodable, Sendable, Hashable {
     /// Build with `RoutineMetadata.jsonObject()`.
     public var metadata: JSONObject?
     public var enabled: Bool?
+    /// Up to 20 event triggers, none with an `id`; a prompt routine that starts a task per run only.
+    public var triggers: [RoutineTriggerSpec]?
 
     enum CodingKeys: String, CodingKey {
         case name
@@ -238,7 +245,7 @@ public struct RoutineCreate: Encodable, Sendable, Hashable {
         case runtimeGroupId = "runtime_group_id"
         case taskId = "task_id"
         case nextTriggerAt = "next_trigger_at"
-        case metadata, enabled
+        case metadata, enabled, triggers
     }
 
     public init(
@@ -252,7 +259,8 @@ public struct RoutineCreate: Encodable, Sendable, Hashable {
         taskId: String? = nil,
         nextTriggerAt: Date? = nil,
         metadata: JSONObject? = nil,
-        enabled: Bool? = nil
+        enabled: Bool? = nil,
+        triggers: [RoutineTriggerSpec]? = nil
     ) {
         self.name = name
         self.triggerType = triggerType
@@ -265,11 +273,13 @@ public struct RoutineCreate: Encodable, Sendable, Hashable {
         self.nextTriggerAt = nextTriggerAt
         self.metadata = metadata
         self.enabled = enabled
+        self.triggers = triggers
     }
 }
 
 /// Body of `PATCH /v1/routines/{id}`. Only set fields are sent and nil leaves a field as it is,
-/// so nothing can be cleared. `kind` and `trigger_type` are immutable; `metadata` replaces wholesale.
+/// so nothing can be cleared except `triggers`, which `[]` empties. `kind` and `trigger_type` are immutable;
+/// `metadata` replaces wholesale.
 public struct RoutineUpdate: Encodable, Sendable, Hashable {
     public var name: String?
     public var description: String?
@@ -283,6 +293,9 @@ public struct RoutineUpdate: Encodable, Sendable, Hashable {
     public var metadata: JSONObject?
     /// `false` pauses and keeps the slot.
     public var enabled: Bool?
+    /// Replaces the routine's triggers: an entry with an `id` keeps that trigger (see
+    /// `RoutineTriggerSpec(keeping:)`), one without is new, and every trigger left out is removed.
+    public var triggers: [RoutineTriggerSpec]?
 
     enum CodingKeys: String, CodingKey {
         case name, description
@@ -291,7 +304,7 @@ public struct RoutineUpdate: Encodable, Sendable, Hashable {
         case runtimeGroupId = "runtime_group_id"
         case taskId = "task_id"
         case nextTriggerAt = "next_trigger_at"
-        case metadata, enabled
+        case metadata, enabled, triggers
     }
 
     public init(
@@ -303,7 +316,8 @@ public struct RoutineUpdate: Encodable, Sendable, Hashable {
         taskId: String? = nil,
         nextTriggerAt: Date? = nil,
         metadata: JSONObject? = nil,
-        enabled: Bool? = nil
+        enabled: Bool? = nil,
+        triggers: [RoutineTriggerSpec]? = nil
     ) {
         self.name = name
         self.description = description
@@ -314,6 +328,7 @@ public struct RoutineUpdate: Encodable, Sendable, Hashable {
         self.nextTriggerAt = nextTriggerAt
         self.metadata = metadata
         self.enabled = enabled
+        self.triggers = triggers
     }
 }
 
@@ -363,12 +378,11 @@ public struct RoutineTriggerResponse: Codable, Sendable, Hashable {
     public let routineId: String?
     public let taskId: String?
     public let reason: String?
-    /// `observation_clustering` only: the run its `introspection.observation_clustering.run` events carry.
+    /// The run this trigger started, when it has one, such as the run an `observation_clustering` routine's
+    /// `introspection.observation_clustering.run` events carry.
     public let runId: String?
-    /// `observation_synthesis` only: how many conversations went to the synthesis queue.
-    public let enqueued: Int?
-    /// `observation_synthesis` with named conversations only: what was queued, per conversation.
-    public let conversations: [EnqueuedConversation]?
+    /// What the run reports, by kind; read `observation_synthesis`'s with `enqueued` and `conversations`.
+    public let result: JSONObject?
 
     enum CodingKeys: String, CodingKey {
         case status
@@ -376,8 +390,17 @@ public struct RoutineTriggerResponse: Codable, Sendable, Hashable {
         case taskId = "task_id"
         case reason
         case runId = "run_id"
-        case enqueued
-        case conversations
+        case result
+    }
+
+    /// `observation_synthesis` only: how many conversations went to the synthesis queue (`result.enqueued`).
+    public var enqueued: Int? { result?["enqueued"]?.intValue }
+
+    /// `observation_synthesis` with named conversations only: what was queued, per conversation
+    /// (`result.conversations`).
+    public var conversations: [EnqueuedConversation]? {
+        guard let value = result?["conversations"] else { return nil }
+        return try? value.decode([EnqueuedConversation].self)
     }
 }
 
@@ -431,8 +454,14 @@ public struct RoutinesAPI: Sendable {
 
     /// Run a routine now: `POST /v1/routines/{id}/trigger`. Returns `202` with the task it
     /// created or posted into; neither reads nor clears a scheduled slot.
-    public func trigger(_ routineId: String) async throws -> RoutineTriggerResponse {
-        try await http.json("POST", "/v1/routines/\(pathSegment(routineId))/trigger", as: RoutineTriggerResponse.self)
+    ///
+    /// A prompt routine's run receives `parameters` as `parameters.json` and as `@parameters.<name>` in its prompt;
+    /// a platform routine reads the keys its kind defines (`observation_synthesis`: `conversation_ids`). At most
+    /// 16 KiB as JSON and 8 levels deep, or the server answers 422.
+    public func trigger(_ routineId: String, parameters: JSONObject? = nil) async throws -> RoutineTriggerResponse {
+        var body = RequestBody.none
+        if let parameters { body = try .encode(RoutineTriggerRequest(parameters: parameters)) }
+        return try await http.json("POST", "/v1/routines/\(pathSegment(routineId))/trigger", body: body, as: RoutineTriggerResponse.self)
     }
 }
 

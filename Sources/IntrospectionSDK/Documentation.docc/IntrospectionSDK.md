@@ -116,6 +116,13 @@ trigger is recorded as an ``IntrospectionEventName/routineTriggered`` or ``Intro
 event, read through ``EventsAPI`` with the `routineId` and `taskId` filters.
 ``RoutineListParams/taskId`` lists the routines that post into one task.
 
+A routine can also start a run on an event: ``RoutineCreate/triggers`` lists ``RoutineTriggerSpec``s on an
+integration (Slack, GitHub) or on a project connector by slug, such as a `webhook` connector made with
+``ConnectorCreate/webhook(name:slug:webhookAuth:environment:)``. A trigger's `parameters` read named values out of the
+event's body by JSON pointer, and ``RoutinesAPI/trigger(_:parameters:)`` passes a manual run's parameters; either way
+the prompt's `@parameters.<name>` references are replaced by their values. ``RoutineUpdate/triggers`` replaces the list,
+keeping each entry that names an `id` (``RoutineTriggerSpec/init(keeping:)``).
+
 The server serves these routes to administrators only today; introspection-cloud#3137 opens them to members for
 their own task-targeted routines.
 
@@ -125,6 +132,15 @@ their own task-targeted routines.
 - ``RoutineUpdate``
 - ``RoutineListParams``
 - ``RoutineTriggerResponse``
+- ``RoutineTrigger``
+- ``RoutineTriggerSpec``
+- ``RoutineTriggerFilter``
+- ``RoutineTriggerSource``
+- ``RoutineTriggerProvider``
+- ``RoutineTriggerEventType``
+- ``RoutineTriggerEventRef``
+- ``RoutineRunSource``
+- ``RoutineTaskMetadataKeys``
 - ``RoutineTriggeredPayload``
 - ``RoutineSkippedPayload``
 
