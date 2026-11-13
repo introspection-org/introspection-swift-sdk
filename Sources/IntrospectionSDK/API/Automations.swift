@@ -363,12 +363,33 @@ public struct AutomationTriggerResponse: Codable, Sendable, Hashable {
     public let automationId: String?
     public let taskId: String?
     public let reason: String?
+    /// `observation_clustering` only: the run its `introspection.observation_clustering.run` events carry.
+    public let runId: String?
+    /// `observation_synthesis` only: how many conversations went to the synthesis queue.
+    public let enqueued: Int?
+    /// `observation_synthesis` with named conversations only: what was queued, per conversation.
+    public let conversations: [EnqueuedConversation]?
 
     enum CodingKeys: String, CodingKey {
         case status
         case automationId = "automation_id"
         case taskId = "task_id"
         case reason
+        case runId = "run_id"
+        case enqueued
+        case conversations
+    }
+}
+
+/// A conversation a synthesis trigger queued, and the end it queued it at.
+public struct EnqueuedConversation: Codable, Sendable, Hashable {
+    public let conversationId: String?
+    /// The trigger is answered once a synthesis event's `conversation_completed_at` is at or after this.
+    public let completedAt: Date?
+
+    enum CodingKeys: String, CodingKey {
+        case conversationId = "conversation_id"
+        case completedAt = "completed_at"
     }
 }
 

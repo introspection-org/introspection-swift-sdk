@@ -69,6 +69,12 @@ enum WALK {
         "variables:delete", "judges:read", "judges:write", "telemetry:write",
     ]
 
+    /// The scopes a development key allowed `runtimes` holds that an SDK runner relies on.
+    static let apiKeyScopes = [
+        "telemetry:write", "projects:read", "runtimes:read", "runtimes:write", "tasks:read", "tasks:write",
+        "files:read", "files:write", "conversations:read",
+    ]
+
     /// The scripted model's directive, byte for byte the JSON the JS walk sends (`JSON.stringify` key order).
     static let scriptedDirective =
         #"<<SCRIPT {"reply":"Echoed the message through hello-mcp and wrote it to the outputs file.","#
@@ -282,6 +288,21 @@ extension Walk {
         try check([nil, defaults].contains(project.displayIdPrefixes), "the project's display ID prefixes are the defaults")
         try check([nil, []].contains(project.connectionIntegrations), "the project allows no member connections")
         return try stable(project, removing: keys + ["display_id_prefixes", "connection_integrations"])
+    }
+
+    /// A connector's OAuth metadata gained the provider's revocation endpoint after the recording: absent on replay,
+    /// a URL live when the provider advertises one. The snapshot leaves it out.
+    func stableConnector(_ connector: Connector) throws -> JSONValue {
+        var pinned = connector
+        if var oauth = pinned.metadata?["oauth"]?.objectValue {
+            if let revocation = oauth.removeValue(forKey: "revocation_endpoint"), revocation != .null {
+                try check(
+                    revocation.stringValue.flatMap(URL.init(string:))?.scheme?.hasPrefix("http") == true,
+                    "the revocation endpoint is a URL: \(revocation)")
+            }
+            pinned.metadata?["oauth"] = .object(oauth)
+        }
+        return try stable(pinned)
     }
 
     /// The project's grant on the walk's connector. Its runtime group and token expiry postdate the recording:
