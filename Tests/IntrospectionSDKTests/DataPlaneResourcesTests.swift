@@ -16,7 +16,7 @@ private func driveEveryNamespace(_ resources: some DataPlaneResources, _ transpo
     _ = try? await resources.events.get("e1")
     _ = try? await resources.metrics.query(MetricQueryRequest(view: .spans, metrics: [.count], from: date, to: date))
     _ = try? await resources.shares.get("s1")
-    _ = try? await resources.automations.get("a1")
+    _ = try? await resources.routines.get("a1")
     _ = try? await resources.connections.get("c1")
     _ = try? await resources.images.get("i1")
     return transport.requests.map { "\($0.request.method) \($0.path)" }
@@ -24,7 +24,7 @@ private func driveEveryNamespace(_ resources: some DataPlaneResources, _ transpo
 
 private let everyNamespace = [
     "GET /v1/tasks/t1", "GET /v1/tasks/t1/runs/r1", "GET /v1/files/f1", "GET /v1/conversations/c1", "GET /v1/events/e1",
-    "POST /v1/metrics", "GET /v1/shares/s1", "GET /v1/automations/a1",
+    "POST /v1/metrics", "GET /v1/shares/s1", "GET /v1/routines/a1",
     "GET /v1/connections/c1", "GET /v1/images/i1",
 ]
 
@@ -53,13 +53,13 @@ private let everyNamespace = [
         #expect(transport.requests.allSatisfy { $0.request.headers["Authorization"] == "Bearer session-token" })
     }
 
-    @Test func theRunnerExposesAutomations() async throws {
+    @Test func theRunnerExposesRoutines() async throws {
         let transport = MockTransport(json: #"{"records": [], "count": 0}"#)
         let runner = try Runner(
             spec: RunnerSpec(sessionId: "s", deployment: RunnerDeployment(endpoint: "https://dp-runner.test"), sessionToken: "tok"),
             transport: transport)
-        _ = try await runner.automations.list(AutomationListParams(taskId: "t1")).firstPage()
-        #expect(transport.last?.request.url.absoluteString == "https://dp-runner.test/v1/automations?task_id=t1")
+        _ = try await runner.routines.list(RoutineListParams(taskId: "t1")).firstPage()
+        #expect(transport.last?.request.url.absoluteString == "https://dp-runner.test/v1/routines?task_id=t1")
         #expect(transport.last?.request.headers["Authorization"] == "Bearer tok")
     }
 }

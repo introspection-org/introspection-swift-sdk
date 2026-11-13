@@ -108,25 +108,25 @@ Written by the opt-in `IntrospectionTelemetry` product; read here.
 - ``EventListParams/names``
 - ``LogAttributes``
 
-### Automations
+### Routines
 
-Scheduled prompts and platform work. A one-off reminder is a ``AutomationTriggerType/manual`` automation with a future
-``AutomationCreate/nextTriggerAt``; set ``AutomationCreate/taskId`` to post each firing into an existing task. Each
-trigger is recorded as an ``IntrospectionEventName/automationTriggered`` or ``IntrospectionEventName/automationSkipped``
-event, read through ``EventsAPI`` with the `automationId` and `taskId` filters.
-``AutomationListParams/taskId`` lists the automations that post into one task.
+Scheduled prompts and platform work. A one-off reminder is a ``RoutineTriggerType/manual`` routine with a future
+``RoutineCreate/nextTriggerAt``; set ``RoutineCreate/taskId`` to post each firing into an existing task. Each
+trigger is recorded as an ``IntrospectionEventName/routineTriggered`` or ``IntrospectionEventName/routineSkipped``
+event, read through ``EventsAPI`` with the `routineId` and `taskId` filters.
+``RoutineListParams/taskId`` lists the routines that post into one task.
 
 The server serves these routes to administrators only today; introspection-cloud#3137 opens them to members for
-their own task-targeted automations.
+their own task-targeted routines.
 
-- ``AutomationsAPI``
-- ``Automation``
-- ``AutomationCreate``
-- ``AutomationUpdate``
-- ``AutomationListParams``
-- ``AutomationTriggerResponse``
-- ``AutomationTriggeredPayload``
-- ``AutomationSkippedPayload``
+- ``RoutinesAPI``
+- ``Routine``
+- ``RoutineCreate``
+- ``RoutineUpdate``
+- ``RoutineListParams``
+- ``RoutineTriggerResponse``
+- ``RoutineTriggeredPayload``
+- ``RoutineSkippedPayload``
 
 ### Issues
 

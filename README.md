@@ -63,7 +63,7 @@ passes `traits: ["Telemetry"]`, and add that package to the app.
 
 | Product | Module | Contains |
 | --- | --- | --- |
-| `IntrospectionSDK` | `IntrospectionSDK` | The client: sign-in, runtimes and runners, tasks and run streams, files, conversations, events (including reading custom events back), metrics, automations, and the Control Plane resources. No OpenTelemetry dependency. |
+| `IntrospectionSDK` | `IntrospectionSDK` | The client: sign-in, runtimes and runners, tasks and run streams, files, conversations, events (including reading custom events back), metrics, routines, and the Control Plane resources. No OpenTelemetry dependency. |
 | `IntrospectionTelemetry` | `IntrospectionTelemetry` | Opt-in, needs the `Telemetry` trait. Custom events (`logEvent`, `track`, `feedback`, `identify`) and gen_ai traces over OTLP/HTTP, on the [OpenTelemetry Swift SDK](https://github.com/open-telemetry/opentelemetry-swift). |
 
 | Trait | Adds |
@@ -97,7 +97,7 @@ print(try await followUp.text())
 ```
 
 The runner and the client expose the same Data Plane resources (`DataPlaneResources`):
-`tasks`, `files`, `conversations`, `events`, `metrics`, `shares`, `automations`
+`tasks`, `files`, `conversations`, `events`, `metrics`, `shares`, `routines`
 and `connections`, plus `issues` and `images` on any `DataPlaneConnection`.
 
 ### Member tags and metadata

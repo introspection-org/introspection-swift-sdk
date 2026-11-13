@@ -13,7 +13,7 @@ public protocol DataPlaneConnection: Sendable {
 ///
 /// The Control Plane (identity, organizations, projects, runtimes,
 /// connectors) and the Data Plane (tasks, runs, files, conversations, events,
-/// automations) are separate hosts with separate credentials:
+/// routines) are separate hosts with separate credentials:
 ///
 /// ```swift
 /// let client = IntrospectionClient(
