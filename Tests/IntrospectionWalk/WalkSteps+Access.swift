@@ -200,9 +200,15 @@ extension Walk {
         _ = try await sa.apiKeys.update(apiKey.key.id, ApiKeyUpdate(name: "\(WALK.apiKeyName) (renamed)"), project: project.id)
         _ = try await sa.apiKeys.acknowledge(apiKey.key.id, project: project.id)
         // The organisation's name and slug are whoever is running the walk, and whether its subscription is paid
-        // depends on its plan (and postdates the recording).
+        // depends on its plan (and postdates the recording). Its sign-in settings postdate the recording too:
+        // absent on replay, the server defaults live.
         try check(org.slug?.isEmpty == false, "the organisation has a slug")
-        snap(try stable(org, removing: ["name", "slug", "subscription_live"])) {
+        if let signIn = org.signIn {
+            try check(
+                signIn.passkeyRequirement == .off && signIn.restrictInvitesToDomains == false,
+                "a new organisation signs in with the server defaults: \(signIn)")
+        }
+        snap(try stable(org, removing: ["name", "slug", "subscription_live", "sign_in"])) {
             """
             {
               "external_org_id" : "[id]",
