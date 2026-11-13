@@ -1,7 +1,7 @@
 import Foundation
 import IntrospectionSDK
 
-// Steps 13–16: telemetry reads, the eval and its experiment, sandbox commands, automations.
+// Steps 13–16: telemetry reads, the eval and its experiment, sandbox commands, routines.
 extension Walk {
     func step13TelemetryReads() async throws {
         // A fixed window, so the request replays; the walk's conversation is within it by construction.
@@ -364,14 +364,14 @@ extension Walk {
         if settings.agent != "scripted" { try check(!judgements.isEmpty, "the recipe's judge graded the trial") }
     }
 
-    func step16Automations() async throws {
-        // An automation its owner creates posts into that owner's own task; the first task was archived and
+    func step16Routines() async throws {
+        // A routine its owner creates posts into that owner's own task; the first task was archived and
         // unarchived, which the trigger still refuses, so the trial is the one it posts into.
-        automation = try await sa.automations.create(
-            AutomationCreate(
-                name: WALK.automationName, triggerType: .manual, prompt: WALK.secondTurn(settings), runtimeGroupId: runtime.runtimeGroupId,
+        routine = try await sa.routines.create(
+            RoutineCreate(
+                name: WALK.routineName, triggerType: .manual, prompt: WALK.secondTurn(settings), runtimeGroupId: runtime.runtimeGroupId,
                 taskId: evalTask.id))
-        snap(try stable(automation)) {
+        snap(try stable(routine)) {
             #"""
             {
               "can_manage" : true,
@@ -379,7 +379,7 @@ extension Walk {
               "created_by_member_id" : "[uuid]",
               "enabled" : true,
               "id" : "[uuid]",
-              "name" : "The walk's automation",
+              "name" : "The walk's routine",
               "org_id" : "[uuid]",
               "owner_role" : "operator",
               "project_id" : "[uuid]",
@@ -390,23 +390,26 @@ extension Walk {
               ],
               "task_id" : "[uuid]",
               "trigger_type" : "manual",
+              "triggers" : [
+
+              ],
               "updated_at" : "[timestamp]"
             }
             """#
         }
-        let triggered = try await sa.automations.trigger(automation.id)
+        let triggered = try await sa.routines.trigger(routine.id)
         snap(try stable(triggered)) {
             """
             {
-              "automation_id" : "[uuid]",
+              "routine_id" : "[uuid]",
               "status" : "triggered",
               "task_id" : "[uuid]"
             }
             """
         }
-        _ = try await sa.automations.get(automation.id)
-        _ = try await sa.automations.update(automation.id, AutomationUpdate(description: "triggered once by the walk"))
-        let listed = try await sa.automations.list().all()
-        try check(listed.contains { $0.id == automation.id }, "the automation is listed")
+        _ = try await sa.routines.get(routine.id)
+        _ = try await sa.routines.update(routine.id, RoutineUpdate(description: "triggered once by the walk"))
+        let listed = try await sa.routines.list().all()
+        try check(listed.contains { $0.id == routine.id }, "the routine is listed")
     }
 }

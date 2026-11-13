@@ -20,15 +20,15 @@ public struct IntrospectionEventName: RawRepresentable, Codable, Sendable, Hasha
     public static let repositoryCreated = IntrospectionEventName(rawValue: PlatformEventNames.repositoryCreated)
     public static let repositoryPushed = IntrospectionEventName(rawValue: PlatformEventNames.repositoryPushed)
     public static let repositoryMerge = IntrospectionEventName(rawValue: PlatformEventNames.repositoryMerge)
-    public static let automationTriggered = IntrospectionEventName(rawValue: PlatformEventNames.automationTriggered)
+    public static let routineTriggered = IntrospectionEventName(rawValue: PlatformEventNames.routineTriggered)
     /// Project-owned: readable only with project-wide telemetry access.
-    public static let automationSkipped = IntrospectionEventName(rawValue: PlatformEventNames.automationSkipped)
+    public static let routineSkipped = IntrospectionEventName(rawValue: PlatformEventNames.routineSkipped)
     // jscpd:ignore-end
 
     /// Every family the platform serves, in its registry order.
     public static let allCases: [IntrospectionEventName] = [
         .annotation, .feedback, .observation, .observationClusteringRun, .judgement, .pattern, .patternAssignment, .track,
-        .issue, .repositoryCreated, .repositoryPushed, .repositoryMerge, .automationTriggered, .automationSkipped,
+        .issue, .repositoryCreated, .repositoryPushed, .repositoryMerge, .routineTriggered, .routineSkipped,
     ]
 }
 
@@ -130,10 +130,10 @@ public struct IntrospectionEvent: Codable, Sendable, Hashable {
     public var issue: IssueActivityPayload? { familyPayload(.issue) }
     /// The payload when this is an `introspection.track` row.
     public var track: TrackPayload? { familyPayload(.track) }
-    /// The payload when this is an `introspection.automation.triggered` row.
-    public var automationTriggered: AutomationTriggeredPayload? { familyPayload(.automationTriggered) }
-    /// The payload when this is an `introspection.automation.skipped` row.
-    public var automationSkipped: AutomationSkippedPayload? { familyPayload(.automationSkipped) }
+    /// The payload when this is an `introspection.routines.triggered` row.
+    public var routineTriggered: RoutineTriggeredPayload? { familyPayload(.routineTriggered) }
+    /// The payload when this is an `introspection.routines.skipped` row.
+    public var routineSkipped: RoutineSkippedPayload? { familyPayload(.routineSkipped) }
 }
 
 /// A resolved observation (supersession applied, current pattern assignment joined).
@@ -593,12 +593,12 @@ public struct TrackPayload: Codable, Sendable, Hashable {
     }
 }
 
-/// One automation trigger that ran.
-public struct AutomationTriggeredPayload: Codable, Sendable, Hashable {
-    public var automationId: String?
-    public var automationName: String?
+/// One routine trigger that ran.
+public struct RoutineTriggeredPayload: Codable, Sendable, Hashable {
+    public var routineId: String?
+    public var routineName: String?
     public var prompt: String?
-    public var triggerType: AutomationTriggerType?
+    public var triggerType: RoutineTriggerType?
     /// The `nextTriggerAt` a scheduled trigger claimed; nil for a hand trigger.
     public var slot: Date?
     /// The task created, or posted into when `posted` is true.
@@ -609,11 +609,13 @@ public struct AutomationTriggeredPayload: Codable, Sendable, Hashable {
     public var runtimeGroupId: String?
     /// The person who triggered it by hand.
     public var triggeredByMemberId: String?
+    /// The event trigger and delivery it answered; nil for a scheduled or hand trigger.
+    public var event: RoutineTriggerEventRef?
 
     private enum CodingKeys: String, CodingKey {
-        case prompt, slot, posted
-        case automationId = "automation_id"
-        case automationName = "automation_name"
+        case prompt, slot, posted, event
+        case routineId = "routine_id"
+        case routineName = "routine_name"
         case triggerType = "trigger_type"
         case taskId = "task_id"
         case memberId = "member_id"
@@ -622,18 +624,21 @@ public struct AutomationTriggeredPayload: Codable, Sendable, Hashable {
     }
 }
 
-/// One scheduled automation trigger that ran nothing.
-public struct AutomationSkippedPayload: Codable, Sendable, Hashable {
-    public var automationId: String?
-    public var triggerType: AutomationTriggerType?
+/// One scheduled slot or event delivery of a routine that ran nothing.
+public struct RoutineSkippedPayload: Codable, Sendable, Hashable {
+    public var routineId: String?
+    public var triggerType: RoutineTriggerType?
+    /// The scheduled slot skipped; nil for a skipped event delivery.
     public var slot: Date?
-    /// Set only when the automation targets an existing task.
+    /// Set only when the routine targets an existing task.
     public var taskId: String?
-    public var reason: AutomationSkipReason?
+    public var reason: RoutineSkipReason?
+    /// The event trigger and delivery skipped, such as one that arrived while the trigger was busy.
+    public var event: RoutineTriggerEventRef?
 
     private enum CodingKeys: String, CodingKey {
-        case slot, reason
-        case automationId = "automation_id"
+        case slot, reason, event
+        case routineId = "routine_id"
         case triggerType = "trigger_type"
         case taskId = "task_id"
     }
@@ -678,9 +683,9 @@ public struct EventListParams: Sendable, Hashable {
     public var judgeId: String?
     /// Issues: one issue's events.
     public var issueId: String?
-    /// Automation triggers and skips.
-    public var automationId: String?
-    /// Automation triggers and skips: the task created or posted into.
+    /// Routine triggers and skips.
+    public var routineId: String?
+    /// Routine triggers and skips: the task created or posted into.
     public var taskId: String?
     /// Custom events (``IntrospectionEventName/track``): exact logged names, sent as repeated `name` (max 20, each
     /// at most 256 characters). The server accepts it from introspection-cloud#3172.
@@ -696,7 +701,7 @@ public struct EventListParams: Sendable, Hashable {
         environment: String? = nil, runtimeGroupId: String? = nil, traceId: String? = nil, spanId: String? = nil,
         ownerKey: String? = nil, eventIds: [String]? = nil, runtimeGroupUnattributed: Bool? = nil,
         lens: String? = nil, patternId: String? = nil, includeSuperseded: Bool? = nil, status: String? = nil,
-        judgeId: String? = nil, issueId: String? = nil, automationId: String? = nil, taskId: String? = nil,
+        judgeId: String? = nil, issueId: String? = nil, routineId: String? = nil, taskId: String? = nil,
         names: [String]? = nil, latestRecords: Bool? = nil
     ) {
         self.eventName = eventName
@@ -723,7 +728,7 @@ public struct EventListParams: Sendable, Hashable {
         self.status = status
         self.judgeId = judgeId
         self.issueId = issueId
-        self.automationId = automationId
+        self.routineId = routineId
         self.taskId = taskId
         self.names = names
         self.latestRecords = latestRecords
@@ -751,7 +756,7 @@ public struct EventListParams: Sendable, Hashable {
         q.add("status", status)
         q.add("judge_id", judgeId)
         q.add("issue_id", issueId)
-        q.add("automation_id", automationId)
+        q.add("routine_id", routineId)
         q.add("task_id", taskId)
         q.add("name", names)
         q.add("latest", latestRecords)

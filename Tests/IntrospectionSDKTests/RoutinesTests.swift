@@ -3,7 +3,7 @@ import Testing
 
 @testable import IntrospectionSDK
 
-private let automationJSON = #"""
+private let routineJSON = #"""
     {
       "id": "0199a1b2-0000-7000-8000-000000000001",
       "org_id": "0199a1b2-0000-7000-8000-0000000000aa",
@@ -36,28 +36,28 @@ private let automationJSON = #"""
     }
     """#
 
-@Suite struct AutomationsTests {
-    @Test func decodesServerAutomation() throws {
-        let automation = try JSONCoding.decoder.decode(Automation.self, from: Data(automationJSON.utf8))
-        #expect(automation.name == "Weekly digest")
-        #expect(automation.triggerType == .cron)
-        #expect(automation.kind == nil)
-        #expect(automation.canManage == true)
-        #expect(automation.runtimeGroupId == "0199a1b2-0000-7000-8000-0000000000dd")
-        #expect(automation.taskId == "0199a1b2-0000-7000-8000-0000000000ee")
-        #expect(automation.createdByMemberId == "0199a1b2-0000-7000-8000-0000000000cc")
-        #expect(automation.ownerRole == "operator")
-        #expect(automation.tags == ["digest"])
-        #expect(automation.lastTriggeredAt == ISO8601.parse("2026-09-28T09:00:00Z"))
-        #expect(automation.nextTriggerAt == ISO8601.parse("2026-10-05T09:00:00.123Z"))
-        let metadata = try #require(automation.typedMetadata)
+@Suite struct RoutinesTests {
+    @Test func decodesServerRoutine() throws {
+        let routine = try JSONCoding.decoder.decode(Routine.self, from: Data(routineJSON.utf8))
+        #expect(routine.name == "Weekly digest")
+        #expect(routine.triggerType == .cron)
+        #expect(routine.kind == nil)
+        #expect(routine.canManage == true)
+        #expect(routine.runtimeGroupId == "0199a1b2-0000-7000-8000-0000000000dd")
+        #expect(routine.taskId == "0199a1b2-0000-7000-8000-0000000000ee")
+        #expect(routine.createdByMemberId == "0199a1b2-0000-7000-8000-0000000000cc")
+        #expect(routine.ownerRole == "operator")
+        #expect(routine.tags == ["digest"])
+        #expect(routine.lastTriggeredAt == ISO8601.parse("2026-09-28T09:00:00Z"))
+        #expect(routine.nextTriggerAt == ISO8601.parse("2026-10-05T09:00:00.123Z"))
+        let metadata = try #require(routine.typedMetadata)
         #expect(metadata.cronSchedules == ["0 9 * * 1", "0 17 * * 5"])
         #expect(metadata.timezone == "Europe/London")
-        #expect(metadata.repositories == [AutomationRepositoryRef(repo: "acme/app", ref: "main")])
+        #expect(metadata.repositories == [RoutineRepositoryRef(repo: "acme/app", ref: "main")])
         #expect(metadata.conditions?.map(\.type) == [.hasNewTasksSinceLastRun, "brand_new_condition"])
 
         let minimal = try JSONCoding.decoder.decode(
-            Automation.self, from: Data(#"{"id":"a","name":"n","trigger_type":"manual","kind":"observation_clustering"}"#.utf8))
+            Routine.self, from: Data(#"{"id":"a","name":"n","trigger_type":"manual","kind":"observation_clustering"}"#.utf8))
         #expect(minimal.kind == .observationClustering)
         #expect(minimal.metadata == nil)
         #expect(minimal.runtimeGroupId == nil)
@@ -68,32 +68,32 @@ private let automationJSON = #"""
     @Test func listEncodesFiltersAndPaginates() async throws {
         let transport = MockTransport { request, index in
             index == 0
-                ? .response(.json(#"{"records":[\#(automationJSON)],"count":1,"total_count":2,"next":"cur-2"}"#))
+                ? .response(.json(#"{"records":[\#(routineJSON)],"count":1,"total_count":2,"next":"cur-2"}"#))
                 : .response(.json(#"{"records":[{"id":"b","name":"second","trigger_type":"manual"}],"count":1,"next":null}"#))
         }
-        let all = try await makeClient(transport).automations
-            .list(AutomationListParams(limit: 1, kind: .observationSynthesis, enabled: true, scheduled: false))
+        let all = try await makeClient(transport).routines
+            .list(RoutineListParams(limit: 1, kind: .observationSynthesis, enabled: true, scheduled: false))
             .collect()
         #expect(all.map(\.name) == ["Weekly digest", "second"])
         #expect(transport.requests.count == 2)
         let first = transport.requests[0]
-        #expect(first.path == "/v1/automations")
+        #expect(first.path == "/v1/routines")
         #expect(first.query == ["limit": ["1"], "kind": ["observation_synthesis"], "enabled": ["true"], "scheduled": ["false"]])
         #expect(transport.requests[1].query["next"] == ["cur-2"])
     }
 
     @Test func listEncodesTaskId() {
-        #expect(AutomationListParams(taskId: "task-1").query.items == [URLQueryItem(name: "task_id", value: "task-1")])
-        #expect(AutomationListParams(kind: .projectCheckIn, taskId: "task-1").query.items.map(\.name) == ["kind", "task_id"])
+        #expect(RoutineListParams(taskId: "task-1").query.items == [URLQueryItem(name: "task_id", value: "task-1")])
+        #expect(RoutineListParams(kind: .projectCheckIn, taskId: "task-1").query.items.map(\.name) == ["kind", "task_id"])
     }
 
     @Test func listKeepsTaskIdOnEveryPage() async throws {
         let transport = MockTransport { _, index in
             index == 0
-                ? .response(.json(#"{"records":[\#(automationJSON)],"count":1,"next":"cur-2"}"#))
+                ? .response(.json(#"{"records":[\#(routineJSON)],"count":1,"next":"cur-2"}"#))
                 : .response(.json(#"{"records":[{"id":"b","name":"second","trigger_type":"manual"}],"count":1,"next":null}"#))
         }
-        let all = try await makeClient(transport).automations.list(AutomationListParams(taskId: "task-1")).collect()
+        let all = try await makeClient(transport).routines.list(RoutineListParams(taskId: "task-1")).collect()
         #expect(all.map(\.name) == ["Weekly digest", "second"])
         #expect(transport.requests.count == 2)
         #expect(transport.requests[0].query == ["task_id": ["task-1"]])
@@ -108,40 +108,40 @@ private let automationJSON = #"""
                   {"id":"b","name":"Later","trigger_type":"cron","kind":"not_yet_invented"}
                 ],"count":2,"next":null}
                 """#)
-        let all = try await makeClient(transport).automations.list().collect()
+        let all = try await makeClient(transport).routines.list().collect()
         #expect(all.compactMap(\.kind) == [.projectCheckIn, "not_yet_invented"])
         #expect(all[0].ownerRole == "operator")
     }
 
     @Test func createEncodesOnlySetFields() async throws {
-        let transport = MockTransport(status: 201, json: automationJSON)
-        let metadata = try AutomationMetadata(cronSchedules: ["0 9 * * 1"], timezone: "UTC").jsonObject()
-        let created = try await makeClient(transport).automations.create(
-            AutomationCreate(
+        let transport = MockTransport(status: 201, json: routineJSON)
+        let metadata = try RoutineMetadata(cronSchedules: ["0 9 * * 1"], timezone: "UTC").jsonObject()
+        let created = try await makeClient(transport).routines.create(
+            RoutineCreate(
                 name: "Weekly digest", triggerType: .cron, cronSchedule: "0 9 * * 1",
                 prompt: "Summarize my week", metadata: metadata
             ))
         #expect(created.name == "Weekly digest")
         #expect(transport.last?.request.method == "POST")
-        #expect(transport.last?.path == "/v1/automations")
+        #expect(transport.last?.path == "/v1/routines")
         #expect(
             transport.last?.json == [
                 "name": "Weekly digest", "trigger_type": "cron", "cron_schedule": "0 9 * * 1",
                 "prompt": "Summarize my week", "metadata": ["cron_schedules": ["0 9 * * 1"], "timezone": "UTC"],
             ])
 
-        _ = try await makeClient(transport).automations.create(
-            AutomationCreate(
+        _ = try await makeClient(transport).routines.create(
+            RoutineCreate(
                 name: "Nudge", triggerType: .manual, prompt: "Check in", enabled: false
             ))
         #expect(transport.last?.json == ["name": "Nudge", "trigger_type": "manual", "prompt": "Check in", "enabled": false])
     }
 
     @Test func createsAOneOffReminderIntoAnExistingTask() async throws {
-        let transport = MockTransport(status: 201, json: automationJSON)
+        let transport = MockTransport(status: 201, json: routineJSON)
         let slot = try #require(ISO8601.parse("2026-10-10T09:00:00Z"))
-        _ = try await makeClient(transport).automations.create(
-            AutomationCreate(
+        _ = try await makeClient(transport).routines.create(
+            RoutineCreate(
                 name: "Friday check-in", triggerType: .manual, prompt: "How did the week go?", runtimeGroupId: "rg-1",
                 taskId: "task-1", nextTriggerAt: slot
             ))
@@ -157,40 +157,41 @@ private let automationJSON = #"""
             switch (request.method, request.url.path) {
             case ("DELETE", _): return .response(HTTPResponse(status: 204, headers: [:], body: Data()))
             case ("POST", _):
-                return .response(.json(#"{"status":"triggered","automation_id":"a/1","task_id":"t-9","reason":null}"#, status: 202))
-            default: return .response(.json(automationJSON))
+                return .response(.json(#"{"status":"triggered","routine_id":"a/1","task_id":"t-9","reason":null}"#, status: 202))
+            default: return .response(.json(routineJSON))
             }
         }
-        let api = makeClient(transport).automations
+        let api = makeClient(transport).routines
         _ = try await api.get("a/1")
-        #expect(transport.last?.request.url.absoluteString == "https://dp.test/v1/automations/a%2F1")
+        #expect(transport.last?.request.url.absoluteString == "https://dp.test/v1/routines/a%2F1")
 
-        _ = try await api.update("a/1", AutomationUpdate(enabled: false))
+        _ = try await api.update("a/1", RoutineUpdate(enabled: false))
         #expect(transport.last?.request.method == "PATCH")
         #expect(transport.last?.json == ["enabled": false])
 
         let slot = try #require(ISO8601.parse("2026-10-12T08:30:00Z"))
-        _ = try await api.update("a/1", AutomationUpdate(nextTriggerAt: slot))
+        _ = try await api.update("a/1", RoutineUpdate(nextTriggerAt: slot))
         #expect(transport.last?.json == ["next_trigger_at": "2026-10-12T08:30:00.000Z"])
 
-        _ = try await api.update("a/1", AutomationUpdate(runtimeGroupId: "rg-2", taskId: "task-2"))
+        _ = try await api.update("a/1", RoutineUpdate(runtimeGroupId: "rg-2", taskId: "task-2"))
         #expect(transport.last?.json == ["runtime_group_id": "rg-2", "task_id": "task-2"])
 
         try await api.delete("a/1")
         #expect(transport.last?.request.method == "DELETE")
 
         let triggered = try await api.trigger("a/1")
-        #expect(transport.last?.request.url.absoluteString == "https://dp.test/v1/automations/a%2F1/trigger")
+        #expect(transport.last?.request.url.absoluteString == "https://dp.test/v1/routines/a%2F1/trigger")
+        #expect(transport.last?.request.body == nil, "a trigger without parameters sends no body")
         #expect(triggered.status == .triggered)
         #expect(triggered.taskId == "t-9")
         #expect(triggered.reason == nil)
-        #expect(triggered.automationId == "a/1")
+        #expect(triggered.routineId == "a/1")
     }
 
     @Test func handTriggerSkipCarriesItsReason() async throws {
         let transport = MockTransport(
-            status: 202, json: #"{"status":"skipped","automation_id":"a1","task_id":null,"reason":"Target task is archived"}"#)
-        let skipped = try await makeClient(transport).automations.trigger("a1")
+            status: 202, json: #"{"status":"skipped","routine_id":"a1","task_id":null,"reason":"Target task is archived"}"#)
+        let skipped = try await makeClient(transport).routines.trigger("a1")
         #expect(skipped.status == .skipped)
         #expect(skipped.taskId == nil)
         #expect(skipped.reason == "Target task is archived")
@@ -198,13 +199,15 @@ private let automationJSON = #"""
 
     @Test func handTriggerOfASynthesisReportsWhatItQueued() async throws {
         let body = #"""
-            {"status":"triggered","automation_id":"a1","task_id":null,"reason":null,"run_id":null,"enqueued":1,
-             "conversations":[{"conversation_id":"conv-1","completed_at":"2026-10-05T09:00:00Z"}]}
+            {"status":"triggered","routine_id":"a1","task_id":null,"run_id":null,"reason":null,
+             "result":{"enqueued":1,"conversations":[{"conversation_id":"conv-1","completed_at":"2026-10-05T09:00:00Z"}]}}
             """#
-        #expect(try StrictSchema.unmodelled(AutomationTriggerResponse.self, in: Data(body.utf8)).isEmpty)
+        #expect(try StrictSchema.unmodelled(RoutineTriggerResponse.self, in: Data(body.utf8)).isEmpty)
         let transport = MockTransport(status: 202, json: body)
-        let triggered = try await makeClient(transport).automations.trigger("a1")
+        let triggered = try await makeClient(transport).routines.trigger("a1", parameters: ["conversation_ids": ["conv-1"]])
+        #expect(transport.last?.json == ["parameters": ["conversation_ids": ["conv-1"]]])
         #expect(triggered.runId == nil)
+        #expect(triggered.result?["enqueued"] == 1)
         #expect(triggered.enqueued == 1)
         #expect(triggered.conversations?.first?.conversationId == "conv-1")
         #expect(triggered.conversations?.first?.completedAt == ISO8601.parse("2026-10-05T09:00:00Z"))
@@ -213,40 +216,40 @@ private let automationJSON = #"""
     @Test func readsTriggerAndSkipEvents() async throws {
         let triggered = #"""
             {"id":"0199a1b2-0000-5000-8000-000000000001","timestamp":"2026-10-05T09:00:02Z",
-             "event_name":"introspection.automation.triggered","conversation_id":"conv-1",
+             "event_name":"introspection.routines.triggered","conversation_id":"conv-1",
              "runtime_group_id":"rg-1","runtime_id":"rt-1",
-             "payload":{"automation_id":"a1","automation_name":"Weekly digest","prompt":"Summarize my week",
+             "payload":{"routine_id":"a1","routine_name":"Weekly digest","prompt":"Summarize my week",
                         "trigger_type":"cron","slot":"2026-10-05T09:00:00Z","task_id":"t1","posted":true,
                         "member_id":"m1","runtime_group_id":"rg-1","triggered_by_member_id":null}}
             """#
         let skipped = #"""
             {"id":"0199a1b2-0000-5000-8000-000000000002","timestamp":"2026-10-06T09:00:00Z",
-             "event_name":"introspection.automation.skipped","runtime_group_id":"rg-1",
-             "payload":{"automation_id":"a1","trigger_type":"manual","slot":"2026-10-06T09:00:00Z","task_id":"t1",
+             "event_name":"introspection.routines.skipped","runtime_group_id":"rg-1",
+             "payload":{"routine_id":"a1","trigger_type":"manual","slot":"2026-10-06T09:00:00Z","task_id":"t1",
                         "reason":"target_busy"}}
             """#
         let transport = MockTransport(json: #"{"records":[\#(triggered),\#(skipped)],"count":2,"next":null}"#)
         let events = try await makeClient(transport).events
-            .list(EventListParams(eventName: .automationTriggered, automationId: "a1", taskId: "t1"))
+            .list(EventListParams(eventName: .routineTriggered, routineId: "a1", taskId: "t1"))
             .collect()
-        #expect(transport.last?.query["event_name"] == ["introspection.automation.triggered"])
-        #expect(transport.last?.query["automation_id"] == ["a1"])
+        #expect(transport.last?.query["event_name"] == ["introspection.routines.triggered"])
+        #expect(transport.last?.query["routine_id"] == ["a1"])
         #expect(transport.last?.query["task_id"] == ["t1"])
 
-        let run = try #require(events[0].automationTriggered)
-        #expect(run.automationName == "Weekly digest")
+        let run = try #require(events[0].routineTriggered)
+        #expect(run.routineName == "Weekly digest")
         #expect(run.triggerType == .cron)
         #expect(run.slot == ISO8601.parse("2026-10-05T09:00:00Z"))
         #expect(run.posted == true)
         #expect(run.taskId == "t1")
         #expect(run.memberId == "m1")
         #expect(run.triggeredByMemberId == nil)
-        #expect(events[0].automationSkipped == nil)
+        #expect(events[0].routineSkipped == nil)
 
-        let skip = try #require(events[1].automationSkipped)
+        let skip = try #require(events[1].routineSkipped)
         #expect(skip.reason == .targetBusy)
         #expect(skip.triggerType == .manual)
         #expect(skip.taskId == "t1")
-        #expect(events[1].automationTriggered == nil)
+        #expect(events[1].routineTriggered == nil)
     }
 }
