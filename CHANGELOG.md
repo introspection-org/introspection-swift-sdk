@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.1](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.20.0...v0.20.1) (2026-11-13)
+
+
+### Bug Fixes
+
+* **walk:** pass against introspection-cloud main's connector and API key drift ([#113](https://github.com/introspection-org/introspection-swift-sdk/issues/113)) ([52621e8](https://github.com/introspection-org/introspection-swift-sdk/commit/52621e803e121be8881513cc23139b0ba36332aa))
+
 ## [0.20.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.19.0...v0.20.0) (2026-11-12)
 
 
