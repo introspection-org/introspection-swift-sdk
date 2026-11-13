@@ -177,14 +177,30 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
+        # Exit 3 from the script means the comparison crashed. The pass and fail rules are
+        # the same as for a break; only the message differs, so a crash never reads as one.
         run: |
-          if scripts/api-breakage.sh "$BASE_SHA"; then
+          status=0
+          scripts/api-breakage.sh "$BASE_SHA" || status=$?
+          if [ "$status" -eq 0 ]; then
             exit 0
           fi
           title="$(gh pr view "$PR_NUMBER" --json title --jq .title)"
           body="$(gh pr view "$PR_NUMBER" --json body --jq .body)"
+          declared=false
           if printf '%s\n' "$title" | grep -Eq '^[a-z]+(\([^)]*\))?!:' ||
             printf '%s\n' "$body" | grep -Eq '^BREAKING[ -]CHANGE:'; then
+            declared=true
+          fi
+          if [ "$status" -eq 3 ]; then
+            if [ "$declared" = true ]; then
+              echo "::notice::The API comparison crashed and did not run; the PR declares a breaking change."
+              exit 0
+            fi
+            echo "::error::The API comparison crashed and did not run, so it neither found nor ruled out a breaking change."
+            exit 1
+          fi
+          if [ "$declared" = true ]; then
             echo "::notice::The PR declares a breaking change, so the breakage above is intended."
             exit 0
           fi
