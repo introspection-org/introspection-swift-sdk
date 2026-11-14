@@ -176,18 +176,33 @@ let inbox = try await runner.issues.list(IssueListParams(relation: [.assignee, .
 
 A routine runs on its schedule, by hand, or when an event arrives. To start
 one from your own systems, create a `webhook` connector: its secret is
-returned once, in the create response (`rotateSigningSecret` in a
-`ConnectorUpdate` issues a new one the same way), and your systems post to
-`/v1/webhooks/connectors/{id}` signed with it.
+returned once, in the create response, and your systems post to
+`/v1/webhooks/connectors/{id}` signed with it (with the official
+`standardwebhooks` packages, `new Webhook(secret).sign(id, date, body)` in
+JavaScript or `Webhook(secret).sign(msg_id, timestamp, data)` in Python).
 
 ```swift
 let hook = try await client.connectors.create(.webhook(name: "CI alerts", slug: "ci-alerts"))
 let secret = hook.signingSecret  // store it now: no read returns it
 ```
 
-A trigger names the connector by slug. Its `parameters` read named values
-out of the event's body by JSON pointer, and each `@parameters.<name>` in
-the prompt is replaced by its value as JSON (`null` when absent):
+`rotateSigningSecret` in a `ConnectorUpdate` issues a new secret the same
+way. The one it replaces keeps working as the previous secret until the next
+rotation or `revokePreviousSigningSecret`, so at most two are valid at once;
+`Connector.signingSecrets` lists them by fingerprint, current first:
+
+```swift
+let rotated = try await client.connectors.update(hook.id, ConnectorUpdate(rotateSigningSecret: true))
+// once every sender signs with rotated.signingSecret:
+_ = try await client.connectors.update(hook.id, ConnectorUpdate(revokePreviousSigningSecret: true))
+```
+
+A trigger names the connector by slug. An event-started run receives the
+event's body as its parameters: `parameters.json` in the task's files (any
+JSON; a body that is not JSON arrives as a JSON string), and each
+`@parameters.<key>` in the prompt is replaced by that top-level key's value as
+JSON (`null` when absent), the same as a manual run. `trigger/event.json`
+holds the event itself:
 
 ```swift
 let routine = try await client.routines.create(
@@ -198,8 +213,7 @@ let routine = try await client.routines.create(
         triggers: [
             .connector(
                 "ci-alerts", eventTypes: ["deploy.failed"],
-                filter: RoutineTriggerFilter(payloadFields: ["environment": ["production"]]),
-                parameters: ["deploy_id": "/data/id", "service": "/data/service"])
+                filter: RoutineTriggerFilter(payloadFields: ["environment": ["production"]]))
         ]))
 ```
 

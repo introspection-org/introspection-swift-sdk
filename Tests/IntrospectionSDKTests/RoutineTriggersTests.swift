@@ -12,7 +12,6 @@ private let triggerJSON = #"""
       "event_types": ["deploy.failed"],
       "filter": {"channel_ids": null, "emoji": null, "team_ids": null, "to_states": null, "repository_ids": null,
                  "branches": null, "payload_fields": {"environment": ["production"]}},
-      "parameters": {"deploy_id": "/data/id"},
       "enabled": true
     }
     """#
@@ -43,7 +42,6 @@ private let triggeredRoutineJSON = #"""
         #expect(trigger.connectorSlug == "ci-alerts")
         #expect(trigger.eventTypes == ["deploy.failed"])
         #expect(trigger.filter == RoutineTriggerFilter(payloadFields: ["environment": ["production"]]))
-        #expect(trigger.parameters == ["deploy_id": "/data/id"])
         #expect(trigger.enabled == true)
         #expect(trigger.createdAt == ISO8601.parse("2026-11-01T10:00:00Z"))
 
@@ -61,8 +59,7 @@ private let triggeredRoutineJSON = #"""
                 triggers: [
                     .connector(
                         "ci-alerts", eventTypes: ["deploy.failed"],
-                        filter: RoutineTriggerFilter(payloadFields: ["environment": ["production"]]),
-                        parameters: ["deploy_id": "/data/id"]),
+                        filter: RoutineTriggerFilter(payloadFields: ["environment": ["production"]])),
                     RoutineTriggerSpec(
                         provider: .slack, eventTypes: [.slackMessagePosted], source: .integration,
                         filter: RoutineTriggerFilter(channelIds: ["C1"]), enabled: false),
@@ -74,7 +71,7 @@ private let triggeredRoutineJSON = #"""
             "triggers": [
                 [
                     "source": "connector", "provider": "webhook", "connector_slug": "ci-alerts", "event_types": ["deploy.failed"],
-                    "filter": ["payload_fields": ["environment": ["production"]]], "parameters": ["deploy_id": "/data/id"],
+                    "filter": ["payload_fields": ["environment": ["production"]]],
                 ],
                 [
                     "source": "integration", "provider": "slack", "event_types": ["slack.message.posted"],
@@ -100,7 +97,7 @@ private let triggeredRoutineJSON = #"""
                 [
                     "id": "0199a1b2-0000-7000-8000-000000000101", "source": "connector", "provider": "webhook",
                     "connector_slug": "ci-alerts", "event_types": ["deploy.failed"],
-                    "filter": ["payload_fields": ["environment": ["production"]]], "parameters": ["deploy_id": "/data/id"],
+                    "filter": ["payload_fields": ["environment": ["production"]]],
                     "enabled": true,
                 ],
                 ["provider": "github", "event_types": ["github.pull_request.merged"], "filter": ["branches": ["main"]]],
@@ -196,13 +193,14 @@ private let triggeredRoutineJSON = #"""
              "token_endpoint": null, "scopes": [], "api_hosts": [], "client_id": null, "person_server_url": null,
              "application_id": null, "assertion_audience": null, "webhook_url": null, "status": "active",
              "created_by_member_id": "m", "metadata": {"webhook_auth": "standard_webhooks"}, "policy_entities": [],
-             "previous_signing_secret_expires_at": null, "webhook_auth": "standard_webhooks", "requires_runtime": false,
-             "signing_secret": "whsec_AAAA"}
+             "signing_secrets": [{"id": "1a2b3c4d", "created_at": "2026-11-01T00:00:00Z", "status": "current"}],
+             "webhook_auth": "standard_webhooks", "requires_runtime": false, "signing_secret": "whsec_AAAA"}
             """#
         let rotated = created.replacingOccurrences(of: "\"whsec_AAAA\"", with: "\"whsec_BBBB\"")
             .replacingOccurrences(
-                of: "\"previous_signing_secret_expires_at\": null",
-                with: "\"previous_signing_secret_expires_at\": \"2026-11-02T00:00:00Z\"")
+                of: #"[{"id": "1a2b3c4d", "created_at": "2026-11-01T00:00:00Z", "status": "current"}]"#,
+                with: #"[{"id": "5e6f7a8b", "created_at": "2026-11-02T00:00:00Z", "status": "current"}, "#
+                    + #"{"id": "1a2b3c4d", "created_at": "2026-11-01T00:00:00Z", "status": "previous"}]"#)
             .replacingOccurrences(
                 of: "\"webhook_auth\": \"standard_webhooks\", \"requires", with: "\"webhook_auth\": \"bearer\", \"requires")
         let transport = MockTransport { request, _ in
@@ -215,7 +213,10 @@ private let triggeredRoutineJSON = #"""
         #expect(transport.last?.json == ["name": "CI alerts", "provider": "webhook", "auth_mode": "static", "slug": "ci-alerts"])
         #expect(hook.signingSecret == "whsec_AAAA")
         #expect(hook.webhookAuth == .standardWebhooks)
-        #expect(hook.previousSigningSecretExpiresAt == nil)
+        #expect(
+            hook.signingSecrets == [
+                ConnectorSigningSecret(id: "1a2b3c4d", createdAt: ISO8601.parse("2026-11-01T00:00:00Z"), status: .current)
+            ])
 
         _ = try await connectors.create(.webhook(name: "Pager", webhookAuth: .bearer))
         #expect(transport.last?.json == ["name": "Pager", "provider": "webhook", "auth_mode": "static", "webhook_auth": "bearer"])
@@ -225,6 +226,10 @@ private let triggeredRoutineJSON = #"""
         #expect(transport.last?.json == ["webhook_auth": "bearer", "rotate_signing_secret": true])
         #expect(next.signingSecret == "whsec_BBBB")
         #expect(next.webhookAuth == .bearer)
-        #expect(next.previousSigningSecretExpiresAt == ISO8601.parse("2026-11-02T00:00:00Z"))
+        #expect(next.signingSecrets?.map(\.id) == ["5e6f7a8b", "1a2b3c4d"])
+        #expect(next.signingSecrets?.map(\.status) == [.current, .previous])
+
+        _ = try await connectors.update("con-w", ConnectorUpdate(revokePreviousSigningSecret: true))
+        #expect(transport.last?.json == ["revoke_previous_signing_secret": true])
     }
 }

@@ -128,8 +128,6 @@ public struct RoutineTrigger: Codable, Sendable, Hashable {
     public let connectorSlug: String?
     public let eventTypes: [RoutineTriggerEventType]
     public let filter: RoutineTriggerFilter?
-    /// Named values read from the event's body, `{name: JSON pointer}`, for `@parameters.<name>` in the prompt.
-    public let parameters: [String: String]?
     public let enabled: Bool?
     public let createdAt: Date?
     public let updatedAt: Date?
@@ -142,7 +140,7 @@ public struct RoutineTrigger: Codable, Sendable, Hashable {
         case source, provider
         case connectorSlug = "connector_slug"
         case eventTypes = "event_types"
-        case filter, parameters, enabled
+        case filter, enabled
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
@@ -159,9 +157,6 @@ public struct RoutineTriggerSpec: Encodable, Sendable, Hashable {
     /// Required for a `connector` trigger, and only for it.
     public var connectorSlug: String?
     public var filter: RoutineTriggerFilter?
-    /// `{name: JSON pointer}`, at most 20: each name lowercase letters, digits and `_`, starting with a letter, up to
-    /// 40; each pointer RFC 6901, up to 512 characters. A value resolves to a scalar or `null`.
-    public var parameters: [String: String]?
     public var enabled: Bool?
     /// An existing trigger of this routine to keep (update only).
     public var id: String?
@@ -170,7 +165,7 @@ public struct RoutineTriggerSpec: Encodable, Sendable, Hashable {
         case id, source, provider
         case connectorSlug = "connector_slug"
         case eventTypes = "event_types"
-        case filter, parameters, enabled
+        case filter, enabled
     }
 
     public init(
@@ -179,7 +174,6 @@ public struct RoutineTriggerSpec: Encodable, Sendable, Hashable {
         source: RoutineTriggerSource? = nil,
         connectorSlug: String? = nil,
         filter: RoutineTriggerFilter? = nil,
-        parameters: [String: String]? = nil,
         enabled: Bool? = nil,
         id: String? = nil
     ) {
@@ -188,7 +182,6 @@ public struct RoutineTriggerSpec: Encodable, Sendable, Hashable {
         self.source = source
         self.connectorSlug = connectorSlug
         self.filter = filter
-        self.parameters = parameters
         self.enabled = enabled
         self.id = id
     }
@@ -199,19 +192,18 @@ public struct RoutineTriggerSpec: Encodable, Sendable, Hashable {
         eventTypes: [RoutineTriggerEventType],
         provider: RoutineTriggerProvider = .webhook,
         filter: RoutineTriggerFilter? = nil,
-        parameters: [String: String]? = nil,
         enabled: Bool? = nil
     ) -> RoutineTriggerSpec {
         RoutineTriggerSpec(
             provider: provider, eventTypes: eventTypes, source: .connector, connectorSlug: connectorSlug, filter: filter,
-            parameters: parameters, enabled: enabled)
+            enabled: enabled)
     }
 
     /// The spec that keeps a stored trigger as it is; a `RoutineUpdate.triggers` list drops every trigger it omits.
     public init(keeping trigger: RoutineTrigger) {
         self.init(
             provider: trigger.provider, eventTypes: trigger.eventTypes, source: trigger.source, connectorSlug: trigger.connectorSlug,
-            filter: trigger.filter, parameters: trigger.parameters, enabled: trigger.enabled, id: trigger.id)
+            filter: trigger.filter, enabled: trigger.enabled, id: trigger.id)
     }
 }
 

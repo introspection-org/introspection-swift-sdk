@@ -40,6 +40,35 @@ public struct ConnectorWebhookAuth: RawRepresentable, Codable, Sendable, Hashabl
     public static let bearer: ConnectorWebhookAuth = "bearer"
 }
 
+/// Whether a `webhook` connector's secret is the one it signs with now or the one a rotation replaced.
+public struct ConnectorSigningSecretStatus: RawRepresentable, Codable, Sendable, Hashable, ExpressibleByStringLiteral {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+    public init(stringLiteral value: String) { self.rawValue = value }
+
+    public static let current: ConnectorSigningSecretStatus = "current"
+    public static let previous: ConnectorSigningSecretStatus = "previous"
+}
+
+/// One secret a `webhook` connector accepts, described without its material.
+public struct ConnectorSigningSecret: Codable, Sendable, Hashable {
+    /// A fingerprint of the secret: the first 8 hex digits of its SHA-256.
+    public var id: String
+    public var createdAt: Date?
+    public var status: ConnectorSigningSecretStatus
+
+    public init(id: String, createdAt: Date? = nil, status: ConnectorSigningSecretStatus) {
+        self.id = id
+        self.createdAt = createdAt
+        self.status = status
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, status
+        case createdAt = "created_at"
+    }
+}
+
 /// A Cedar entity reference, `{"type": "Company", "id": "acme"}`.
 public struct EntityUid: Codable, Sendable, Hashable {
     public var type: String
@@ -138,8 +167,8 @@ public struct Connector: Codable, Sendable, Hashable {
     public var updatedAt: Date?
     /// How a `webhook` connector's callers authenticate; nil for every other provider.
     public var webhookAuth: ConnectorWebhookAuth?
-    /// A rotated `webhook` connector's previous secret is accepted until then.
-    public var previousSigningSecretExpiresAt: Date?
+    /// The secrets a `webhook` connector accepts, current first: at most two. Nil for every other provider.
+    public var signingSecrets: [ConnectorSigningSecret]?
     /// A `webhook` connector's new secret, on its create or `rotateSigningSecret` update only. Shown once: store it,
     /// since no read returns it.
     public var signingSecret: String?
@@ -151,8 +180,8 @@ public struct Connector: Codable, Sendable, Hashable {
         scopes: [String]? = nil, apiHosts: [String]? = nil, clientId: String? = nil, personServerUrl: String? = nil,
         applicationId: String? = nil, assertionAudience: String? = nil, webhookUrl: String? = nil,
         status: ConnectorStatus? = nil, createdByMemberId: String? = nil, metadata: JSONObject? = nil,
-        policyEntities: [PolicyEntity]? = nil, requiresRuntime: Bool? = nil, createdAt: Date? = nil, updatedAt: Date? = nil,
-        webhookAuth: ConnectorWebhookAuth? = nil, previousSigningSecretExpiresAt: Date? = nil, signingSecret: String? = nil
+        policyEntities: [PolicyEntity]? = nil, signingSecrets: [ConnectorSigningSecret]? = nil, requiresRuntime: Bool? = nil,
+        createdAt: Date? = nil, updatedAt: Date? = nil, webhookAuth: ConnectorWebhookAuth? = nil, signingSecret: String? = nil
     ) {
         self.id = id
         self.orgId = orgId
@@ -180,7 +209,7 @@ public struct Connector: Codable, Sendable, Hashable {
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.webhookAuth = webhookAuth
-        self.previousSigningSecretExpiresAt = previousSigningSecretExpiresAt
+        self.signingSecrets = signingSecrets
         self.signingSecret = signingSecret
     }
 
@@ -204,7 +233,7 @@ public struct Connector: Codable, Sendable, Hashable {
         case createdAt = "created_at"
         case updatedAt = "updated_at"
         case webhookAuth = "webhook_auth"
-        case previousSigningSecretExpiresAt = "previous_signing_secret_expires_at"
+        case signingSecrets = "signing_secrets"
         case signingSecret = "signing_secret"
     }
 }
@@ -314,15 +343,17 @@ public struct ConnectorUpdate: Encodable, Sendable, Hashable {
     public var policyEntities: [PolicyEntity]?
     /// A `webhook` connector only: how callers authenticate.
     public var webhookAuth: ConnectorWebhookAuth?
-    /// A `webhook` connector only: issue a new secret, returned once as `Connector.signingSecret`; the previous one
-    /// stays valid for 24 hours (`previousSigningSecretExpiresAt`).
+    /// A `webhook` connector only: issue a new secret, returned once as `Connector.signingSecret`. The one it replaces
+    /// stays valid as the previous secret until the next rotation or `revokePreviousSigningSecret`.
     public var rotateSigningSecret: Bool?
+    /// A `webhook` connector only: stop accepting its previous secret now. Not with `rotateSigningSecret` (422).
+    public var revokePreviousSigningSecret: Bool?
 
     public init(
         name: String? = nil, agentMemberId: String? = nil, scopes: [String]? = nil, apiHosts: [String]? = nil,
         status: ConnectorStatus? = nil, metadata: JSONObject? = nil, webhookUrl: String? = nil,
         clientSecret: String? = nil, signingSecret: String? = nil, policyEntities: [PolicyEntity]? = nil,
-        webhookAuth: ConnectorWebhookAuth? = nil, rotateSigningSecret: Bool? = nil
+        webhookAuth: ConnectorWebhookAuth? = nil, rotateSigningSecret: Bool? = nil, revokePreviousSigningSecret: Bool? = nil
     ) {
         self.name = name
         self.agentMemberId = agentMemberId
@@ -336,6 +367,7 @@ public struct ConnectorUpdate: Encodable, Sendable, Hashable {
         self.policyEntities = policyEntities
         self.webhookAuth = webhookAuth
         self.rotateSigningSecret = rotateSigningSecret
+        self.revokePreviousSigningSecret = revokePreviousSigningSecret
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -348,6 +380,7 @@ public struct ConnectorUpdate: Encodable, Sendable, Hashable {
         case policyEntities = "policy_entities"
         case webhookAuth = "webhook_auth"
         case rotateSigningSecret = "rotate_signing_secret"
+        case revokePreviousSigningSecret = "revoke_previous_signing_secret"
     }
 }
 
@@ -771,7 +804,8 @@ public struct ConnectorsAPI: Sendable {
         try await http.json("GET", "/v1/connectors/\(pathSegment(connectorId))", query: cpProjectQuery(project))
     }
 
-    /// Update a connector. With `rotateSigningSecret`, the response carries the new `signingSecret`, once.
+    /// Update a connector. With `rotateSigningSecret`, the response carries the new `signingSecret`, once;
+    /// `revokePreviousSigningSecret` drops the secret the last rotation replaced.
     public func update(_ connectorId: String, _ body: ConnectorUpdate, project: String? = nil) async throws -> Connector {
         try await http.json("PATCH", "/v1/connectors/\(pathSegment(connectorId))", query: cpProjectQuery(project), body: .encode(body))
     }
