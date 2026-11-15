@@ -198,7 +198,6 @@ extension Walk {
         let keys = try await sa.apiKeys.list(ApiKeyListParams(project: project.id))
         try check(keys.contains { $0.id == apiKey.key.id }, "the key is listed")
         _ = try await sa.apiKeys.update(apiKey.key.id, ApiKeyUpdate(name: "\(WALK.apiKeyName) (renamed)"), project: project.id)
-        _ = try await sa.apiKeys.acknowledge(apiKey.key.id, project: project.id)
         // The organisation's name and slug are whoever is running the walk, and whether its subscription is paid
         // depends on its plan (and postdates the recording). Its sign-in settings postdate the recording too:
         // absent on replay, the server defaults live.
