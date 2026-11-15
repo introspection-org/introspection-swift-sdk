@@ -278,12 +278,14 @@ public struct RoutineCreate: Encodable, Sendable, Hashable {
 }
 
 /// Body of `PATCH /v1/routines/{id}`. Only set fields are sent and nil leaves a field as it is,
-/// so nothing can be cleared except `triggers`, which `[]` empties. `kind` and `trigger_type` are immutable;
-/// `metadata` replaces wholesale.
+/// so nothing can be cleared except `triggers`, which `[]` empties. `kind` is immutable; `metadata` replaces wholesale.
 public struct RoutineUpdate: Encodable, Sendable, Hashable {
     public var name: String?
     public var description: String?
     public var cronSchedule: String?
+    /// Switches a prompt routine between `manual` and `cron`. `cron` needs a schedule in the same update
+    /// (`cronSchedule` or `metadata.cron_schedules`); `manual` drops the next slot.
+    public var triggerType: RoutineTriggerType?
     public var prompt: String?
     /// Moves a prompt routine to another runtime group.
     public var runtimeGroupId: String?
@@ -300,6 +302,7 @@ public struct RoutineUpdate: Encodable, Sendable, Hashable {
     enum CodingKeys: String, CodingKey {
         case name, description
         case cronSchedule = "cron_schedule"
+        case triggerType = "trigger_type"
         case prompt
         case runtimeGroupId = "runtime_group_id"
         case taskId = "task_id"
@@ -311,6 +314,7 @@ public struct RoutineUpdate: Encodable, Sendable, Hashable {
         name: String? = nil,
         description: String? = nil,
         cronSchedule: String? = nil,
+        triggerType: RoutineTriggerType? = nil,
         prompt: String? = nil,
         runtimeGroupId: String? = nil,
         taskId: String? = nil,
@@ -322,6 +326,7 @@ public struct RoutineUpdate: Encodable, Sendable, Hashable {
         self.name = name
         self.description = description
         self.cronSchedule = cronSchedule
+        self.triggerType = triggerType
         self.prompt = prompt
         self.runtimeGroupId = runtimeGroupId
         self.taskId = taskId
@@ -453,15 +458,62 @@ public struct RoutinesAPI: Sendable {
     }
 
     /// Run a routine now: `POST /v1/routines/{id}/trigger`. Returns `202` with the task it
-    /// created or posted into; neither reads nor clears a scheduled slot.
+    /// created or posted into; neither reads nor clears a scheduled slot. With nothing to send, the body is empty.
     ///
-    /// A prompt routine's run receives `parameters` as `parameters.json` and as `@parameters.<name>` in its prompt;
-    /// a platform routine reads the keys its kind defines (`observation_synthesis`: `conversation_ids`). At most
-    /// 16 KiB as JSON and 8 levels deep, or the server answers 422.
-    public func trigger(_ routineId: String, parameters: JSONObject? = nil) async throws -> RoutineTriggerResponse {
+    /// A prompt routine's run receives its parameters as `parameters.json` and as `@parameters.<name>` in its prompt;
+    /// a platform routine reads the keys its kind defines (`observation_synthesis`: `conversation_ids`). Inline
+    /// `parameters` are at most 16 KiB as JSON and 8 levels deep, or the server answers 422.
+    ///
+    /// - Parameters:
+    ///   - parameters: The run's parameters. Unless `attachParametersFile` is `false` or `parametersFile` is given,
+    ///     they are also uploaded through the Files API and attached as the task's `parameters.json`.
+    ///   - parametersFile: The id of a Files API file to attach as `parameters.json`; without inline `parameters`
+    ///     the server reads its JSON object (at most 256 KiB) as them.
+    ///   - files: More Files API references to attach to the run's task.
+    ///   - attachParametersFile: Pass `false` for a platform routine or one that posts into an existing task: the
+    ///     server refuses files for those (422). The overload taking a ``Routine`` decides this from the routine.
+    public func trigger(
+        _ routineId: String, parameters: JSONObject? = nil, parametersFile: String? = nil, files: [TaskFileRef]? = nil,
+        attachParametersFile: Bool = true
+    ) async throws -> RoutineTriggerResponse {
+        var refs = files ?? []
+        if let parametersFile {
+            refs.insert(TaskFileRef(id: parametersFile, name: Self.parametersFileName), at: 0)
+        } else if let parameters, attachParametersFile {
+            let uploaded = try await FilesAPI(http: http).createText(Self.parametersUpload(parameters))
+            refs.insert(TaskFileRef(id: uploaded.id, name: Self.parametersFileName), at: 0)
+        }
         var body = RequestBody.none
-        if let parameters { body = try .encode(RoutineTriggerRequest(parameters: parameters)) }
+        if parameters != nil || !refs.isEmpty {
+            body = try .encode(RoutineTriggerRequest(parameters: parameters, files: refs.isEmpty ? nil : refs))
+        }
         return try await http.json("POST", "/v1/routines/\(pathSegment(routineId))/trigger", body: body, as: RoutineTriggerResponse.self)
+    }
+
+    /// Run a routine now, attaching `parameters` as a file only when the routine starts a task of its own (no `kind`,
+    /// no `taskId`).
+    public func trigger(
+        _ routine: Routine, parameters: JSONObject? = nil, parametersFile: String? = nil, files: [TaskFileRef]? = nil
+    ) async throws -> RoutineTriggerResponse {
+        try await trigger(
+            routine.id, parameters: parameters, parametersFile: parametersFile, files: files,
+            attachParametersFile: routine.kind == nil && routine.taskId == nil
+        )
+    }
+
+    /// The name a run's parameters file is mounted under on its task.
+    public static let parametersFileName = "parameters.json"
+
+    /// How long an uploaded parameters file is kept: 30 days.
+    static let parametersFileTTLSeconds = 2_592_000
+
+    // A JSON create versions an existing file of the same name, so each run's upload needs its own.
+    static func parametersUpload(_ parameters: JSONObject) throws -> FileCreateText {
+        let content = String(decoding: try JSONCoding.encoder.encode(parameters), as: UTF8.self)
+        return FileCreateText(
+            content: content, name: "routine-parameters/\(UUID().uuidString.lowercased()).json", mimeType: "application/json",
+            ttlSeconds: parametersFileTTLSeconds
+        )
     }
 }
 

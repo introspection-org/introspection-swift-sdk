@@ -118,11 +118,13 @@ event, read through ``EventsAPI`` with the `routineId` and `taskId` filters.
 
 A routine can also start a run on an event: ``RoutineCreate/triggers`` lists ``RoutineTriggerSpec``s on an
 integration (Slack, GitHub) or on a project connector by slug, such as a `webhook` connector made with
-``ConnectorCreate/webhook(name:slug:webhookAuth:environment:)``. An event-started run's parameters are the event's
-body, and ``RoutinesAPI/trigger(_:parameters:)`` passes a manual run's; either way the run reads them as
-`parameters.json` and the prompt's `@parameters.<key>` references are replaced by their top-level values.
-A rotated `webhook` connector keeps accepting its previous secret until the next rotation or
-``ConnectorUpdate/revokePreviousSigningSecret``; ``Connector/signingSecrets`` lists the two.
+``ConnectorCreate/webhook(name:slug:environment:)``. An event-started run's parameters are the event's
+body, and ``RoutinesAPI`` `trigger` passes a manual run's, uploaded as a file unless the routine is a platform routine
+or posts into an existing task; either way the run reads them as `parameters.json` and the prompt's
+`@parameters.<key>` references are replaced by their top-level values.
+A `webhook` connector is created without a secret: ``ConnectorUpdate/rotateSigningSecret`` issues the first, of a
+``ConnectorSigningSecretType``, and later rotates it, keeping the old one valid until
+``ConnectorUpdate/revokeSigningSecret`` names it; ``Connector/signingSecrets`` lists at most two.
 ``RoutineUpdate/triggers`` replaces the list, keeping each entry that names an `id`
 (``RoutineTriggerSpec/init(keeping:)``).
 

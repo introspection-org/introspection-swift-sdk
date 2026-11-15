@@ -223,7 +223,8 @@ public struct RoutineTriggerEventRef: Codable, Sendable, Hashable {
 
 /// Body of `POST /v1/routines/{id}/trigger`.
 struct RoutineTriggerRequest: Encodable {
-    let parameters: JSONObject
+    let parameters: JSONObject?
+    let files: [TaskFileRef]?
 }
 
 // MARK: Task metadata

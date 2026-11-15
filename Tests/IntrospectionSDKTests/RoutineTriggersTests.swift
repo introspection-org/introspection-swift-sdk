@@ -101,7 +101,7 @@ private let triggeredRoutineJSON = #"""
                     "enabled": true,
                 ],
                 ["provider": "github", "event_types": ["github.pull_request.merged"], "filter": ["branches": ["main"]]],
-            ],
+            ]
         ]
         #expect(transport.last?.json == expected)
 
@@ -109,20 +109,103 @@ private let triggeredRoutineJSON = #"""
         #expect(transport.last?.json == ["triggers": []])
     }
 
-    @Test func manualTriggerSendsParametersAndReadsTheRun() async throws {
-        let transport = MockTransport(
-            status: 202,
-            json: #"{"status":"triggered","routine_id":"r1","task_id":"t1","run_id":null,"reason":null,"result":null}"#)
-        let response = try await makeClient(transport).routines.trigger(
-            "r1", parameters: ["deploy_id": "dep_42", "attempts": 3, "context": ["service": "billing"]])
-        #expect(transport.last?.request.method == "POST")
+    @Test func manualTriggerUploadsParametersAndAttachesThemAsAFile() async throws {
+        let transport = MockTransport { request, index in
+            request.url.path == "/v1/files"
+                ? .response(.json(uploadedParametersJSON(id: "file-\(index)"), status: 201))
+                : .response(.json(triggerResponseJSON, status: 202))
+        }
+        let api = makeClient(transport).routines
+        let parameters: JSONObject = ["deploy_id": "dep_42", "attempts": 3, "context": ["service": "billing"]]
+        let response = try await api.trigger("r1", parameters: parameters, files: [TaskFileRef(id: "file-runbook", name: "runbook.md")])
+
+        let requests = transport.requests
+        #expect(requests.count == 2)
+        let upload = try #require(requests.first?.json)
+        #expect(requests.first?.request.method == "POST")
+        #expect(requests.first?.path == "/v1/files")
+        #expect(upload["content"] == #"{"attempts":3,"context":{"service":"billing"},"deploy_id":"dep_42"}"#)
+        #expect(upload["mime_type"] == "application/json")
+        #expect(upload["ttl_seconds"] == 2_592_000)
+        let name = try #require(upload["name"]?.stringValue)
+        #expect(name.hasPrefix("routine-parameters/"))
+        #expect(name.hasSuffix(".json"))
+        #expect(UUID(uuidString: String(name.dropFirst("routine-parameters/".count).dropLast(".json".count))) != nil)
+
         #expect(transport.last?.path == "/v1/routines/r1/trigger")
-        #expect(transport.last?.json == ["parameters": ["deploy_id": "dep_42", "attempts": 3, "context": ["service": "billing"]]])
+        let expected: JSONValue = [
+            "parameters": ["deploy_id": "dep_42", "attempts": 3, "context": ["service": "billing"]],
+            "files": [["id": "file-0", "name": "parameters.json"], ["id": "file-runbook", "name": "runbook.md"]],
+        ]
+        #expect(transport.last?.json == expected)
         #expect(response.status == .triggered)
+        #expect(response.routineId == "r1")
         #expect(response.taskId == "t1")
+        #expect(response.runId == "run-1")
         #expect(response.result == nil)
         #expect(response.enqueued == nil)
         #expect(response.conversations == nil)
+
+        _ = try await api.trigger("r1", parameters: parameters)
+        let second = try #require(transport.requests.dropLast().last?.json?["name"]?.stringValue)
+        #expect(second != name, "each run's parameters file gets its own name")
+    }
+
+    @Test func manualTriggerWithAParametersFileSendsOnlyTheReference() async throws {
+        let transport = MockTransport(status: 202, json: triggerResponseJSON)
+        _ = try await makeClient(transport).routines.trigger(
+            "r1", parametersFile: "file-params", files: [TaskFileRef(id: "file-runbook", name: "runbook.md")])
+        #expect(transport.requests.count == 1)
+        #expect(transport.last?.path == "/v1/routines/r1/trigger")
+        let expected: JSONValue = [
+            "files": [["id": "file-params", "name": "parameters.json"], ["id": "file-runbook", "name": "runbook.md"]]
+        ]
+        #expect(transport.last?.json == expected)
+    }
+
+    @Test func manualTriggerWithoutParametersSendsNoBody() async throws {
+        let transport = MockTransport(status: 202, json: triggerResponseJSON)
+        _ = try await makeClient(transport).routines.trigger("r1")
+        #expect(transport.requests.count == 1)
+        #expect(transport.last?.request.body == nil)
+
+        _ = try await makeClient(transport).routines.trigger("r1", files: [TaskFileRef(id: "file-runbook")])
+        #expect(transport.last?.json == ["files": [["id": "file-runbook"]]])
+    }
+
+    @Test func manualTriggerSkipsTheUploadWhereTheServerRefusesFiles() async throws {
+        let transport = MockTransport(status: 202, json: triggerResponseJSON)
+        let api = makeClient(transport).routines
+        let synthesis = try JSONCoding.decoder.decode(
+            Routine.self, from: Data(#"{"id":"r-syn","name":"n","trigger_type":"manual","kind":"observation_synthesis"}"#.utf8))
+        let posting = try JSONCoding.decoder.decode(
+            Routine.self, from: Data(#"{"id":"r-post","name":"n","trigger_type":"manual","task_id":"t-1"}"#.utf8))
+
+        _ = try await api.trigger(synthesis, parameters: ["conversation_ids": ["conv-1"]])
+        #expect(transport.requests.count == 1)
+        #expect(transport.last?.path == "/v1/routines/r-syn/trigger")
+        #expect(transport.last?.json == ["parameters": ["conversation_ids": ["conv-1"]]])
+
+        _ = try await api.trigger(posting, parameters: ["deploy_id": "dep_42"])
+        #expect(transport.requests.count == 2)
+        #expect(transport.last?.json == ["parameters": ["deploy_id": "dep_42"]])
+
+        _ = try await api.trigger("r-post", parameters: ["deploy_id": "dep_42"], attachParametersFile: false)
+        #expect(transport.requests.count == 3)
+        #expect(transport.last?.json == ["parameters": ["deploy_id": "dep_42"]])
+    }
+
+    @Test func manualTriggerOfAPromptRoutineUploadsItsParameters() async throws {
+        let transport = MockTransport { request, _ in
+            request.url.path == "/v1/files"
+                ? .response(.json(uploadedParametersJSON(id: "file-p"), status: 201))
+                : .response(.json(triggerResponseJSON, status: 202))
+        }
+        let routine = try JSONCoding.decoder.decode(Routine.self, from: Data(triggeredRoutineJSON.utf8))
+        _ = try await makeClient(transport).routines.trigger(routine, parameters: ["deploy_id": "dep_42"])
+        #expect(transport.requests.map(\.path) == ["/v1/files", "/v1/routines/0199a1b2-0000-7000-8000-000000000001/trigger"])
+        let expected: JSONValue = ["parameters": ["deploy_id": "dep_42"], "files": [["id": "file-p", "name": "parameters.json"]]]
+        #expect(transport.last?.json == expected)
     }
 
     @Test func readsTheTriggerOnRunAndSkipEvents() async throws {
@@ -185,51 +268,80 @@ private let triggeredRoutineJSON = #"""
 
     // MARK: Webhook connectors
 
-    @Test func webhookConnectorReturnsItsSecretOnCreateAndRotation() async throws {
-        let created = #"""
-            {"id": "con-w", "org_id": "o", "project_id": "p", "created_at": "2026-11-01T00:00:00Z",
-             "updated_at": "2026-11-01T00:00:00Z", "slug": "ci-alerts", "name": "CI alerts", "provider": "webhook",
-             "auth_mode": "static", "environment": "production", "agent_member_id": null, "authorization_endpoint": null,
-             "token_endpoint": null, "scopes": [], "api_hosts": [], "client_id": null, "person_server_url": null,
-             "application_id": null, "assertion_audience": null, "webhook_url": null, "status": "active",
-             "created_by_member_id": "m", "metadata": {"webhook_auth": "standard_webhooks"}, "policy_entities": [],
-             "signing_secrets": [{"id": "1a2b3c4d", "created_at": "2026-11-01T00:00:00Z", "status": "current"}],
-             "webhook_auth": "standard_webhooks", "requires_runtime": false, "signing_secret": "whsec_AAAA"}
-            """#
-        let rotated = created.replacingOccurrences(of: "\"whsec_AAAA\"", with: "\"whsec_BBBB\"")
-            .replacingOccurrences(
-                of: #"[{"id": "1a2b3c4d", "created_at": "2026-11-01T00:00:00Z", "status": "current"}]"#,
-                with: #"[{"id": "5e6f7a8b", "created_at": "2026-11-02T00:00:00Z", "status": "current"}, "#
-                    + #"{"id": "1a2b3c4d", "created_at": "2026-11-01T00:00:00Z", "status": "previous"}]"#)
-            .replacingOccurrences(
-                of: "\"webhook_auth\": \"standard_webhooks\", \"requires", with: "\"webhook_auth\": \"bearer\", \"requires")
-        let transport = MockTransport { request, _ in
-            .response(.json(request.method == "POST" ? created : rotated))
-        }
+    @Test func webhookConnectorIsCreatedWithoutASecret() async throws {
+        let transport = MockTransport(status: 201, json: webhookConnectorJSON(signingSecrets: "[]"))
+        let hook = try await makeClient(transport).connectors.create(.webhook(name: "CI alerts", slug: "ci-alerts"))
+        #expect(try StrictSchema.unmodelled(Connector.self, in: Data(webhookConnectorJSON(signingSecrets: "[]").utf8)).isEmpty)
+        #expect(transport.last?.json == ["name": "CI alerts", "provider": "webhook", "auth_mode": "static", "slug": "ci-alerts"])
+        #expect(hook.signingSecret == nil)
+        #expect(hook.signingSecrets == [])
+    }
+
+    @Test func webhookConnectorIssuesItsFirstSecretWithAType() async throws {
+        let issued = webhookConnectorJSON(
+            signingSecrets: #"[{"id": "1a2b3c4d", "type": "bearer", "created_at": "2026-11-01T00:00:00Z", "status": "current"}]"#,
+            signingSecret: "whtok_AAAA")
+        let transport = MockTransport(json: issued)
         let connectors = makeClient(transport).connectors
 
-        let hook = try await connectors.create(.webhook(name: "CI alerts", slug: "ci-alerts"))
-        #expect(try StrictSchema.unmodelled(Connector.self, in: Data(created.utf8)).isEmpty)
-        #expect(transport.last?.json == ["name": "CI alerts", "provider": "webhook", "auth_mode": "static", "slug": "ci-alerts"])
-        #expect(hook.signingSecret == "whsec_AAAA")
-        #expect(hook.webhookAuth == .standardWebhooks)
+        let hook = try await connectors.update("con-w", ConnectorUpdate(rotateSigningSecret: .issue(.bearer)))
+        #expect(try StrictSchema.unmodelled(Connector.self, in: Data(issued.utf8)).isEmpty)
+        #expect(transport.last?.request.method == "PATCH")
+        #expect(transport.last?.path == "/v1/connectors/con-w")
+        #expect(transport.last?.json == ["rotate_signing_secret": ["type": "bearer"]])
+        #expect(hook.signingSecret == "whtok_AAAA")
         #expect(
             hook.signingSecrets == [
-                ConnectorSigningSecret(id: "1a2b3c4d", createdAt: ISO8601.parse("2026-11-01T00:00:00Z"), status: .current)
+                ConnectorSigningSecret(id: "1a2b3c4d", status: .current, type: .bearer, createdAt: ISO8601.parse("2026-11-01T00:00:00Z"))
             ])
 
-        _ = try await connectors.create(.webhook(name: "Pager", webhookAuth: .bearer))
-        #expect(transport.last?.json == ["name": "Pager", "provider": "webhook", "auth_mode": "static", "webhook_auth": "bearer"])
+        _ = try await connectors.update("con-w", ConnectorUpdate(rotateSigningSecret: .issue(.standardWebhooks)))
+        #expect(transport.last?.json == ["rotate_signing_secret": ["type": "standard_webhooks"]])
+    }
 
-        let next = try await connectors.update("con-w", ConnectorUpdate(webhookAuth: .bearer, rotateSigningSecret: true))
-        #expect(transport.last?.request.method == "PATCH")
-        #expect(transport.last?.json == ["webhook_auth": "bearer", "rotate_signing_secret": true])
+    @Test func webhookConnectorRotatesAndRevokesByKeyId() async throws {
+        let rotated = webhookConnectorJSON(
+            signingSecrets: #"[{"id": "5e6f7a8b", "type": "standard_webhooks", "created_at": "2026-11-02T00:00:00Z", "#
+                + #""status": "current"}, {"id": "1a2b3c4d", "type": "standard_webhooks", "#
+                + #""created_at": "2026-11-01T00:00:00Z", "status": "previous"}]"#,
+            signingSecret: "whsec_BBBB")
+        let transport = MockTransport(json: rotated)
+        let connectors = makeClient(transport).connectors
+
+        let next = try await connectors.update("con-w", ConnectorUpdate(rotateSigningSecret: .rotate))
+        #expect(transport.last?.json == ["rotate_signing_secret": true])
         #expect(next.signingSecret == "whsec_BBBB")
-        #expect(next.webhookAuth == .bearer)
         #expect(next.signingSecrets?.map(\.id) == ["5e6f7a8b", "1a2b3c4d"])
         #expect(next.signingSecrets?.map(\.status) == [.current, .previous])
+        #expect(next.signingSecrets?.map(\.type) == [.standardWebhooks, .standardWebhooks])
 
-        _ = try await connectors.update("con-w", ConnectorUpdate(revokePreviousSigningSecret: true))
-        #expect(transport.last?.json == ["revoke_previous_signing_secret": true])
+        _ = try await connectors.update("con-w", ConnectorUpdate(revokeSigningSecret: "1a2b3c4d"))
+        #expect(transport.last?.request.method == "PATCH")
+        #expect(transport.last?.json == ["revoke_signing_secret": "1a2b3c4d"])
     }
+}
+
+private let triggerResponseJSON = #"{"status":"triggered","routine_id":"r1","task_id":"t1","run_id":"run-1","reason":null,"result":null}"#
+
+private func uploadedParametersJSON(id: String) -> String {
+    #"""
+    {"id":"\#(id)","org_id":"o","project_id":"p","created_at":"2026-11-02T09:00:00Z","updated_at":"2026-11-02T09:00:00Z",
+     "name":"routine-parameters/x.json","file_type":"filesystem","storage_path":"org/proj/files/x.json",
+     "mime_type":"application/json","metadata":{},"tags":[],"member_id":"m","task_id":null,
+     "generated_output_task_id":null,"size_bytes":64,"version":1,"parent_id":null,"storage_version_id":null,
+     "expires_at":"2026-12-02T09:00:00Z"}
+    """#
+}
+
+private func webhookConnectorJSON(signingSecrets: String, signingSecret: String? = nil) -> String {
+    let secret = signingSecret.map { #", "signing_secret": "\#($0)""# } ?? ""
+    return #"""
+        {"id": "con-w", "org_id": "o", "project_id": "p", "created_at": "2026-11-01T00:00:00Z",
+         "updated_at": "2026-11-01T00:00:00Z", "slug": "ci-alerts", "name": "CI alerts", "provider": "webhook",
+         "auth_mode": "static", "environment": "production", "agent_member_id": null, "authorization_endpoint": null,
+         "token_endpoint": null, "scopes": [], "api_hosts": [], "client_id": null, "person_server_url": null,
+         "application_id": null, "assertion_audience": null, "webhook_url": null, "status": "active",
+         "created_by_member_id": "m", "metadata": {}, "policy_entities": [],
+         "signing_secrets": \#(signingSecrets), "requires_runtime": false\#(secret)}
+        """#
 }

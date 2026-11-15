@@ -175,26 +175,32 @@ let inbox = try await runner.issues.list(IssueListParams(relation: [.assignee, .
 ### Routine triggers
 
 A routine runs on its schedule, by hand, or when an event arrives. To start
-one from your own systems, create a `webhook` connector: its secret is
-returned once, in the create response, and your systems post to
-`/v1/webhooks/connectors/{id}` signed with it (with the official
-`standardwebhooks` packages, `new Webhook(secret).sign(id, date, body)` in
-JavaScript or `Webhook(secret).sign(msg_id, timestamp, data)` in Python).
+one from your own systems, create a `webhook` connector. It is created
+without a secret, and refuses every call until you issue one: a Standard
+Webhooks secret (`whsec_...`) that your systems sign each body with (with the
+official `standardwebhooks` packages, `new Webhook(secret).sign(id, date, body)`
+in JavaScript or `Webhook(secret).sign(msg_id, timestamp, data)` in Python), or
+a bearer token (`whtok_...`) sent as `Authorization: Bearer`. Your systems post
+to `/v1/webhooks/connectors/{id}` on the control plane.
 
 ```swift
 let hook = try await client.connectors.create(.webhook(name: "CI alerts", slug: "ci-alerts"))
-let secret = hook.signingSecret  // store it now: no read returns it
+let issued = try await client.connectors.update(hook.id, ConnectorUpdate(rotateSigningSecret: .issue(.standardWebhooks)))
+let secret = issued.signingSecret  // store it now: no read returns it
 ```
 
-`rotateSigningSecret` in a `ConnectorUpdate` issues a new secret the same
-way. The one it replaces keeps working as the previous secret until the next
-rotation or `revokePreviousSigningSecret`, so at most two are valid at once;
-`Connector.signingSecrets` lists them by fingerprint, current first:
+`.rotate` issues a new secret of the same type, returned the same way. The
+one it replaces keeps working as the previous secret until you revoke it by
+its id, so at most two are valid at once (a third rotation is refused);
+`Connector.signingSecrets` lists them by id, type and status, current first.
+To change type, revoke every secret, then issue one of the other type:
 
 ```swift
-let rotated = try await client.connectors.update(hook.id, ConnectorUpdate(rotateSigningSecret: true))
-// once every sender signs with rotated.signingSecret:
-_ = try await client.connectors.update(hook.id, ConnectorUpdate(revokePreviousSigningSecret: true))
+let rotated = try await client.connectors.update(hook.id, ConnectorUpdate(rotateSigningSecret: .rotate))
+// once every sender uses rotated.signingSecret:
+if let previous = rotated.signingSecrets?.first(where: { $0.status == .previous }) {
+    _ = try await client.connectors.update(hook.id, ConnectorUpdate(revokeSigningSecret: previous.id))
+}
 ```
 
 A trigger names the connector by slug. An event-started run receives the
@@ -217,10 +223,18 @@ let routine = try await client.routines.create(
         ]))
 ```
 
-A manual run takes its parameters as a JSON object, under the same contract:
+A manual run takes its parameters as a JSON object, under the same contract.
+`trigger` uploads them through the Files API (a new
+`routine-parameters/<uuid>.json`, kept 30 days) and attaches the file as the
+run's `parameters.json`, besides sending them inline. Pass `parametersFile:` to
+attach a file you uploaded yourself instead, and `files:` for more files on the
+run's task. A platform routine, or one that posts into an existing task, takes
+no files: pass the `Routine` itself, which skips the upload for those, or
+`attachParametersFile: false`:
 
 ```swift
 let run = try await client.routines.trigger(routine.id, parameters: ["deploy_id": "dep_42", "service": "billing"])
+let synthesis = try await client.routines.trigger(synthesisRoutine, parameters: ["conversation_ids": [conversationId]])
 ```
 
 `RoutineUpdate(triggers:)` replaces the routine's triggers: keep one with

@@ -204,7 +204,8 @@ private let routineJSON = #"""
             """#
         #expect(try StrictSchema.unmodelled(RoutineTriggerResponse.self, in: Data(body.utf8)).isEmpty)
         let transport = MockTransport(status: 202, json: body)
-        let triggered = try await makeClient(transport).routines.trigger("a1", parameters: ["conversation_ids": ["conv-1"]])
+        let triggered = try await makeClient(transport).routines.trigger(
+            "a1", parameters: ["conversation_ids": ["conv-1"]], attachParametersFile: false)
         #expect(transport.last?.json == ["parameters": ["conversation_ids": ["conv-1"]]])
         #expect(triggered.runId == nil)
         #expect(triggered.result?["enqueued"] == 1)
