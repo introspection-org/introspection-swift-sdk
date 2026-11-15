@@ -127,7 +127,6 @@ private let judgeJSON = #"""
             switch (request.method, request.url.path) {
             case ("GET", _): return .response(.json(#"{"api_keys": [\#(apiKeyJSON)]}"#))
             case ("DELETE", _): return noContent()
-            case ("POST", "/v1/api-keys/key-1/acknowledge"): return .response(.json(#"{"acknowledged": true}"#))
             default: return .response(.json(apiKeyJSON))
             }
         }
@@ -149,11 +148,6 @@ private let judgeJSON = #"""
         #expect(transport.last?.query == ["project": ["web"], "expires_in": ["3600"]])
         try await keys.delete("key/1")
         #expect(transport.last?.request.url.absoluteString == "https://cp.test/v1/api-keys/key%2F1")
-
-        let ack = try await keys.acknowledge("key-1")
-        #expect(ack.acknowledged == true)
-        #expect(transport.last?.request.method == "POST")
-        #expect(transport.last?.request.body == nil)
     }
 
     // MARK: Applications

@@ -48,7 +48,7 @@ public struct ApiKey: Codable, Sendable, Hashable {
     public var status: ApiKeyStatus?
     public var expiresAt: Date?
     public var lastUsedAt: Date?
-    /// Set once ``ApiKeysAPI/acknowledge(_:project:)`` records the key as saved.
+    /// Legacy: no longer written by the server; set only on keys acknowledged before the acknowledge route was retired.
     public var acknowledgedAt: Date?
     public var createdAt: Date?
 
@@ -75,7 +75,7 @@ public struct ApiKey: Codable, Sendable, Hashable {
 public struct ApiKeyCreated: Codable, Sendable, Hashable {
     /// The key's row, as later reads return it.
     public var key: ApiKey
-    /// The plaintext key. Save it, then call ``ApiKeysAPI/acknowledge(_:project:)``.
+    /// The plaintext key. Save it; it is shown only once.
     public var apiKey: Secret?
 
     public init(key: ApiKey, apiKey: Secret? = nil) {
@@ -161,13 +161,6 @@ public struct ApiKeyUpdate: Encodable, Sendable, Hashable {
     }
 }
 
-/// Response of `POST /v1/api-keys/{id}/acknowledge`.
-public struct ApiKeyAcknowledgement: Codable, Sendable, Hashable {
-    public var acknowledged: Bool?
-
-    public init(acknowledged: Bool? = nil) { self.acknowledged = acknowledged }
-}
-
 // MARK: API
 
 /// A project's API keys (`/v1/api-keys`). Needs an org credential carrying `api_keys:*`; a project API key
@@ -205,11 +198,6 @@ public struct ApiKeysAPI: Sendable {
     /// Revoke a key now, or keep it working `expiresIn` more seconds for a rotation.
     public func delete(_ apiKeyId: String, expiresIn: Int? = nil, project: String? = nil) async throws {
         try await collection.delete(apiKeyId, project: project, expiresIn: expiresIn)
-    }
-
-    /// Record that the plaintext from ``create(_:project:)`` was saved. A second acknowledge answers 404.
-    public func acknowledge(_ apiKeyId: String, project: String? = nil) async throws -> ApiKeyAcknowledgement {
-        try await collection.http.json("POST", "\(collection.itemPath(apiKeyId))/acknowledge", query: cpProjectQuery(project))
     }
 }
 
