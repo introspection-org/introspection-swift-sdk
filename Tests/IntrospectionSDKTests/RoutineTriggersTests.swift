@@ -109,7 +109,7 @@ private let triggeredRoutineJSON = #"""
         #expect(transport.last?.json == ["triggers": []])
     }
 
-    @Test func manualTriggerUploadsParametersAndAttachesThemAsAFile() async throws {
+    @Test func manualTriggerForcedToAttachUploadsParametersWithoutReadingTheRoutine() async throws {
         let transport = MockTransport { request, index in
             request.url.path == "/v1/files"
                 ? .response(.json(uploadedParametersJSON(id: "file-\(index)"), status: 201))
@@ -117,7 +117,8 @@ private let triggeredRoutineJSON = #"""
         }
         let api = makeClient(transport).routines
         let parameters: JSONObject = ["deploy_id": "dep_42", "attempts": 3, "context": ["service": "billing"]]
-        let response = try await api.trigger("r1", parameters: parameters, files: [TaskFileRef(id: "file-runbook", name: "runbook.md")])
+        let response = try await api.trigger(
+            "r1", parameters: parameters, files: [TaskFileRef(id: "file-runbook", name: "runbook.md")], attachParametersFile: true)
 
         let requests = transport.requests
         #expect(requests.count == 2)
@@ -146,7 +147,7 @@ private let triggeredRoutineJSON = #"""
         #expect(response.enqueued == nil)
         #expect(response.conversations == nil)
 
-        _ = try await api.trigger("r1", parameters: parameters)
+        _ = try await api.trigger("r1", parameters: parameters, attachParametersFile: true)
         let second = try #require(transport.requests.dropLast().last?.json?["name"]?.stringValue)
         #expect(second != name, "each run's parameters file gets its own name")
     }
@@ -173,7 +174,46 @@ private let triggeredRoutineJSON = #"""
         #expect(transport.last?.json == ["files": [["id": "file-runbook"]]])
     }
 
-    @Test func manualTriggerSkipsTheUploadWhereTheServerRefusesFiles() async throws {
+    @Test func manualTriggerRejectsParametersWithAParametersFile() async throws {
+        let transport = MockTransport(status: 202, json: triggerResponseJSON)
+        let error = try await #require(throws: IntrospectionError.self) {
+            try await makeClient(transport).routines.trigger("r1", parameters: ["deploy_id": "dep_42"], parametersFile: "file-params")
+        }
+        #expect(error.kind == .invalidRequest)
+        #expect(transport.requests.isEmpty)
+    }
+
+    @Test func manualTriggerReadsTheRoutineToDecideTheUpload() async throws {
+        let synthesisJSON = #"{"id":"r-syn","name":"n","trigger_type":"manual","kind":"observation_synthesis"}"#
+        let transport = MockTransport { request, _ in
+            switch request.url.path {
+            case "/v1/routines/r-syn": return .response(.json(synthesisJSON))
+            case "/v1/routines/r1": return .response(.json(triggeredRoutineJSON))
+            case "/v1/files": return .response(.json(uploadedParametersJSON(id: "file-p"), status: 201))
+            default: return .response(.json(triggerResponseJSON, status: 202))
+            }
+        }
+        let api = makeClient(transport).routines
+
+        _ = try await api.trigger("r-syn", parameters: ["conversation_ids": ["conv-1"]])
+        #expect(transport.requests.map(\.request.method) == ["GET", "POST"])
+        #expect(transport.requests.map(\.path) == ["/v1/routines/r-syn", "/v1/routines/r-syn/trigger"])
+        #expect(transport.last?.json == ["parameters": ["conversation_ids": ["conv-1"]]])
+
+        _ = try await api.trigger("r1", parameters: ["deploy_id": "dep_42"])
+        #expect(transport.requests.dropFirst(2).map(\.path) == ["/v1/routines/r1", "/v1/files", "/v1/routines/r1/trigger"])
+        let expected: JSONValue = ["parameters": ["deploy_id": "dep_42"], "files": [["id": "file-p", "name": "parameters.json"]]]
+        #expect(transport.last?.json == expected)
+    }
+
+    @Test func manualTriggerForcedNotToAttachSendsParametersInline() async throws {
+        let transport = MockTransport(status: 202, json: triggerResponseJSON)
+        _ = try await makeClient(transport).routines.trigger("r1", parameters: ["deploy_id": "dep_42"], attachParametersFile: false)
+        #expect(transport.requests.map(\.path) == ["/v1/routines/r1/trigger"])
+        #expect(transport.last?.json == ["parameters": ["deploy_id": "dep_42"]])
+    }
+
+    @Test func manualTriggerOfAHeldRoutineSkipsTheUploadWhereTheServerRefusesFiles() async throws {
         let transport = MockTransport(status: 202, json: triggerResponseJSON)
         let api = makeClient(transport).routines
         let synthesis = try JSONCoding.decoder.decode(
@@ -189,13 +229,9 @@ private let triggeredRoutineJSON = #"""
         _ = try await api.trigger(posting, parameters: ["deploy_id": "dep_42"])
         #expect(transport.requests.count == 2)
         #expect(transport.last?.json == ["parameters": ["deploy_id": "dep_42"]])
-
-        _ = try await api.trigger("r-post", parameters: ["deploy_id": "dep_42"], attachParametersFile: false)
-        #expect(transport.requests.count == 3)
-        #expect(transport.last?.json == ["parameters": ["deploy_id": "dep_42"]])
     }
 
-    @Test func manualTriggerOfAPromptRoutineUploadsItsParameters() async throws {
+    @Test func manualTriggerOfAHeldPromptRoutineUploadsItsParameters() async throws {
         let transport = MockTransport { request, _ in
             request.url.path == "/v1/files"
                 ? .response(.json(uploadedParametersJSON(id: "file-p"), status: 201))

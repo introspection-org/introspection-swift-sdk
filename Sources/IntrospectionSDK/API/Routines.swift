@@ -465,21 +465,25 @@ public struct RoutinesAPI: Sendable {
     /// `parameters` are at most 16 KiB as JSON and 8 levels deep, or the server answers 422.
     ///
     /// - Parameters:
-    ///   - parameters: The run's parameters. Unless `attachParametersFile` is `false` or `parametersFile` is given,
-    ///     they are also uploaded through the Files API and attached as the task's `parameters.json`.
-    ///   - parametersFile: The id of a Files API file to attach as `parameters.json`; without inline `parameters`
-    ///     the server reads its JSON object (at most 256 KiB) as them.
+    ///   - parameters: The run's parameters, sent inline and, for a routine that starts a task of its own, also
+    ///     uploaded through the Files API and attached as the task's `parameters.json`.
+    ///   - parametersFile: The id of a Files API file to attach as `parameters.json`, which the server reads as the
+    ///     parameters (a JSON object, at most 256 KiB). Not with `parameters`.
     ///   - files: More Files API references to attach to the run's task.
-    ///   - attachParametersFile: Pass `false` for a platform routine or one that posts into an existing task: the
-    ///     server refuses files for those (422). The overload taking a ``Routine`` decides this from the routine.
+    ///   - attachParametersFile: Whether `parameters` are uploaded as well. Nil reads the routine first and uploads
+    ///     only when it has no `kind` and no `taskId`, since the server refuses files for a platform routine or one
+    ///     that posts into an existing task (422); `true` or `false` skips the read.
     public func trigger(
         _ routineId: String, parameters: JSONObject? = nil, parametersFile: String? = nil, files: [TaskFileRef]? = nil,
-        attachParametersFile: Bool = true
+        attachParametersFile: Bool? = nil
     ) async throws -> RoutineTriggerResponse {
+        if parameters != nil, parametersFile != nil {
+            throw IntrospectionError(kind: .invalidRequest, message: "trigger takes parameters or parametersFile, not both")
+        }
         var refs = files ?? []
         if let parametersFile {
             refs.insert(TaskFileRef(id: parametersFile, name: Self.parametersFileName), at: 0)
-        } else if let parameters, attachParametersFile {
+        } else if let parameters, try await shouldAttach(routineId, attachParametersFile) {
             let uploaded = try await FilesAPI(http: http).createText(Self.parametersUpload(parameters))
             refs.insert(TaskFileRef(id: uploaded.id, name: Self.parametersFileName), at: 0)
         }
@@ -491,14 +495,23 @@ public struct RoutinesAPI: Sendable {
     }
 
     /// Run a routine now, attaching `parameters` as a file only when the routine starts a task of its own (no `kind`,
-    /// no `taskId`).
+    /// no `taskId`), without reading it again.
     public func trigger(
         _ routine: Routine, parameters: JSONObject? = nil, parametersFile: String? = nil, files: [TaskFileRef]? = nil
     ) async throws -> RoutineTriggerResponse {
         try await trigger(
             routine.id, parameters: parameters, parametersFile: parametersFile, files: files,
-            attachParametersFile: routine.kind == nil && routine.taskId == nil
+            attachParametersFile: Self.startsItsOwnTask(routine)
         )
+    }
+
+    private func shouldAttach(_ routineId: String, _ attachParametersFile: Bool?) async throws -> Bool {
+        if let attachParametersFile { return attachParametersFile }
+        return Self.startsItsOwnTask(try await get(routineId))
+    }
+
+    private static func startsItsOwnTask(_ routine: Routine) -> Bool {
+        routine.kind == nil && routine.taskId == nil
     }
 
     /// The name a run's parameters file is mounted under on its task.

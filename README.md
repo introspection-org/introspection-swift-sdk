@@ -224,13 +224,14 @@ let routine = try await client.routines.create(
 ```
 
 A manual run takes its parameters as a JSON object, under the same contract.
-`trigger` uploads them through the Files API (a new
-`routine-parameters/<uuid>.json`, kept 30 days) and attaches the file as the
-run's `parameters.json`, besides sending them inline. Pass `parametersFile:` to
-attach a file you uploaded yourself instead, and `files:` for more files on the
-run's task. A platform routine, or one that posts into an existing task, takes
-no files: pass the `Routine` itself, which skips the upload for those, or
-`attachParametersFile: false`:
+`trigger` sends them inline and, for a routine that starts a task of its own,
+uploads them through the Files API (a new `routine-parameters/<uuid>.json`,
+kept 30 days) and attaches the file as the run's `parameters.json`. A platform
+routine, or one that posts into an existing task, takes no files, so by id
+`trigger` reads the routine first to decide; pass the `Routine` you hold, or
+`attachParametersFile: true` / `false`, to skip that read. Pass
+`parametersFile:` instead of `parameters` to attach a file you uploaded
+yourself, and `files:` for more files on the run's task:
 
 ```swift
 let run = try await client.routines.trigger(routine.id, parameters: ["deploy_id": "dep_42", "service": "billing"])
