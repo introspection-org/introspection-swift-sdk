@@ -118,6 +118,9 @@ public struct ConnectorSecretsAPI: Sendable {
     ///   - secretId: The secret's key id, ``WebhookSecret/id``.
     ///   - project: Project slug or id; defaults to the credential's project.
     public func delete(_ connectorId: String, secretId: String, project: String? = nil) async throws {
+        if ["", ".", ".."].contains(secretId) {
+            throw IntrospectionError(kind: .invalidRequest, message: "\(secretId.debugDescription) is not a secret id")
+        }
         try await http.empty("DELETE", "\(path(connectorId))/\(pathSegment(secretId))", query: cpProjectQuery(project))
     }
 }

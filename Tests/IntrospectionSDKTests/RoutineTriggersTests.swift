@@ -410,6 +410,16 @@ private let triggeredRoutineJSON = #"""
         #expect(transport.last?.request.body == nil)
     }
 
+    @Test(arguments: ["", ".", ".."])
+    func webhookSecretDeleteRefusesADotSegment(_ secretId: String) async throws {
+        let transport = MockTransport { _, _ in .response(HTTPResponse(status: 204, headers: [:], body: Data())) }
+
+        await #expect(throws: IntrospectionError.self) {
+            try await makeClient(transport).connectors.secrets.delete("con-w", secretId: secretId)
+        }
+        #expect(transport.last == nil)
+    }
+
     @Test(arguments: [
         (422, IntrospectionError.Kind.validation), (409, IntrospectionError.Kind.conflict), (404, IntrospectionError.Kind.notFound),
     ])
