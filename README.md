@@ -230,12 +230,13 @@ kept 30 days) and attaches the file as the run's `parameters.json`. A platform
 routine, or one that posts into an existing task, takes no files, so by id
 `trigger` reads the routine first to decide; pass the `Routine` you hold, or
 `attachParametersFile: true` / `false`, to skip that read. Pass
-`parametersFile:` instead of `parameters` to attach a file you uploaded
-yourself, and `files:` for more files on the run's task:
+`parameters: .file(uploaded)` (or `.file(id:)`) to attach a file you uploaded
+yourself instead, which the run reads its parameters from, and `files:` for
+more files on the run's task:
 
 ```swift
 let run = try await client.routines.trigger(routine.id, parameters: ["deploy_id": "dep_42", "service": "billing"])
-let synthesis = try await client.routines.trigger(synthesisRoutine, parameters: ["conversation_ids": [conversationId]])
+let synthesis = try await client.routines.trigger(synthesisRoutine, parameters: ["conversation_ids": [.string(conversationId)]])
 ```
 
 `RoutineUpdate(triggers:)` replaces the routine's triggers: keep one with

@@ -421,6 +421,20 @@ public struct EnqueuedConversation: Codable, Sendable, Hashable {
     }
 }
 
+/// A routine run's parameters: a JSON object, or a Files API file holding one. A dictionary literal is `.inline`.
+public enum RoutineParameters: Sendable, Hashable, ExpressibleByDictionaryLiteral {
+    case inline([String: JSONValue])
+    /// A Files API file the run reads its parameters from (`parameters.json`).
+    case file(id: String)
+
+    public init(dictionaryLiteral elements: (String, JSONValue)...) {
+        self = .inline(Dictionary(elements, uniquingKeysWith: { _, last in last }))
+    }
+
+    /// An uploaded file the run reads its parameters from.
+    public static func file(_ file: File) -> Self { .file(id: file.id) }
+}
+
 // MARK: API
 
 /// Data Plane `/v1/routines`. The server serves these routes to administrators only today (a 403
@@ -462,47 +476,46 @@ public struct RoutinesAPI: Sendable {
     ///
     /// A prompt routine's run receives its parameters as `parameters.json` and as `@parameters.<name>` in its prompt;
     /// a platform routine reads the keys its kind defines (`observation_synthesis`: `conversation_ids`). Inline
-    /// `parameters` are at most 16 KiB as JSON and 8 levels deep, or the server answers 422.
+    /// parameters are at most 16 KiB as JSON and 8 levels deep, or the server answers 422.
     ///
     /// - Parameters:
-    ///   - parameters: The run's parameters, sent inline and, for a routine that starts a task of its own, also
-    ///     uploaded through the Files API and attached as the task's `parameters.json`.
-    ///   - parametersFile: The id of a Files API file to attach as `parameters.json`, which the server reads as the
-    ///     parameters (a JSON object, at most 256 KiB). Not with `parameters`.
+    ///   - parameters: `.inline` parameters are sent inline and, for a routine that starts a task of its own, also
+    ///     uploaded through the Files API and attached as the task's `parameters.json`. A `.file` is attached as
+    ///     `parameters.json` and the server reads it as the parameters (a JSON object, at most 256 KiB).
     ///   - files: More Files API references to attach to the run's task.
-    ///   - attachParametersFile: Whether `parameters` are uploaded as well. Nil reads the routine first and uploads
-    ///     only when it has no `kind` and no `taskId`, since the server refuses files for a platform routine or one
-    ///     that posts into an existing task (422); `true` or `false` skips the read.
+    ///   - attachParametersFile: Whether `.inline` parameters are uploaded as well. Nil reads the routine first and
+    ///     uploads only when it has no `kind` and no `taskId`, since the server refuses files for a platform routine or
+    ///     one that posts into an existing task (422); `true` or `false` skips the read.
     public func trigger(
-        _ routineId: String, parameters: JSONObject? = nil, parametersFile: String? = nil, files: [TaskFileRef]? = nil,
-        attachParametersFile: Bool? = nil
+        _ routineId: String, parameters: RoutineParameters? = nil, files: [TaskFileRef]? = nil, attachParametersFile: Bool? = nil
     ) async throws -> RoutineTriggerResponse {
-        if parameters != nil, parametersFile != nil {
-            throw IntrospectionError(kind: .invalidRequest, message: "trigger takes parameters or parametersFile, not both")
-        }
         var refs = files ?? []
-        if let parametersFile {
-            refs.insert(TaskFileRef(id: parametersFile, name: Self.parametersFileName), at: 0)
-        } else if let parameters, try await shouldAttach(routineId, attachParametersFile) {
-            let uploaded = try await FilesAPI(http: http).createText(Self.parametersUpload(parameters))
-            refs.insert(TaskFileRef(id: uploaded.id, name: Self.parametersFileName), at: 0)
+        var inline: JSONObject?
+        switch parameters {
+        case let .file(id):
+            refs.insert(TaskFileRef(id: id, name: Self.parametersFileName), at: 0)
+        case let .inline(values):
+            inline = values
+            if try await shouldAttach(routineId, attachParametersFile) {
+                let uploaded = try await FilesAPI(http: http).createText(Self.parametersUpload(values))
+                refs.insert(TaskFileRef(id: uploaded.id, name: Self.parametersFileName), at: 0)
+            }
+        case nil:
+            break
         }
         var body = RequestBody.none
-        if parameters != nil || !refs.isEmpty {
-            body = try .encode(RoutineTriggerRequest(parameters: parameters, files: refs.isEmpty ? nil : refs))
+        if inline != nil || !refs.isEmpty {
+            body = try .encode(RoutineTriggerRequest(parameters: inline, files: refs.isEmpty ? nil : refs))
         }
         return try await http.json("POST", "/v1/routines/\(pathSegment(routineId))/trigger", body: body, as: RoutineTriggerResponse.self)
     }
 
-    /// Run a routine now, attaching `parameters` as a file only when the routine starts a task of its own (no `kind`,
-    /// no `taskId`), without reading it again.
+    /// Run a routine now, attaching `.inline` parameters as a file only when the routine starts a task of its own (no
+    /// `kind`, no `taskId`), without reading it again.
     public func trigger(
-        _ routine: Routine, parameters: JSONObject? = nil, parametersFile: String? = nil, files: [TaskFileRef]? = nil
+        _ routine: Routine, parameters: RoutineParameters? = nil, files: [TaskFileRef]? = nil
     ) async throws -> RoutineTriggerResponse {
-        try await trigger(
-            routine.id, parameters: parameters, parametersFile: parametersFile, files: files,
-            attachParametersFile: Self.startsItsOwnTask(routine)
-        )
+        try await trigger(routine.id, parameters: parameters, files: files, attachParametersFile: Self.startsItsOwnTask(routine))
     }
 
     private func shouldAttach(_ routineId: String, _ attachParametersFile: Bool?) async throws -> Bool {

@@ -118,7 +118,7 @@ private let triggeredRoutineJSON = #"""
         let api = makeClient(transport).routines
         let parameters: JSONObject = ["deploy_id": "dep_42", "attempts": 3, "context": ["service": "billing"]]
         let response = try await api.trigger(
-            "r1", parameters: parameters, files: [TaskFileRef(id: "file-runbook", name: "runbook.md")], attachParametersFile: true)
+            "r1", parameters: .inline(parameters), files: [TaskFileRef(id: "file-runbook", name: "runbook.md")], attachParametersFile: true)
 
         let requests = transport.requests
         #expect(requests.count == 2)
@@ -147,7 +147,7 @@ private let triggeredRoutineJSON = #"""
         #expect(response.enqueued == nil)
         #expect(response.conversations == nil)
 
-        _ = try await api.trigger("r1", parameters: parameters, attachParametersFile: true)
+        _ = try await api.trigger("r1", parameters: .inline(parameters), attachParametersFile: true)
         let second = try #require(transport.requests.dropLast().last?.json?["name"]?.stringValue)
         #expect(second != name, "each run's parameters file gets its own name")
     }
@@ -155,7 +155,7 @@ private let triggeredRoutineJSON = #"""
     @Test func manualTriggerWithAParametersFileSendsOnlyTheReference() async throws {
         let transport = MockTransport(status: 202, json: triggerResponseJSON)
         _ = try await makeClient(transport).routines.trigger(
-            "r1", parametersFile: "file-params", files: [TaskFileRef(id: "file-runbook", name: "runbook.md")])
+            "r1", parameters: .file(id: "file-params"), files: [TaskFileRef(id: "file-runbook", name: "runbook.md")])
         #expect(transport.requests.count == 1)
         #expect(transport.last?.path == "/v1/routines/r1/trigger")
         let expected: JSONValue = [
@@ -174,13 +174,14 @@ private let triggeredRoutineJSON = #"""
         #expect(transport.last?.json == ["files": [["id": "file-runbook"]]])
     }
 
-    @Test func manualTriggerRejectsParametersWithAParametersFile() async throws {
+    @Test func manualTriggerWithAnUploadedFileNeitherReadsNorUploads() async throws {
         let transport = MockTransport(status: 202, json: triggerResponseJSON)
-        let error = try await #require(throws: IntrospectionError.self) {
-            try await makeClient(transport).routines.trigger("r1", parameters: ["deploy_id": "dep_42"], parametersFile: "file-params")
-        }
-        #expect(error.kind == .invalidRequest)
-        #expect(transport.requests.isEmpty)
+        let file = try JSONCoding.decoder.decode(File.self, from: Data(uploadedParametersJSON(id: "file-up").utf8))
+        _ = try await makeClient(transport).routines.trigger("r1", parameters: .file(file), attachParametersFile: true)
+        #expect(transport.requests.map(\.path) == ["/v1/routines/r1/trigger"])
+        #expect(transport.last?.json == ["files": [["id": "file-up", "name": "parameters.json"]]])
+        #expect(RoutineParameters.file(file) == .file(id: "file-up"))
+        #expect(["a": 1] as RoutineParameters == .inline(["a": 1]))
     }
 
     @Test func manualTriggerReadsTheRoutineToDecideTheUpload() async throws {
