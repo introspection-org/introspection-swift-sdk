@@ -421,11 +421,14 @@ public struct EnqueuedConversation: Codable, Sendable, Hashable {
     }
 }
 
-/// A routine run's parameters: a JSON object, or a Files API file holding one. A dictionary literal is `.inline`.
+/// A routine run's parameters: a JSON object, a local JSON file holding one, or a Files API file holding one. A
+/// dictionary literal is `.inline`.
 public enum RoutineParameters: Sendable, Hashable, ExpressibleByDictionaryLiteral {
     case inline([String: JSONValue])
     /// A Files API file the run reads its parameters from (`parameters.json`).
     case file(id: String)
+    /// A local JSON file holding an object, read and then sent as `.inline`.
+    case path(URL)
 
     public init(dictionaryLiteral elements: (String, JSONValue)...) {
         self = .inline(Dictionary(elements, uniquingKeysWith: { _, last in last }))
@@ -479,11 +482,12 @@ public struct RoutinesAPI: Sendable {
     /// parameters are at most 16 KiB as JSON and 8 levels deep, or the server answers 422.
     ///
     /// - Parameters:
-    ///   - parameters: `.inline` parameters are sent inline and, for a routine that starts a task of its own, also
-    ///     uploaded through the Files API and attached as the task's `parameters.json`. A `.file` is attached as
-    ///     `parameters.json` and the server reads it as the parameters (a JSON object, at most 256 KiB).
+    ///   - parameters: `.inline` parameters (or a `.path`'s, read first) are sent inline and, for a routine that
+    ///     starts a task of its own, also uploaded through the Files API and attached as the task's `parameters.json`.
+    ///     A `.file` is attached as `parameters.json` and the server reads it as the parameters (a JSON object, at
+    ///     most 256 KiB).
     ///   - files: More Files API references to attach to the run's task.
-    ///   - attachParametersFile: Whether `.inline` parameters are uploaded as well. Nil reads the routine first and
+    ///   - attachParametersFile: Whether `.inline` or `.path` parameters are uploaded as well. Nil reads the routine first and
     ///     uploads only when it has no `kind` and no `taskId`, since the server refuses files for a platform routine or
     ///     one that posts into an existing task (422); `true` or `false` skips the read.
     public func trigger(
@@ -496,12 +500,14 @@ public struct RoutinesAPI: Sendable {
             refs.insert(TaskFileRef(id: id, name: Self.parametersFileName), at: 0)
         case let .inline(values):
             inline = values
-            if try await shouldAttach(routineId, attachParametersFile) {
-                let uploaded = try await FilesAPI(http: http).createText(Self.parametersUpload(values))
-                refs.insert(TaskFileRef(id: uploaded.id, name: Self.parametersFileName), at: 0)
-            }
+        case let .path(url):
+            inline = try Self.readParameters(url)
         case nil:
             break
+        }
+        if let inline, try await shouldAttach(routineId, attachParametersFile) {
+            let uploaded = try await FilesAPI(http: http).createText(Self.parametersUpload(inline))
+            refs.insert(TaskFileRef(id: uploaded.id, name: Self.parametersFileName), at: 0)
         }
         var body = RequestBody.none
         if inline != nil || !refs.isEmpty {
@@ -521,6 +527,14 @@ public struct RoutinesAPI: Sendable {
     private func shouldAttach(_ routineId: String, _ attachParametersFile: Bool?) async throws -> Bool {
         if let attachParametersFile { return attachParametersFile }
         return Self.startsItsOwnTask(try await get(routineId))
+    }
+
+    private static func readParameters(_ url: URL) throws -> JSONObject {
+        let value = try JSONCoding.decoder.decode(JSONValue.self, from: Data(contentsOf: url))
+        guard let object = value.objectValue else {
+            throw IntrospectionError(kind: .invalidRequest, message: "Routine parameters at \(url.path) are not a JSON object")
+        }
+        return object
     }
 
     private static func startsItsOwnTask(_ routine: Routine) -> Bool {

@@ -184,6 +184,44 @@ private let triggeredRoutineJSON = #"""
         #expect(["a": 1] as RoutineParameters == .inline(["a": 1]))
     }
 
+    @Test func manualTriggerWithALocalFileSendsItsObjectAsInlineParameters() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("routine-parameters-\(UUID().uuidString).json")
+        try Data(#"{"deploy_id":"dep_42","attempts":3}"#.utf8).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let transport = MockTransport { request, _ in
+            switch request.url.path {
+            case "/v1/routines/r1": return .response(.json(triggeredRoutineJSON))
+            case "/v1/files": return .response(.json(uploadedParametersJSON(id: "file-p"), status: 201))
+            default: return .response(.json(triggerResponseJSON, status: 202))
+            }
+        }
+        let api = makeClient(transport).routines
+
+        _ = try await api.trigger("r1", parameters: .path(url))
+        #expect(transport.requests.map(\.path) == ["/v1/routines/r1", "/v1/files", "/v1/routines/r1/trigger"])
+        #expect(transport.requests[1].json?["content"] == #"{"attempts":3,"deploy_id":"dep_42"}"#)
+        let expected: JSONValue = [
+            "parameters": ["deploy_id": "dep_42", "attempts": 3], "files": [["id": "file-p", "name": "parameters.json"]],
+        ]
+        #expect(transport.last?.json == expected)
+
+        _ = try await api.trigger("r1", parameters: .path(url), attachParametersFile: false)
+        #expect(transport.requests.count == 4)
+        #expect(transport.last?.json == ["parameters": ["deploy_id": "dep_42", "attempts": 3]])
+    }
+
+    @Test func manualTriggerRejectsALocalFileThatIsNotAnObject() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("routine-parameters-\(UUID().uuidString).json")
+        try Data("[1, 2]".utf8).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let transport = MockTransport(status: 202, json: triggerResponseJSON)
+        let error = try await #require(throws: IntrospectionError.self) {
+            try await makeClient(transport).routines.trigger("r1", parameters: .path(url))
+        }
+        #expect(error.kind == .invalidRequest)
+        #expect(transport.requests.isEmpty)
+    }
+
     @Test func manualTriggerReadsTheRoutineToDecideTheUpload() async throws {
         let synthesisJSON = #"{"id":"r-syn","name":"n","trigger_type":"manual","kind":"observation_synthesis"}"#
         let transport = MockTransport { request, _ in
