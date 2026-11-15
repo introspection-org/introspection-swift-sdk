@@ -185,21 +185,22 @@ to `/v1/webhooks/connectors/{id}` on the control plane.
 
 ```swift
 let hook = try await client.connectors.create(.webhook(name: "CI alerts", slug: "ci-alerts"))
-let issued = try await client.connectors.update(hook.id, ConnectorUpdate(rotateSigningSecret: .issue(.standardWebhooks)))
-let secret = issued.signingSecret  // store it now: no read returns it
+let issued = try await client.connectors.secrets.create(hook.id, type: .standardWebhooks)
+let secret = issued.secret.plaintext  // store it now: no read returns it
 ```
 
-`.rotate` issues a new secret of the same type, returned the same way. The
-one it replaces keeps working as the previous secret until you revoke it by
-its id, so at most two are valid at once (a third rotation is refused);
-`Connector.signingSecrets` lists them by id, type and status, current first.
-To change type, revoke every secret, then issue one of the other type:
+Creating another without a `type` rotates: the new secret has the same type
+and is returned the same way. The one it replaces keeps working as the
+previous secret until you delete it by its id, so at most two are valid at
+once (a third is refused with 409). `connectors.secrets.list` lists them by
+id, type and status, current first. To change type, delete every secret, then
+create one of the other type:
 
 ```swift
-let rotated = try await client.connectors.update(hook.id, ConnectorUpdate(rotateSigningSecret: .rotate))
-// once every sender uses rotated.signingSecret:
-if let previous = rotated.signingSecrets?.first(where: { $0.status == .previous }) {
-    _ = try await client.connectors.update(hook.id, ConnectorUpdate(revokeSigningSecret: previous.id))
+let rotated = try await client.connectors.secrets.create(hook.id)
+// once every sender uses rotated.secret:
+for try await live in client.connectors.secrets.list(hook.id) where live.status == .previous {
+    try await client.connectors.secrets.delete(hook.id, secretId: live.id)
 }
 ```
 

@@ -122,9 +122,11 @@ integration (Slack, GitHub) or on a project connector by slug, such as a `webhoo
 body, and ``RoutinesAPI`` `trigger` passes a manual run's, uploaded as a file unless the routine is a platform routine
 or posts into an existing task; either way the run reads them as `parameters.json` and the prompt's
 `@parameters.<key>` references are replaced by their top-level values.
-A `webhook` connector is created without a secret: ``ConnectorUpdate/rotateSigningSecret`` issues the first, of a
-``ConnectorSigningSecretType``, and later rotates it, keeping the old one valid until
-``ConnectorUpdate/revokeSigningSecret`` names it; ``Connector/signingSecrets`` lists at most two.
+A `webhook` connector is created without a secret. Its secrets are a sub-resource, ``ConnectorsAPI/secrets``:
+``ConnectorSecretsAPI/create(_:type:project:)`` issues the first, of a ``ConnectorSigningSecretType``, and later
+rotates it, returning the plaintext once in ``WebhookSecretCreated``; the old one stays valid until
+``ConnectorSecretsAPI/delete(_:secretId:project:)`` names it, and ``ConnectorSecretsAPI/list(_:_:)`` lists at most
+two ``WebhookSecret``s, current first.
 ``RoutineUpdate/triggers`` replaces the list, keeping each entry that names an `id`
 (``RoutineTriggerSpec/init(keeping:)``).
 
@@ -173,6 +175,7 @@ with ``IssueCommentsAPI/create(_:comment:)``.
 
 - ``RecipesAPI``
 - ``ConnectorsAPI``
+- ``ConnectorSecretsAPI``
 - ``RepositoriesAPI``
 - ``AnnotationsAPI``
 - ``TagsAPI``
