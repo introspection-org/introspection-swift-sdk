@@ -352,7 +352,8 @@ private let triggeredRoutineJSON = #"""
     }
 
     @Test func webhookSecretsListCurrentFirstUnderTheConnector() async throws {
-        let page = #"{"records": [\#(webhookSecretJSON(id: "5e6f7a8b", status: "current")), "#
+        let page =
+            #"{"records": [\#(webhookSecretJSON(id: "5e6f7a8b", status: "current")), "#
             + #"\#(webhookSecretJSON(id: "1a2b3c4d", status: "previous", createdAt: "2026-11-01T00:00:00Z"))], "#
             + #""count": 2, "total_count": null, "next": null}"#
         let current = try #require(ISO8601.parse("2026-11-02T00:00:00Z"))
