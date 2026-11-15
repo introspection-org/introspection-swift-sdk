@@ -344,55 +344,90 @@ private let triggeredRoutineJSON = #"""
     // MARK: Webhook connectors
 
     @Test func webhookConnectorIsCreatedWithoutASecret() async throws {
-        let transport = MockTransport(status: 201, json: webhookConnectorJSON(signingSecrets: "[]"))
+        let transport = MockTransport(status: 201, json: webhookConnectorJSON)
         let hook = try await makeClient(transport).connectors.create(.webhook(name: "CI alerts", slug: "ci-alerts"))
-        #expect(try StrictSchema.unmodelled(Connector.self, in: Data(webhookConnectorJSON(signingSecrets: "[]").utf8)).isEmpty)
+        #expect(try StrictSchema.unmodelled(Connector.self, in: Data(webhookConnectorJSON.utf8)).isEmpty)
         #expect(transport.last?.json == ["name": "CI alerts", "provider": "webhook", "auth_mode": "static", "slug": "ci-alerts"])
-        #expect(hook.signingSecret == nil)
-        #expect(hook.signingSecrets == [])
+        #expect(hook.provider == "webhook")
     }
 
-    @Test func webhookConnectorIssuesItsFirstSecretWithAType() async throws {
-        let issued = webhookConnectorJSON(
-            signingSecrets: #"[{"id": "1a2b3c4d", "type": "bearer", "created_at": "2026-11-01T00:00:00Z", "status": "current"}]"#,
-            signingSecret: "whtok_AAAA")
-        let transport = MockTransport(json: issued)
-        let connectors = makeClient(transport).connectors
+    @Test func webhookSecretsListCurrentFirstUnderTheConnector() async throws {
+        let page = #"{"records": [\#(webhookSecretJSON(id: "5e6f7a8b", status: "current")), "#
+            + #"\#(webhookSecretJSON(id: "1a2b3c4d", status: "previous", createdAt: "2026-11-01T00:00:00Z"))], "#
+            + #""count": 2, "total_count": null, "next": null}"#
+        let current = try #require(ISO8601.parse("2026-11-02T00:00:00Z"))
+        let previous = try #require(ISO8601.parse("2026-11-01T00:00:00Z"))
+        let transport = MockTransport(json: page)
 
-        let hook = try await connectors.update("con-w", ConnectorUpdate(rotateSigningSecret: .issue(.bearer)))
-        #expect(try StrictSchema.unmodelled(Connector.self, in: Data(issued.utf8)).isEmpty)
-        #expect(transport.last?.request.method == "PATCH")
-        #expect(transport.last?.path == "/v1/connectors/con-w")
-        #expect(transport.last?.json == ["rotate_signing_secret": ["type": "bearer"]])
-        #expect(hook.signingSecret == "whtok_AAAA")
+        let api = makeClient(transport).connectors.secrets
+        let secrets = try await api.list("con-w", ConnectorListParams(project: "web", limit: 10)).collect()
+        #expect(transport.last?.request.method == "GET")
+        #expect(transport.last?.path == "/v1/connectors/con-w/secrets")
+        #expect(transport.last?.query == ["project": ["web"], "limit": ["10"]])
+        #expect(try StrictSchema.unmodelled(Page<WebhookSecret>.self, in: Data(page.utf8)).isEmpty)
         #expect(
-            hook.signingSecrets == [
-                ConnectorSigningSecret(id: "1a2b3c4d", status: .current, type: .bearer, createdAt: ISO8601.parse("2026-11-01T00:00:00Z"))
+            secrets == [
+                WebhookSecret(id: "5e6f7a8b", type: .standardWebhooks, status: .current, createdAt: current),
+                WebhookSecret(id: "1a2b3c4d", type: .standardWebhooks, status: .previous, createdAt: previous),
             ])
-
-        _ = try await connectors.update("con-w", ConnectorUpdate(rotateSigningSecret: .issue(.standardWebhooks)))
-        #expect(transport.last?.json == ["rotate_signing_secret": ["type": "standard_webhooks"]])
     }
 
-    @Test func webhookConnectorRotatesAndRevokesByKeyId() async throws {
-        let rotated = webhookConnectorJSON(
-            signingSecrets: #"[{"id": "5e6f7a8b", "type": "standard_webhooks", "created_at": "2026-11-02T00:00:00Z", "#
-                + #""status": "current"}, {"id": "1a2b3c4d", "type": "standard_webhooks", "#
-                + #""created_at": "2026-11-01T00:00:00Z", "status": "previous"}]"#,
-            signingSecret: "whsec_BBBB")
-        let transport = MockTransport(json: rotated)
-        let connectors = makeClient(transport).connectors
+    @Test func webhookSecretCreateWithATypeIssuesTheFirst() async throws {
+        let created = webhookSecretCreatedJSON(type: "bearer", secret: "whtok_AAAA")
+        let transport = MockTransport(status: 201, json: created)
 
-        let next = try await connectors.update("con-w", ConnectorUpdate(rotateSigningSecret: .rotate))
-        #expect(transport.last?.json == ["rotate_signing_secret": true])
-        #expect(next.signingSecret == "whsec_BBBB")
-        #expect(next.signingSecrets?.map(\.id) == ["5e6f7a8b", "1a2b3c4d"])
-        #expect(next.signingSecrets?.map(\.status) == [.current, .previous])
-        #expect(next.signingSecrets?.map(\.type) == [.standardWebhooks, .standardWebhooks])
+        let secret = try await makeClient(transport).connectors.secrets.create("con-w", type: .bearer)
+        #expect(transport.last?.request.method == "POST")
+        #expect(transport.last?.path == "/v1/connectors/con-w/secrets")
+        #expect(transport.last?.json == ["type": "bearer"])
+        #expect(try StrictSchema.unmodelled(WebhookSecretCreated.self, in: Data(created.utf8)).isEmpty)
+        #expect(secret.id == "1a2b3c4d")
+        #expect(secret.type == .bearer)
+        #expect(secret.status == .current)
+        #expect(secret.createdAt == ISO8601.parse("2026-11-02T00:00:00Z"))
+        #expect(secret.secret.plaintext == "whtok_AAAA")
+        #expect(!"\(secret)".contains("whtok_AAAA"))
+    }
 
-        _ = try await connectors.update("con-w", ConnectorUpdate(revokeSigningSecret: "1a2b3c4d"))
-        #expect(transport.last?.request.method == "PATCH")
-        #expect(transport.last?.json == ["revoke_signing_secret": "1a2b3c4d"])
+    @Test func webhookSecretCreateWithoutATypeRotates() async throws {
+        let transport = MockTransport(status: 201, json: webhookSecretCreatedJSON(type: "standard_webhooks", secret: "whsec_BBBB"))
+
+        let secret = try await makeClient(transport).connectors.secrets.create("con-w", project: "web")
+        #expect(transport.last?.request.method == "POST")
+        #expect(transport.last?.query == ["project": ["web"]])
+        #expect(transport.last?.json == [:])
+        #expect(secret.type == .standardWebhooks)
+        #expect(secret.secret.plaintext == "whsec_BBBB")
+    }
+
+    @Test func webhookSecretDeleteNamesTheKeyId() async throws {
+        let transport = MockTransport { _, _ in .response(HTTPResponse(status: 204, headers: [:], body: Data())) }
+
+        try await makeClient(transport).connectors.secrets.delete("con-w", secretId: "1a2b3c4d")
+        #expect(transport.last?.request.method == "DELETE")
+        #expect(transport.last?.path == "/v1/connectors/con-w/secrets/1a2b3c4d")
+        #expect(transport.last?.request.body == nil)
+    }
+
+    @Test(arguments: [
+        (422, IntrospectionError.Kind.validation), (409, IntrospectionError.Kind.conflict), (404, IntrospectionError.Kind.notFound),
+    ])
+    func webhookSecretCreateSurfacesTheServerRefusal(status: Int, kind: IntrospectionError.Kind) async throws {
+        let transport = MockTransport(status: status, json: #"{"detail": "refused"}"#)
+        let error = try await #require(throws: IntrospectionError.self) {
+            try await makeClient(transport).connectors.secrets.create("con-w")
+        }
+        #expect(error.kind == kind)
+        #expect(transport.requests.count == 1)
+    }
+
+    @Test(arguments: [(409, IntrospectionError.Kind.conflict), (404, IntrospectionError.Kind.notFound)])
+    func webhookSecretDeleteSurfacesTheServerRefusal(status: Int, kind: IntrospectionError.Kind) async throws {
+        let transport = MockTransport(status: status, json: #"{"detail": "refused"}"#)
+        let error = try await #require(throws: IntrospectionError.self) {
+            try await makeClient(transport).connectors.secrets.delete("con-w", secretId: "5e6f7a8b")
+        }
+        #expect(error.kind == kind)
     }
 }
 
@@ -408,15 +443,21 @@ private func uploadedParametersJSON(id: String) -> String {
     """#
 }
 
-private func webhookConnectorJSON(signingSecrets: String, signingSecret: String? = nil) -> String {
-    let secret = signingSecret.map { #", "signing_secret": "\#($0)""# } ?? ""
-    return #"""
-        {"id": "con-w", "org_id": "o", "project_id": "p", "created_at": "2026-11-01T00:00:00Z",
-         "updated_at": "2026-11-01T00:00:00Z", "slug": "ci-alerts", "name": "CI alerts", "provider": "webhook",
-         "auth_mode": "static", "environment": "production", "agent_member_id": null, "authorization_endpoint": null,
-         "token_endpoint": null, "scopes": [], "api_hosts": [], "client_id": null, "person_server_url": null,
-         "application_id": null, "assertion_audience": null, "webhook_url": null, "status": "active",
-         "created_by_member_id": "m", "metadata": {}, "policy_entities": [],
-         "signing_secrets": \#(signingSecrets), "requires_runtime": false\#(secret)}
-        """#
+private let webhookConnectorJSON = #"""
+    {"id": "con-w", "org_id": "o", "project_id": "p", "created_at": "2026-11-01T00:00:00Z",
+     "updated_at": "2026-11-01T00:00:00Z", "slug": "ci-alerts", "name": "CI alerts", "provider": "webhook",
+     "auth_mode": "static", "environment": "production", "agent_member_id": null, "authorization_endpoint": null,
+     "token_endpoint": null, "scopes": [], "api_hosts": [], "client_id": null, "person_server_url": null,
+     "application_id": null, "assertion_audience": null, "webhook_url": null, "status": "active",
+     "created_by_member_id": "m", "metadata": {}, "policy_entities": [], "requires_runtime": false}
+    """#
+
+private func webhookSecretJSON(
+    id: String, type: String = "standard_webhooks", status: String, createdAt: String = "2026-11-02T00:00:00Z"
+) -> String {
+    #"{"id": "\#(id)", "type": "\#(type)", "status": "\#(status)", "created_at": "\#(createdAt)"}"#
+}
+
+private func webhookSecretCreatedJSON(type: String, secret: String) -> String {
+    #"{"id": "1a2b3c4d", "type": "\#(type)", "status": "current", "created_at": "2026-11-02T00:00:00Z", "secret": "\#(secret)"}"#
 }
