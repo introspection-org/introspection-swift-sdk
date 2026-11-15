@@ -16,7 +16,7 @@ import Testing
           "status": "awaiting_user",
           "kind": "eval",
           "member_id": "0192f0a0-0000-7000-8000-0000000000cc",
-          "automation_id": null,
+          "routine_id": null,
           "runtime_id": "0192f0a0-0000-7000-8000-0000000000dd",
           "is_archived": false,
           "started_at": "2026-09-30T12:00:01Z",
@@ -39,7 +39,7 @@ import Testing
         #expect(task.kind == .eval)
         #expect(task.displayIndex == 42)
         #expect(task.runtimeId == "0192f0a0-0000-7000-8000-0000000000dd")
-        #expect(task.automationId == nil)
+        #expect(task.routineId == nil)
         #expect(task.completedAt == nil)
         #expect(task.createdAt != nil)
         #expect(task.conversationMetadata == ["flow": "checkout"])
@@ -72,7 +72,7 @@ import Testing
             limit: 1, next: "cursor-1", includeTotal: true, statuses: [.running, .idle],
             runtimeId: "rt-1", runtimeIds: ["rt-2", "rt-3"],
             updatedAfter: Date(timeIntervalSince1970: 1_790_000_000),
-            requireAutomationId: false, automationId: "auto-1", memberId: "m-1",
+            requireRoutineId: false, routineId: "auto-1", memberId: "m-1",
             conversationId: "conv-1", conversationIds: ["c-a", "c-b"], tag: "customer:acme"
         )
         let tasks = try await client.tasks.list(params).collect()
@@ -90,8 +90,8 @@ import Testing
         #expect(q["runtime_id"] == ["rt-1"])
         #expect(q["runtime_ids"] == ["rt-2", "rt-3"])
         #expect(q["updated_after"]?.count == 1)
-        #expect(q["require_automation_id"] == ["false"])
-        #expect(q["automation_id"] == ["auto-1"])
+        #expect(q["require_routine_id"] == ["false"])
+        #expect(q["routine_id"] == ["auto-1"])
         #expect(q["member_id"] == ["m-1"])
         #expect(q["conversation_id"] == ["conv-1"])
         #expect(q["conversation_ids"] == ["c-a", "c-b"])

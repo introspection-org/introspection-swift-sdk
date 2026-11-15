@@ -97,7 +97,7 @@ final class Walk {
     var evalTask: IntrospectionTask!
     var judge: Judge!
     var experiment: Experiment!
-    var automation: Automation!
+    var routine: Routine!
 
     /// Step errors, and snapshot mismatches when no reporter takes them, in the order they happened.
     private(set) var failures: [String] = []
@@ -158,7 +158,7 @@ final class Walk {
             (13, "telemetry reads — metrics, a tag, a share, an annotation, events", step13TelemetryReads),
             (14, "eval — a trial on the runtime, graded by the recipe's judge; an experiment over two versions", step14Eval),
             (15, "commands — exec and download inside the eval's sandbox", step15Commands),
-            (16, "automations — a manual automation, triggered", step16Automations),
+            (16, "routines — a manual routine, triggered", step16Routines),
             (17, "access — Avery's work, read by Blake, Casey, Drew and Emery", step17Access),
             (18, "members and keys — the owner's reads, a development API key, the organisation", step18MembersAndKeys),
             (19, "teardown — everything the walk created, in reverse", step19Teardown),

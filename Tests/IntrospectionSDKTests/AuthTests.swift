@@ -437,8 +437,8 @@ private let tokenJSON = #"{"access_token":"AT","token_type":"Bearer","expires_in
                 controlPlaneURL: URL(string: "https://cp.test")!, dataPlaneURL: URL(string: "https://dp.test")!,
                 dataPlaneCredentials: credentials, transport: transport
             ))
-        let automation = try await client.automations.get("a1")
-        #expect(automation.id == "a1")
+        let routine = try await client.routines.get("a1")
+        #expect(routine.id == "a1")
         #expect(transport.requests.map { $0.request.headers["Authorization"] } == ["Bearer stale", "Bearer fresh"])
     }
 
@@ -528,7 +528,7 @@ private let tokenJSON = #"{"access_token":"AT","token_type":"Bearer","expires_in
             controlPlaneURL: URL(string: "https://cp.test")!, transport: transport
         )
         #expect(client.dataPlane.baseURL.absoluteString == "https://api.dp.test")
-        _ = try await client.automations.list().firstPage()
+        _ = try await client.routines.list().firstPage()
         #expect(transport.last?.request.url.host == "api.dp.test")
         #expect(transport.last?.request.headers["Authorization"] == "Bearer SA")
     }

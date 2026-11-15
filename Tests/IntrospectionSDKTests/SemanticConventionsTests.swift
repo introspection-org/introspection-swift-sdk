@@ -23,8 +23,8 @@ import Testing
         "introspection.repository.created",
         "introspection.repository.pushed",
         "introspection.repository.merge",
-        "introspection.automation.triggered",
-        "introspection.automation.skipped",
+        "introspection.routines.triggered",
+        "introspection.routines.skipped",
     ]
 
     @Test func eventNamesMatchThePlatformRegistry() {
@@ -43,8 +43,8 @@ import Testing
         #expect(PlatformEventNames.repositoryCreated == "introspection.repository.created")
         #expect(PlatformEventNames.repositoryPushed == "introspection.repository.pushed")
         #expect(PlatformEventNames.repositoryMerge == "introspection.repository.merge")
-        #expect(PlatformEventNames.automationTriggered == "introspection.automation.triggered")
-        #expect(PlatformEventNames.automationSkipped == "introspection.automation.skipped")
+        #expect(PlatformEventNames.routineTriggered == "introspection.routines.triggered")
+        #expect(PlatformEventNames.routineSkipped == "introspection.routines.skipped")
 
         #expect(IntrospectionEventName.annotation.rawValue == PlatformEventNames.annotation)
         #expect(IntrospectionEventName.feedback.rawValue == PlatformEventNames.feedback)
@@ -58,8 +58,8 @@ import Testing
         #expect(IntrospectionEventName.repositoryCreated.rawValue == PlatformEventNames.repositoryCreated)
         #expect(IntrospectionEventName.repositoryPushed.rawValue == PlatformEventNames.repositoryPushed)
         #expect(IntrospectionEventName.repositoryMerge.rawValue == PlatformEventNames.repositoryMerge)
-        #expect(IntrospectionEventName.automationTriggered.rawValue == PlatformEventNames.automationTriggered)
-        #expect(IntrospectionEventName.automationSkipped.rawValue == PlatformEventNames.automationSkipped)
+        #expect(IntrospectionEventName.routineTriggered.rawValue == PlatformEventNames.routineTriggered)
+        #expect(IntrospectionEventName.routineSkipped.rawValue == PlatformEventNames.routineSkipped)
     }
 
     /// The attributes the processor and the `introspection.track` projection read; the same in every SDK.

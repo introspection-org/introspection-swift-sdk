@@ -272,8 +272,8 @@ extension Walk {
         where [WALK.apiKeyName, "\(WALK.apiKeyName) (renamed)"].contains(key.name ?? "") {
             try await owner.apiKeys.delete(key.id, project: project.id)
         }
-        for automation in try await member.automations.list().all() where automation.name == WALK.automationName {
-            try await member.automations.delete(automation.id)
+        for routine in try await member.routines.list().all() where routine.name == WALK.routineName {
+            try await member.routines.delete(routine.id)
         }
         try await ignoringNotFound { try await member.tags.delete(.access, WALK.tagName) }
         for task in try await dp.tasks.list().all() where task.metadata?["suite"] == "walk" { try await dp.tasks.delete(task.id) }

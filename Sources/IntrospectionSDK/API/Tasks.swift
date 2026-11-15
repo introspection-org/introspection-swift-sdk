@@ -119,8 +119,8 @@ public struct IntrospectionTask: Codable, Sendable, Hashable {
     public var kind: TaskKind
     /// The member who started the task.
     public var memberId: String?
-    /// The automation that created the task.
-    public var automationId: String?
+    /// The routine that created the task.
+    public var routineId: String?
     /// The runtime the task is bound to.
     public var runtimeId: String?
     /// The runtime group of the runtime the task was created for.
@@ -148,7 +148,7 @@ public struct IntrospectionTask: Codable, Sendable, Hashable {
         status: TaskStatus = .pending,
         kind: TaskKind = .agent,
         memberId: String? = nil,
-        automationId: String? = nil,
+        routineId: String? = nil,
         runtimeId: String? = nil,
         isArchived: Bool = false,
         startedAt: Date? = nil,
@@ -169,7 +169,7 @@ public struct IntrospectionTask: Codable, Sendable, Hashable {
         self.status = status
         self.kind = kind
         self.memberId = memberId
-        self.automationId = automationId
+        self.routineId = routineId
         self.runtimeId = runtimeId
         self.isArchived = isArchived
         self.startedAt = startedAt
@@ -194,7 +194,7 @@ public struct IntrospectionTask: Codable, Sendable, Hashable {
         case updatedAt = "updated_at"
         case displayIndex = "display_index"
         case memberId = "member_id"
-        case automationId = "automation_id"
+        case routineId = "routine_id"
         case runtimeId = "runtime_id"
         case runtimeGroupId = "runtime_group_id"
         case isArchived = "is_archived"
@@ -216,7 +216,7 @@ public struct IntrospectionTask: Codable, Sendable, Hashable {
         status = try c.decodeIfPresent(TaskStatus.self, forKey: .status) ?? .pending
         kind = try c.decodeIfPresent(TaskKind.self, forKey: .kind) ?? .agent
         memberId = try c.decodeIfPresent(String.self, forKey: .memberId)
-        automationId = try c.decodeIfPresent(String.self, forKey: .automationId)
+        routineId = try c.decodeIfPresent(String.self, forKey: .routineId)
         runtimeId = try c.decodeIfPresent(String.self, forKey: .runtimeId)
         runtimeGroupId = try c.decodeIfPresent(String.self, forKey: .runtimeGroupId)
         isArchived = try c.decodeIfPresent(Bool.self, forKey: .isArchived) ?? false
@@ -410,9 +410,9 @@ public struct TaskListParams: Sendable, Hashable {
     /// Up to 100 runtime ids.
     public var runtimeIds: [String]?
     public var updatedAfter: Date?
-    /// `true` returns only tasks created by an automation.
-    public var requireAutomationId: Bool?
-    public var automationId: String?
+    /// `true` returns only tasks created by a routine.
+    public var requireRoutineId: Bool?
+    public var routineId: String?
     /// Owning member; privileged credentials only.
     public var memberId: String?
     public var conversationId: String?
@@ -429,8 +429,8 @@ public struct TaskListParams: Sendable, Hashable {
         runtimeId: String? = nil,
         runtimeIds: [String]? = nil,
         updatedAfter: Date? = nil,
-        requireAutomationId: Bool? = nil,
-        automationId: String? = nil,
+        requireRoutineId: Bool? = nil,
+        routineId: String? = nil,
         memberId: String? = nil,
         conversationId: String? = nil,
         conversationIds: [String]? = nil,
@@ -443,8 +443,8 @@ public struct TaskListParams: Sendable, Hashable {
         self.runtimeId = runtimeId
         self.runtimeIds = runtimeIds
         self.updatedAfter = updatedAfter
-        self.requireAutomationId = requireAutomationId
-        self.automationId = automationId
+        self.requireRoutineId = requireRoutineId
+        self.routineId = routineId
         self.memberId = memberId
         self.conversationId = conversationId
         self.conversationIds = conversationIds
@@ -459,8 +459,8 @@ public struct TaskListParams: Sendable, Hashable {
         q.add("runtime_id", runtimeId)
         q.add("runtime_ids", runtimeIds)
         q.add("updated_after", updatedAfter)
-        q.add("require_automation_id", requireAutomationId)
-        q.add("automation_id", automationId)
+        q.add("require_routine_id", requireRoutineId)
+        q.add("routine_id", routineId)
         q.add("member_id", memberId)
         q.add("conversation_id", conversationId)
         q.add("conversation_ids", conversationIds)

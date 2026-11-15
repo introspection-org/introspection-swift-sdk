@@ -63,7 +63,7 @@ passes `traits: ["Telemetry"]`, and add that package to the app.
 
 | Product | Module | Contains |
 | --- | --- | --- |
-| `IntrospectionSDK` | `IntrospectionSDK` | The client: sign-in, runtimes and runners, tasks and run streams, files, conversations, events (including reading custom events back), metrics, automations, and the Control Plane resources. No OpenTelemetry dependency. |
+| `IntrospectionSDK` | `IntrospectionSDK` | The client: sign-in, runtimes and runners, tasks and run streams, files, conversations, events (including reading custom events back), metrics, routines, and the Control Plane resources. No OpenTelemetry dependency. |
 | `IntrospectionTelemetry` | `IntrospectionTelemetry` | Opt-in, needs the `Telemetry` trait. Custom events (`logEvent`, `track`, `feedback`, `identify`) and gen_ai traces over OTLP/HTTP, on the [OpenTelemetry Swift SDK](https://github.com/open-telemetry/opentelemetry-swift). |
 
 | Trait | Adds |
@@ -97,7 +97,7 @@ print(try await followUp.text())
 ```
 
 The runner and the client expose the same Data Plane resources (`DataPlaneResources`):
-`tasks`, `files`, `conversations`, `events`, `metrics`, `shares`, `automations`
+`tasks`, `files`, `conversations`, `events`, `metrics`, `shares`, `routines`
 and `connections`, plus `issues` and `images` on any `DataPlaneConnection`.
 
 ### Member tags and metadata
@@ -171,6 +171,77 @@ let issue = try await runner.issues.get(issueId, include: [.members, .comments])
 for comment in issue.comments ?? [] { print(comment.memberId ?? "", comment.comment) }
 let inbox = try await runner.issues.list(IssueListParams(relation: [.assignee, .reviewer])).collect()
 ```
+
+### Routine triggers
+
+A routine runs on its schedule, by hand, or when an event arrives. To start
+one from your own systems, create a `webhook` connector. It is created
+without a secret, and refuses every call until you issue one: a Standard
+Webhooks secret (`whsec_...`) that your systems sign each body with (with the
+official `standardwebhooks` packages, `new Webhook(secret).sign(id, date, body)`
+in JavaScript or `Webhook(secret).sign(msg_id, timestamp, data)` in Python), or
+a bearer token (`whtok_...`) sent as `Authorization: Bearer`. Your systems post
+to `/v1/webhooks/connectors/{id}` on the control plane.
+
+```swift
+let hook = try await client.connectors.create(.webhook(name: "CI alerts", slug: "ci-alerts"))
+let issued = try await client.connectors.update(hook.id, ConnectorUpdate(rotateSigningSecret: .issue(.standardWebhooks)))
+let secret = issued.signingSecret  // store it now: no read returns it
+```
+
+`.rotate` issues a new secret of the same type, returned the same way. The
+one it replaces keeps working as the previous secret until you revoke it by
+its id, so at most two are valid at once (a third rotation is refused);
+`Connector.signingSecrets` lists them by id, type and status, current first.
+To change type, revoke every secret, then issue one of the other type:
+
+```swift
+let rotated = try await client.connectors.update(hook.id, ConnectorUpdate(rotateSigningSecret: .rotate))
+// once every sender uses rotated.signingSecret:
+if let previous = rotated.signingSecrets?.first(where: { $0.status == .previous }) {
+    _ = try await client.connectors.update(hook.id, ConnectorUpdate(revokeSigningSecret: previous.id))
+}
+```
+
+A trigger names the connector by slug. An event-started run receives the
+event's body as its parameters: `parameters.json` in the task's files (any
+JSON; a body that is not JSON arrives as a JSON string), and each
+`@parameters.<key>` in the prompt is replaced by that top-level key's value as
+JSON (`null` when absent), the same as a manual run. `trigger/event.json`
+holds the event itself:
+
+```swift
+let routine = try await client.routines.create(
+    RoutineCreate(
+        name: "Triage failed deploys", triggerType: .manual,
+        prompt: "Deploy @parameters.deploy_id of @parameters.service failed. Find out why.",
+        runtimeGroupId: runtimeGroupId,
+        triggers: [
+            .connector(
+                "ci-alerts", eventTypes: ["deploy.failed"],
+                filter: RoutineTriggerFilter(payloadFields: ["environment": ["production"]]))
+        ]))
+```
+
+A manual run takes its parameters as a JSON object, under the same contract.
+`trigger` sends them inline and, for a routine that starts a task of its own,
+uploads them through the Files API (a new `routine-parameters/<uuid>.json`,
+kept 30 days) and attaches the file as the run's `parameters.json`. A platform
+routine, or one that posts into an existing task, takes no files, so by id
+`trigger` reads the routine first to decide; pass the `Routine` you hold, or
+`attachParametersFile: true` / `false`, to skip that read. Pass
+`parameters: .path(url)` to read them from a local JSON file (an object, then
+handled the same way), `.file(uploaded)` (or `.file(id:)`) to attach a file
+you uploaded yourself instead, which the run reads its parameters from, and
+`files:` for more files on the run's task:
+
+```swift
+let run = try await client.routines.trigger(routine.id, parameters: ["deploy_id": "dep_42", "service": "billing"])
+let synthesis = try await client.routines.trigger(synthesisRoutine, parameters: ["conversation_ids": [.string(conversationId)]])
+```
+
+`RoutineUpdate(triggers:)` replaces the routine's triggers: keep one with
+`RoutineTriggerSpec(keeping:)`, and `[]` removes them all.
 
 ## End users signed in with Introspection
 

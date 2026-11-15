@@ -108,25 +108,46 @@ Written by the opt-in `IntrospectionTelemetry` product; read here.
 - ``EventListParams/names``
 - ``LogAttributes``
 
-### Automations
+### Routines
 
-Scheduled prompts and platform work. A one-off reminder is a ``AutomationTriggerType/manual`` automation with a future
-``AutomationCreate/nextTriggerAt``; set ``AutomationCreate/taskId`` to post each firing into an existing task. Each
-trigger is recorded as an ``IntrospectionEventName/automationTriggered`` or ``IntrospectionEventName/automationSkipped``
-event, read through ``EventsAPI`` with the `automationId` and `taskId` filters.
-``AutomationListParams/taskId`` lists the automations that post into one task.
+Scheduled prompts and platform work. A one-off reminder is a ``RoutineTriggerType/manual`` routine with a future
+``RoutineCreate/nextTriggerAt``; set ``RoutineCreate/taskId`` to post each firing into an existing task. Each
+trigger is recorded as an ``IntrospectionEventName/routineTriggered`` or ``IntrospectionEventName/routineSkipped``
+event, read through ``EventsAPI`` with the `routineId` and `taskId` filters.
+``RoutineListParams/taskId`` lists the routines that post into one task.
+
+A routine can also start a run on an event: ``RoutineCreate/triggers`` lists ``RoutineTriggerSpec``s on an
+integration (Slack, GitHub) or on a project connector by slug, such as a `webhook` connector made with
+``ConnectorCreate/webhook(name:slug:environment:)``. An event-started run's parameters are the event's
+body, and ``RoutinesAPI`` `trigger` passes a manual run's, uploaded as a file unless the routine is a platform routine
+or posts into an existing task; either way the run reads them as `parameters.json` and the prompt's
+`@parameters.<key>` references are replaced by their top-level values.
+A `webhook` connector is created without a secret: ``ConnectorUpdate/rotateSigningSecret`` issues the first, of a
+``ConnectorSigningSecretType``, and later rotates it, keeping the old one valid until
+``ConnectorUpdate/revokeSigningSecret`` names it; ``Connector/signingSecrets`` lists at most two.
+``RoutineUpdate/triggers`` replaces the list, keeping each entry that names an `id`
+(``RoutineTriggerSpec/init(keeping:)``).
 
 The server serves these routes to administrators only today; introspection-cloud#3137 opens them to members for
-their own task-targeted automations.
+their own task-targeted routines.
 
-- ``AutomationsAPI``
-- ``Automation``
-- ``AutomationCreate``
-- ``AutomationUpdate``
-- ``AutomationListParams``
-- ``AutomationTriggerResponse``
-- ``AutomationTriggeredPayload``
-- ``AutomationSkippedPayload``
+- ``RoutinesAPI``
+- ``Routine``
+- ``RoutineCreate``
+- ``RoutineUpdate``
+- ``RoutineListParams``
+- ``RoutineTriggerResponse``
+- ``RoutineTrigger``
+- ``RoutineTriggerSpec``
+- ``RoutineTriggerFilter``
+- ``RoutineTriggerSource``
+- ``RoutineTriggerProvider``
+- ``RoutineTriggerEventType``
+- ``RoutineTriggerEventRef``
+- ``RoutineRunSource``
+- ``RoutineTaskMetadataKeys``
+- ``RoutineTriggeredPayload``
+- ``RoutineSkippedPayload``
 
 ### Issues
 
