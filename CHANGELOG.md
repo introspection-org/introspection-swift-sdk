@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.21.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.20.1...v0.21.0) (2026-11-15)
+
+
+### ⚠ BREAKING CHANGES
+
+* `ApiKeysAPI.acknowledge(_:project:)` and `ApiKeyAcknowledgement` are removed. Save the plaintext from `ApiKeysAPI.create`; there is nothing to acknowledge.
+* ConnectorSigningSecret, ConnectorSigningSecretRotation, ConnectorUpdate.rotateSigningSecret / revokeSigningSecret and Connector.signingSecrets / signingSecret are removed; use connectors.secrets and WebhookSecret instead.
+* `automations` is now `routines` on DataPlaneConnection and DataPlaneResources, and every Automation* type is renamed Routine* (Routine, RoutineCreate, RoutineUpdate, RoutineKind, RoutineTriggerType, RoutineListParams, RoutineTriggerResponse, RoutineTriggeredPayload, RoutineSkippedPayload, ...). Task.automationId, TaskListParams.automationId / requireAutomationId, EventListParams.automationId and the IntrospectionEventName / PlatformEventNames automation* constants are renamed routine*. No aliases are kept. This release requires a data plane serving /v1/routines (introspection-org/introspection-cloud#4051).
+
+### Features
+
+* remove ApiKeysAPI.acknowledge ([#120](https://github.com/introspection-org/introspection-swift-sdk/issues/120)) ([281f659](https://github.com/introspection-org/introspection-swift-sdk/commit/281f6596d8ff2e1598d8267fa6abe98d085c56bf))
+* rename automations to routines; webhook secrets per type; trigger with parameters files ([#117](https://github.com/introspection-org/introspection-swift-sdk/issues/117)) ([32868c3](https://github.com/introspection-org/introspection-swift-sdk/commit/32868c3fdfc78e819efd6d9f2987fb3b886c7431))
+* webhook connector secrets are a sub-resource (connectors.secrets) ([#119](https://github.com/introspection-org/introspection-swift-sdk/issues/119)) ([bd8fef6](https://github.com/introspection-org/introspection-swift-sdk/commit/bd8fef6e4aa83b9ac8009022bb19ef082015a8a1))
+
 ## [0.20.1](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.20.0...v0.20.1) (2026-11-13)
 
 
