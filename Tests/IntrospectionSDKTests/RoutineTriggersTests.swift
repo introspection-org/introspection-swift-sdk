@@ -28,7 +28,7 @@ private let triggeredRoutineJSON = #"""
       "execution_blocked_reason": null, "can_manage": true, "tags": [],
       "kind": null, "prompt": "Deploy @parameters.deploy_id failed.",
       "last_triggered_at": null, "next_trigger_at": "2026-11-03T22:00:00Z", "owner_role": "operator",
-      "repositories": [], "conditions": [], "synthesis": null,
+      "routine_metadata": {"repositories": [], "conditions": [], "synthesis_max_conversations": null},
       "triggers": \#(triggersJSON)
     }
     """#
@@ -188,15 +188,16 @@ private let triggeredRoutineJSON = #"""
         }
     }
 
-    @Test func synthesisSettingsRoundTrip() async throws {
-        let body = #"{"id":"r","name":"n","kind":"observation_synthesis","synthesis":{"max_conversations":50}}"#
+    @Test func routineMetadataRoundTrips() async throws {
+        let body =
+            #"{"id":"r","name":"n","kind":"observation_synthesis","routine_metadata":{"repositories":[],"conditions":[],"synthesis_max_conversations":50}}"#
         #expect(try StrictSchema.unmodelled(Routine.self, in: Data(body.utf8)).isEmpty)
         let transport = MockTransport(json: body)
         let api = makeClient(transport).routines
-        #expect(try await api.get("r").synthesis == RoutineSynthesis(maxConversations: 50))
+        #expect(try await api.get("r").routineMetadata == RoutineMetadata(repositories: [], conditions: [], synthesisMaxConversations: 50))
 
-        _ = try await api.update("r", RoutineUpdate(synthesis: RoutineSynthesis(maxConversations: 20)))
-        #expect(transport.last?.json == ["synthesis": ["max_conversations": 20]])
+        _ = try await api.update("r", RoutineUpdate(routineMetadata: RoutineMetadata(synthesisMaxConversations: 20)))
+        #expect(transport.last?.json == ["routine_metadata": ["synthesis_max_conversations": 20]])
     }
 
     @Test func manualTriggerForcedToAttachUploadsParametersWithoutReadingTheRoutine() async throws {

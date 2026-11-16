@@ -146,7 +146,7 @@ their own task-targeted routines.
 - ``RoutineLinearTrigger``
 - ``RoutineWebhookTrigger``
 - ``RoutineCondition``
-- ``RoutineSynthesis``
+- ``RoutineMetadata``
 - ``RoutineTriggerEventType``
 - ``RoutineTriggerEventRef``
 - ``RoutineRunSource``

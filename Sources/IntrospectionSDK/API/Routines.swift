@@ -99,17 +99,23 @@ public struct RoutineCondition: Codable, Sendable, Hashable {
     }
 }
 
-/// How an `observation_synthesis` routine runs.
-public struct RoutineSynthesis: Codable, Sendable, Hashable {
-    /// The most conversations a run samples; nil for no cap.
-    public var maxConversations: Int?
+/// A routine's typed settings (`routine_metadata`). A PATCH replaces the whole object, so send every field to keep.
+public struct RoutineMetadata: Codable, Sendable, Hashable {
+    /// Repositories a task-backed run clones.
+    public var repositories: [TaskRepoRequest]?
+    public var conditions: [RoutineCondition]?
+    /// `observationSynthesis` only: the most conversations a run samples; nil for no cap.
+    public var synthesisMaxConversations: Int?
 
     enum CodingKeys: String, CodingKey {
-        case maxConversations = "max_conversations"
+        case repositories, conditions
+        case synthesisMaxConversations = "synthesis_max_conversations"
     }
 
-    public init(maxConversations: Int? = nil) {
-        self.maxConversations = maxConversations
+    public init(repositories: [TaskRepoRequest]? = nil, conditions: [RoutineCondition]? = nil, synthesisMaxConversations: Int? = nil) {
+        self.repositories = repositories
+        self.conditions = conditions
+        self.synthesisMaxConversations = synthesisMaxConversations
     }
 }
 
@@ -141,11 +147,7 @@ public struct Routine: Codable, Sendable, Hashable {
     public let ownerRole: String?
     /// Its schedules and the events that start a run.
     public let triggers: [RoutineTrigger]?
-    /// Repositories a task-backed run clones.
-    public let repositories: [TaskRepoRequest]?
-    public let conditions: [RoutineCondition]?
-    /// `observationSynthesis` only.
-    public let synthesis: RoutineSynthesis?
+    public let routineMetadata: RoutineMetadata?
     public let createdAt: Date?
     public let updatedAt: Date?
 
@@ -163,7 +165,8 @@ public struct Routine: Codable, Sendable, Hashable {
         case executionBlockedReason = "execution_blocked_reason"
         case canManage = "can_manage"
         case ownerRole = "owner_role"
-        case triggers, repositories, conditions, synthesis
+        case triggers
+        case routineMetadata = "routine_metadata"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
@@ -183,10 +186,7 @@ public struct RoutineCreate: Encodable, Sendable, Hashable {
     public var taskId: String?
     /// A one-off slot for a routine with no schedule trigger; must be in the future.
     public var nextTriggerAt: Date?
-    public var repositories: [TaskRepoRequest]?
-    public var conditions: [RoutineCondition]?
-    /// `observationSynthesis` only.
-    public var synthesis: RoutineSynthesis?
+    public var routineMetadata: RoutineMetadata?
     public var enabled: Bool?
     /// Up to 20, none with an `id`. Event triggers go on a prompt routine that starts a task per run; a platform
     /// routine takes only `.schedule`.
@@ -197,7 +197,8 @@ public struct RoutineCreate: Encodable, Sendable, Hashable {
         case runtimeGroupId = "runtime_group_id"
         case taskId = "task_id"
         case nextTriggerAt = "next_trigger_at"
-        case repositories, conditions, synthesis, enabled, triggers
+        case routineMetadata = "routine_metadata"
+        case enabled, triggers
     }
 
     public init(
@@ -208,9 +209,7 @@ public struct RoutineCreate: Encodable, Sendable, Hashable {
         runtimeGroupId: String? = nil,
         taskId: String? = nil,
         nextTriggerAt: Date? = nil,
-        repositories: [TaskRepoRequest]? = nil,
-        conditions: [RoutineCondition]? = nil,
-        synthesis: RoutineSynthesis? = nil,
+        routineMetadata: RoutineMetadata? = nil,
         enabled: Bool? = nil,
         triggers: [RoutineTrigger]? = nil
     ) {
@@ -221,9 +220,7 @@ public struct RoutineCreate: Encodable, Sendable, Hashable {
         self.runtimeGroupId = runtimeGroupId
         self.taskId = taskId
         self.nextTriggerAt = nextTriggerAt
-        self.repositories = repositories
-        self.conditions = conditions
-        self.synthesis = synthesis
+        self.routineMetadata = routineMetadata
         self.enabled = enabled
         self.triggers = triggers
     }
@@ -240,9 +237,8 @@ public struct RoutineUpdate: Encodable, Sendable, Hashable {
     public var taskId: String?
     /// Schedules, moves or re-arms the one-off slot of a routine with no schedule trigger; must be in the future.
     public var nextTriggerAt: Date?
-    public var repositories: [TaskRepoRequest]?
-    public var conditions: [RoutineCondition]?
-    public var synthesis: RoutineSynthesis?
+    /// Replaces the whole object.
+    public var routineMetadata: RoutineMetadata?
     /// `false` pauses and keeps the slot.
     public var enabled: Bool?
     /// Replaces the routine's triggers: an entry with an `id` keeps that trigger (pass a stored one back as it is),
@@ -254,7 +250,8 @@ public struct RoutineUpdate: Encodable, Sendable, Hashable {
         case runtimeGroupId = "runtime_group_id"
         case taskId = "task_id"
         case nextTriggerAt = "next_trigger_at"
-        case repositories, conditions, synthesis, enabled, triggers
+        case routineMetadata = "routine_metadata"
+        case enabled, triggers
     }
 
     public init(
@@ -264,9 +261,7 @@ public struct RoutineUpdate: Encodable, Sendable, Hashable {
         runtimeGroupId: String? = nil,
         taskId: String? = nil,
         nextTriggerAt: Date? = nil,
-        repositories: [TaskRepoRequest]? = nil,
-        conditions: [RoutineCondition]? = nil,
-        synthesis: RoutineSynthesis? = nil,
+        routineMetadata: RoutineMetadata? = nil,
         enabled: Bool? = nil,
         triggers: [RoutineTrigger]? = nil
     ) {
@@ -276,9 +271,7 @@ public struct RoutineUpdate: Encodable, Sendable, Hashable {
         self.runtimeGroupId = runtimeGroupId
         self.taskId = taskId
         self.nextTriggerAt = nextTriggerAt
-        self.repositories = repositories
-        self.conditions = conditions
-        self.synthesis = synthesis
+        self.routineMetadata = routineMetadata
         self.enabled = enabled
         self.triggers = triggers
     }

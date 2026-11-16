@@ -24,9 +24,11 @@ private let routineJSON = #"""
         {"id": "0199a1b2-0000-7000-8000-000000000101", "type": "schedule", "cron": "0 9 * * 1", "timezone": "Europe/London"},
         {"id": "0199a1b2-0000-7000-8000-000000000102", "type": "schedule", "cron": "0 17 * * 5", "timezone": "Europe/London"}
       ],
-      "repositories": [{"repo": "acme/app", "ref": "main"}],
-      "conditions": [{"type": "has_new_tasks_since_last_run"}, {"type": "brand_new_condition"}],
-      "synthesis": null,
+      "routine_metadata": {
+        "repositories": [{"repo": "acme/app", "ref": "main", "depth": null}],
+        "conditions": [{"type": "has_new_tasks_since_last_run", "runtime_group_id": null}, {"type": "brand_new_condition"}],
+        "synthesis_max_conversations": null
+      },
       "last_triggered_at": "2026-09-28T09:00:00Z",
       "next_trigger_at": "2026-10-05T09:00:00.123456Z",
       "created_at": "2026-09-01T10:00:00Z",
@@ -54,9 +56,11 @@ private let routineJSON = #"""
                 .schedule(
                     RoutineScheduleTrigger(cron: "0 17 * * 5", timezone: "Europe/London", id: "0199a1b2-0000-7000-8000-000000000102")),
             ])
-        #expect(routine.repositories == [TaskRepoRequest(repo: "acme/app", ref: "main")])
-        #expect(routine.conditions?.map(\.type) == [.hasNewTasksSinceLastRun, "brand_new_condition"])
-        #expect(routine.synthesis == nil)
+        #expect(try StrictSchema.unmodelled(Routine.self, in: Data(routineJSON.utf8)) == ["$.agent_member_id"])
+        let metadata = try #require(routine.routineMetadata)
+        #expect(metadata.repositories == [TaskRepoRequest(repo: "acme/app", ref: "main")])
+        #expect(metadata.conditions?.map(\.type) == [.hasNewTasksSinceLastRun, "brand_new_condition"])
+        #expect(metadata.synthesisMaxConversations == nil)
 
         let minimal = try JSONCoding.decoder.decode(
             Routine.self, from: Data(#"{"id":"a","name":"n","kind":"observation_clustering"}"#.utf8))
@@ -119,8 +123,9 @@ private let routineJSON = #"""
         let transport = MockTransport(status: 201, json: routineJSON)
         let created = try await makeClient(transport).routines.create(
             RoutineCreate(
-                name: "Weekly digest", prompt: "Summarize my week", repositories: [TaskRepoRequest(repo: "acme/app")],
-                conditions: [RoutineCondition(type: .hasNewTasksSinceLastRun)],
+                name: "Weekly digest", prompt: "Summarize my week",
+                routineMetadata: RoutineMetadata(
+                    repositories: [TaskRepoRequest(repo: "acme/app")], conditions: [RoutineCondition(type: .hasNewTasksSinceLastRun)]),
                 triggers: [.schedule(RoutineScheduleTrigger(cron: "0 9 * * 1", timezone: "UTC"))]
             ))
         #expect(created.name == "Weekly digest")
@@ -128,8 +133,10 @@ private let routineJSON = #"""
         #expect(transport.last?.path == "/v1/routines")
         #expect(
             transport.last?.json == [
-                "name": "Weekly digest", "prompt": "Summarize my week", "repositories": [["repo": "acme/app"]],
-                "conditions": [["type": "has_new_tasks_since_last_run"]],
+                "name": "Weekly digest", "prompt": "Summarize my week",
+                "routine_metadata": [
+                    "repositories": [["repo": "acme/app"]], "conditions": [["type": "has_new_tasks_since_last_run"]],
+                ],
                 "triggers": [["type": "schedule", "cron": "0 9 * * 1", "timezone": "UTC"]],
             ])
 

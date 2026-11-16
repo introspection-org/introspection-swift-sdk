@@ -374,9 +374,6 @@ extension Walk {
             #"""
             {
               "can_manage" : true,
-              "conditions" : [
-
-              ],
               "created_at" : "[timestamp]",
               "created_by_member_id" : "[uuid]",
               "enabled" : true,
@@ -386,9 +383,14 @@ extension Walk {
               "owner_role" : "operator",
               "project_id" : "[uuid]",
               "prompt" : "Reply with the single word done. <<SCRIPT {\"reply\":\"done\"}>>",
-              "repositories" : [
+              "routine_metadata" : {
+                "conditions" : [
 
-              ],
+                ],
+                "repositories" : [
+
+                ]
+              },
               "runtime_group_id" : "[uuid]",
               "tags" : [
 
