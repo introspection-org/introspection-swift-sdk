@@ -151,6 +151,18 @@ import Testing
         #expect(await drift(runtime, as: Runtime.self, route: "/v1/runtimes/rt") == nil)
     }
 
+    @Test func routineModelsItsBudgetExhaustion() async throws {
+        let none = #"{"id":"r","name":"n","budget_exhausted":null}"#
+        #expect(await drift(none, as: Routine.self, route: "/v1/routines/r") == nil)
+        let free = try await client(none, strict: true).json("GET", "/v1/routines/r", as: Routine.self)
+        #expect(free.budgetExhausted == nil)
+
+        let paused = #"{"id":"r","name":"n","budget_exhausted":{"budget_id":"b","until":"2026-12-01T00:00:00Z"}}"#
+        #expect(await drift(paused, as: Routine.self, route: "/v1/routines/r") == nil)
+        let read = try await client(paused, strict: true).json("GET", "/v1/routines/r", as: Routine.self)
+        #expect(read.budgetExhausted == RoutineBudgetExhausted(budgetId: "b", until: ISO8601.parse("2026-12-01T00:00:00Z")!))
+    }
+
     @Test func runtimeModelsItsEnabledState() async throws {
         let off = #"{"id":"rt","enabled":false,"disabled_at":"2026-11-12T00:00:00Z"}"#
         #expect(await drift(off, as: Runtime.self, route: "/v1/runtimes/rt") == nil)

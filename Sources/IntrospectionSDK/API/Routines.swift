@@ -151,6 +151,17 @@ public struct RoutineMetadata: Codable, Sendable, Hashable {
 
 // MARK: Models
 
+/// The budget pausing a routine's scheduled and event-started runs, until its period ends.
+public struct RoutineBudgetExhausted: Codable, Sendable, Hashable {
+    public let budgetId: String
+    public let until: Date
+
+    enum CodingKeys: String, CodingKey {
+        case budgetId = "budget_id"
+        case until
+    }
+}
+
 /// A stored routine: scheduled agent work, or platform work when `kind` is set.
 public struct Routine: Codable, Sendable, Hashable {
     public let id: String
@@ -183,11 +194,14 @@ public struct Routine: Codable, Sendable, Hashable {
     public let ownerRole: String?
     /// Events that start a run, beside the schedule and a hand trigger.
     public let triggers: [RoutineTrigger]?
+    /// The budget pausing this routine's scheduled and event-started runs; nil while none does.
+    public let budgetExhausted: RoutineBudgetExhausted?
     public let createdAt: Date?
     public let updatedAt: Date?
 
     enum CodingKeys: String, CodingKey {
         case id
+        case budgetExhausted = "budget_exhausted"
         case orgId = "org_id"
         case projectId = "project_id"
         case name, description, enabled

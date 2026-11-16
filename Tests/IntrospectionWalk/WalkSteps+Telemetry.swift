@@ -371,7 +371,8 @@ extension Walk {
             RoutineCreate(
                 name: WALK.routineName, triggerType: .manual, prompt: WALK.secondTurn(settings), runtimeGroupId: runtime.runtimeGroupId,
                 taskId: evalTask.id))
-        snap(try stable(routine)) {
+        // The budget state postdates the recording: absent on replay, null live while no budget pauses the routine.
+        snap(try stable(routine, removing: ["budget_exhausted"])) {
             #"""
             {
               "can_manage" : true,
