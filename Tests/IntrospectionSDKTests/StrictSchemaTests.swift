@@ -151,6 +151,20 @@ import Testing
         #expect(await drift(runtime, as: Runtime.self, route: "/v1/runtimes/rt") == nil)
     }
 
+    @Test func runtimeModelsItsEnabledState() async throws {
+        let off = #"{"id":"rt","enabled":false,"disabled_at":"2026-11-12T00:00:00Z"}"#
+        #expect(await drift(off, as: Runtime.self, route: "/v1/runtimes/rt") == nil)
+        let disabled = try await client(off, strict: true).json("GET", "/v1/runtimes/rt", as: Runtime.self)
+        #expect(disabled.enabled == false)
+        #expect(disabled.disabledAt == ISO8601.parse("2026-11-12T00:00:00Z"))
+
+        let on = #"{"id":"rt","enabled":true,"disabled_at":null}"#
+        #expect(await drift(on, as: Runtime.self, route: "/v1/runtimes/rt") == nil)
+        let enabled = try await client(on, strict: true).json("GET", "/v1/runtimes/rt", as: Runtime.self)
+        #expect(enabled.enabled == true)
+        #expect(enabled.disabledAt == nil)
+    }
+
     @Test func imageBuildMetadataKeepsTheDataPlanesOwnMembers() async throws {
         let page = #"""
             {"records":[{"id":"rt","image_build_status":"ready","image_build_metadata":{"image_tag":"t","built_at":"2026-11-12T00:00:00Z",
