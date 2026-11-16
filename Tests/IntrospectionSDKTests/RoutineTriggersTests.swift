@@ -585,3 +585,27 @@ private func webhookSecretJSON(
 private func webhookSecretCreatedJSON(type: String, secret: String) -> String {
     #"{"id": "1a2b3c4d", "type": "\#(type)", "status": "current", "created_at": "2026-11-02T00:00:00Z", "secret": "\#(secret)"}"#
 }
+
+@Suite struct RoutineScheduleIdleTests {
+    @Test func encodesTheIdleWindowLeftOutClearedOrSet() throws {
+        func wire(_ trigger: RoutineScheduleTrigger) throws -> JSONValue {
+            try JSONCoding.decoder.decode(JSONValue.self, from: JSONCoding.encoder.encode(RoutineTrigger.schedule(trigger)))
+        }
+        let schedule = RoutineScheduleTrigger(cron: "0 */6 * * *")
+
+        #expect(try wire(schedule)["member_idle_seconds"] == nil)
+        #expect(try wire(schedule.memberIdle(seconds: nil))["member_idle_seconds"] == .null)
+        #expect(try wire(schedule.memberIdle(seconds: 172_800))["member_idle_seconds"] == 172_800)
+        #expect(try wire(schedule.memberIdle(seconds: 172_800))["type"] == "schedule")
+    }
+
+    @Test func decodesAStoredIdleWindowAndTheSkipReason() throws {
+        let body = Data(#"{"id": "s1", "type": "schedule", "cron": "0 9 * * *", "member_idle_seconds": 3600}"#.utf8)
+        let trigger = try JSONCoding.decoder.decode(RoutineTrigger.self, from: body)
+        #expect(trigger == .schedule(RoutineScheduleTrigger(cron: "0 9 * * *", id: "s1").memberIdle(seconds: 3600)))
+
+        let unset = try JSONCoding.decoder.decode(RoutineScheduleTrigger.self, from: Data(#"{"cron": "0 9 * * *"}"#.utf8))
+        #expect(unset.memberIdleSeconds == nil)
+        #expect(RoutineSkipReason(rawValue: "member_idle") == .memberIdle)
+    }
+}

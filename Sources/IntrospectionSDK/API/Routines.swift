@@ -79,6 +79,8 @@ public struct RoutineSkipReason: RawRepresentable, Codable, Sendable, Hashable, 
     public static let targetBusy: RoutineSkipReason = "target_busy"
     /// An event arrived while the trigger's previous run was still in flight.
     public static let triggerBusy: RoutineSkipReason = "trigger_busy"
+    /// The routine's member had no turn for the schedule's `memberIdleSeconds`.
+    public static let memberIdle: RoutineSkipReason = "member_idle"
 }
 
 // MARK: Models
