@@ -200,6 +200,28 @@ private let triggeredRoutineJSON = #"""
         #expect(transport.last?.json == ["routine_metadata": ["synthesis_max_conversations": 20]])
     }
 
+    @Test func routineMetadataKeepsUnknownKeysThroughAnUpdate() async throws {
+        let body = #"""
+            {"id":"r","name":"n","routine_metadata":{"repositories":[],"conditions":[],"synthesis_max_conversations":null,
+             "operator_default":"ark","future":{"nested":[1,true]}}}
+            """#
+        #expect(try StrictSchema.unmodelled(Routine.self, in: Data(body.utf8)).isEmpty)
+        let transport = MockTransport(json: body)
+        let api = makeClient(transport).routines
+        var metadata = try #require(try await api.get("r").routineMetadata)
+        #expect(metadata.extra == ["operator_default": "ark", "future": ["nested": [1, true]]])
+
+        metadata.synthesisMaxConversations = 10
+        _ = try await api.update("r", RoutineUpdate(routineMetadata: metadata))
+        let expected: JSONValue = [
+            "routine_metadata": [
+                "repositories": [], "conditions": [], "synthesis_max_conversations": 10, "operator_default": "ark",
+                "future": ["nested": [1, true]],
+            ]
+        ]
+        #expect(transport.last?.json == expected)
+    }
+
     @Test func manualTriggerForcedToAttachUploadsParametersWithoutReadingTheRoutine() async throws {
         let transport = MockTransport { request, index in
             request.url.path == "/v1/files"

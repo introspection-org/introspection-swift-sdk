@@ -99,23 +99,46 @@ public struct RoutineCondition: Codable, Sendable, Hashable {
     }
 }
 
-/// A routine's typed settings (`routine_metadata`). A PATCH replaces the whole object, so send every field to keep.
+/// A routine's typed settings (`routine_metadata`). A PATCH replaces the whole object, so send every field to keep;
+/// keys this SDK does not model are kept in ``extra`` and sent back.
 public struct RoutineMetadata: Codable, Sendable, Hashable {
     /// Repositories a task-backed run clones.
     public var repositories: [TaskRepoRequest]?
     public var conditions: [RoutineCondition]?
     /// `observationSynthesis` only: the most conversations a run samples; nil for no cap.
     public var synthesisMaxConversations: Int?
+    /// Keys this SDK does not model, as received.
+    public var extra: JSONObject = [:]
 
     enum CodingKeys: String, CodingKey {
         case repositories, conditions
         case synthesisMaxConversations = "synthesis_max_conversations"
     }
 
-    public init(repositories: [TaskRepoRequest]? = nil, conditions: [RoutineCondition]? = nil, synthesisMaxConversations: Int? = nil) {
+    public init(
+        repositories: [TaskRepoRequest]? = nil, conditions: [RoutineCondition]? = nil, synthesisMaxConversations: Int? = nil,
+        extra: JSONObject = [:]
+    ) {
         self.repositories = repositories
         self.conditions = conditions
         self.synthesisMaxConversations = synthesisMaxConversations
+        self.extra = extra
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        repositories = try container.decodeIfPresent([TaskRepoRequest].self, forKey: .repositories)
+        conditions = try container.decodeIfPresent([RoutineCondition].self, forKey: .conditions)
+        synthesisMaxConversations = try container.decodeIfPresent(Int.self, forKey: .synthesisMaxConversations)
+        extra = try decoder.unknownMembers(besides: CodingKeys.self)
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        try encoder.encodeUnknownMembers(extra, besides: CodingKeys.self)
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(repositories, forKey: .repositories)
+        try container.encodeIfPresent(conditions, forKey: .conditions)
+        try container.encodeIfPresent(synthesisMaxConversations, forKey: .synthesisMaxConversations)
     }
 }
 
