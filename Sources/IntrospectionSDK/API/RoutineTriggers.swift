@@ -120,11 +120,44 @@ public struct RoutineScheduleTrigger: Codable, Sendable, Hashable {
     public var cron: String
     /// IANA time zone the cron is evaluated in; UTC when unset.
     public var timezone: String?
+    /// Skip a slot once the routine's member has had no turn in a conversation they started in the project for
+    /// this many seconds (3600...31536000). `nil` leaves it out, so a kept schedule keeps its stored value;
+    /// `.some(nil)` sends `null`, which clears it.
+    public var memberIdleSeconds: Int??
+
+    enum CodingKeys: String, CodingKey {
+        case id, cron, timezone
+        case memberIdleSeconds = "member_idle_seconds"
+    }
 
     public init(cron: String, timezone: String? = nil, id: String? = nil) {
         self.cron = cron
         self.timezone = timezone
         self.id = id
+    }
+
+    /// This schedule with its idle window set, or cleared with `nil`.
+    public func memberIdle(seconds: Int?) -> RoutineScheduleTrigger {
+        var copy = self
+        copy.memberIdleSeconds = .some(seconds)
+        return copy
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(String.self, forKey: .id)
+        cron = try container.decode(String.self, forKey: .cron)
+        timezone = try container.decodeIfPresent(String.self, forKey: .timezone)
+        memberIdleSeconds = try container.decodeIfPresent(Int.self, forKey: .memberIdleSeconds).map { .some($0) }
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(id, forKey: .id)
+        try container.encode(cron, forKey: .cron)
+        try container.encodeIfPresent(timezone, forKey: .timezone)
+        // An omitted key keeps the stored window; an explicit null clears it.
+        if let memberIdleSeconds { try container.encode(memberIdleSeconds, forKey: .memberIdleSeconds) }
     }
 }
 
