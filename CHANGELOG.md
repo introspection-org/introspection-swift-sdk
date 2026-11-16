@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.22.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.21.0...v0.22.0) (2026-11-16)
+
+
+### ⚠ BREAKING CHANGES
+
+* Runtime.init gains two trailing parameters, disabledAt and enabled.
+
+### Features
+
+* model budget_exhausted on Routine ([#123](https://github.com/introspection-org/introspection-swift-sdk/issues/123)) ([114d2ef](https://github.com/introspection-org/introspection-swift-sdk/commit/114d2efb3e7c869f3877814c0628177b2cbccb83))
+* model enabled and disabled_at on Runtime ([#121](https://github.com/introspection-org/introspection-swift-sdk/issues/121)) ([3bd814c](https://github.com/introspection-org/introspection-swift-sdk/commit/3bd814c2360e07882de1454526edb07b82071023))
+
 ## [0.21.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.20.1...v0.21.0) (2026-11-15)
 
 
