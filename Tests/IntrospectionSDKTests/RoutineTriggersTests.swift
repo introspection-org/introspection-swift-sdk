@@ -189,14 +189,14 @@ private let triggeredRoutineJSON = #"""
     }
 
     @Test func synthesisSettingsRoundTrip() async throws {
-        let body = #"{"id":"r","name":"n","kind":"observation_synthesis","synthesis":{"batch":true,"max_conversations":50}}"#
+        let body = #"{"id":"r","name":"n","kind":"observation_synthesis","synthesis":{"max_conversations":50}}"#
         #expect(try StrictSchema.unmodelled(Routine.self, in: Data(body.utf8)).isEmpty)
         let transport = MockTransport(json: body)
         let api = makeClient(transport).routines
-        #expect(try await api.get("r").synthesis == RoutineSynthesis(batch: true, maxConversations: 50))
+        #expect(try await api.get("r").synthesis == RoutineSynthesis(maxConversations: 50))
 
-        _ = try await api.update("r", RoutineUpdate(synthesis: RoutineSynthesis(batch: false)))
-        #expect(transport.last?.json == ["synthesis": ["batch": false]])
+        _ = try await api.update("r", RoutineUpdate(synthesis: RoutineSynthesis(maxConversations: 20)))
+        #expect(transport.last?.json == ["synthesis": ["max_conversations": 20]])
     }
 
     @Test func manualTriggerForcedToAttachUploadsParametersWithoutReadingTheRoutine() async throws {

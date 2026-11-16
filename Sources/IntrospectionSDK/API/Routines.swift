@@ -101,18 +101,14 @@ public struct RoutineCondition: Codable, Sendable, Hashable {
 
 /// How an `observation_synthesis` routine runs.
 public struct RoutineSynthesis: Codable, Sendable, Hashable {
-    /// Server default `true`; `false` keeps the per-conversation path.
-    public var batch: Bool?
-    /// The most conversations a batch run samples; nil for no cap.
+    /// The most conversations a run samples; nil for no cap.
     public var maxConversations: Int?
 
     enum CodingKeys: String, CodingKey {
-        case batch
         case maxConversations = "max_conversations"
     }
 
-    public init(batch: Bool? = nil, maxConversations: Int? = nil) {
-        self.batch = batch
+    public init(maxConversations: Int? = nil) {
         self.maxConversations = maxConversations
     }
 }
