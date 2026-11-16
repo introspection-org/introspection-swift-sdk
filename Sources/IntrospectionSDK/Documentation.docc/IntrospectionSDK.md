@@ -110,14 +110,14 @@ Written by the opt-in `IntrospectionTelemetry` product; read here.
 
 ### Routines
 
-Scheduled prompts and platform work. A one-off reminder is a ``RoutineTriggerType/manual`` routine with a future
-``RoutineCreate/nextTriggerAt``; set ``RoutineCreate/taskId`` to post each firing into an existing task. Each
+Scheduled prompts and platform work. A schedule is a ``RoutineTrigger/schedule(_:)`` trigger; a one-off reminder is a
+routine with no schedule trigger and a future ``RoutineCreate/nextTriggerAt``; set ``RoutineCreate/taskId`` to post each firing into an existing task. Each
 trigger is recorded as an ``IntrospectionEventName/routineTriggered`` or ``IntrospectionEventName/routineSkipped``
 event, read through ``EventsAPI`` with the `routineId` and `taskId` filters.
 ``RoutineListParams/taskId`` lists the routines that post into one task.
 
-A routine can also start a run on an event: ``RoutineCreate/triggers`` lists ``RoutineTriggerSpec``s on an
-integration (Slack, GitHub) or on a project connector by slug, such as a `webhook` connector made with
+A routine can also start a run on an event: ``RoutineCreate/triggers`` lists ``RoutineTrigger``s, discriminated on
+`type`: an integration (Slack, GitHub, Linear) or a project connector by slug, such as a `webhook` connector made with
 ``ConnectorCreate/webhook(name:slug:environment:)``. An event-started run's parameters are the event's
 body, and ``RoutinesAPI`` `trigger` passes a manual run's, uploaded as a file unless the routine is a platform routine
 or posts into an existing task; either way the run reads them as `parameters.json` and the prompt's
@@ -127,8 +127,8 @@ A `webhook` connector is created without a secret. Its secrets are a sub-resourc
 rotates it, returning the plaintext once in ``WebhookSecretCreated``; the old one stays valid until
 ``ConnectorSecretsAPI/delete(_:secretId:project:)`` names it, and ``ConnectorSecretsAPI/list(_:_:)`` lists at most
 two ``WebhookSecret``s, current first.
-``RoutineUpdate/triggers`` replaces the list, keeping each entry that names an `id`
-(``RoutineTriggerSpec/init(keeping:)``).
+``RoutineUpdate/triggers`` replaces the list, keeping each entry that names an `id`. A `type` this SDK does not
+model decodes as ``RoutineTrigger/unknown(type:id:raw:)`` and is sent back unchanged.
 
 The server serves these routes to administrators only today; introspection-cloud#3137 opens them to members for
 their own task-targeted routines.
@@ -140,10 +140,13 @@ their own task-targeted routines.
 - ``RoutineListParams``
 - ``RoutineTriggerResponse``
 - ``RoutineTrigger``
-- ``RoutineTriggerSpec``
-- ``RoutineTriggerFilter``
-- ``RoutineTriggerSource``
-- ``RoutineTriggerProvider``
+- ``RoutineScheduleTrigger``
+- ``RoutineSlackTrigger``
+- ``RoutineGitHubTrigger``
+- ``RoutineLinearTrigger``
+- ``RoutineWebhookTrigger``
+- ``RoutineCondition``
+- ``RoutineSynthesis``
 - ``RoutineTriggerEventType``
 - ``RoutineTriggerEventRef``
 - ``RoutineRunSource``

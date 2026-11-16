@@ -18,16 +18,15 @@ private let routineJSON = #"""
       "execution_blocked_reason": null,
       "can_manage": true,
       "tags": ["digest"],
-      "trigger_type": "cron",
-      "cron_schedule": "0 9 * * 1",
       "kind": null,
       "prompt": "Summarize my week",
-      "metadata": {
-        "cron_schedules": ["0 9 * * 1", "0 17 * * 5"],
-        "timezone": "Europe/London",
-        "repositories": [{"repo": "acme/app", "ref": "main"}],
-        "conditions": [{"type": "has_new_tasks_since_last_run"}, {"type": "brand_new_condition"}]
-      },
+      "triggers": [
+        {"id": "0199a1b2-0000-7000-8000-000000000101", "type": "schedule", "cron": "0 9 * * 1", "timezone": "Europe/London"},
+        {"id": "0199a1b2-0000-7000-8000-000000000102", "type": "schedule", "cron": "0 17 * * 5", "timezone": "Europe/London"}
+      ],
+      "repositories": [{"repo": "acme/app", "ref": "main"}],
+      "conditions": [{"type": "has_new_tasks_since_last_run"}, {"type": "brand_new_condition"}],
+      "synthesis": null,
       "last_triggered_at": "2026-09-28T09:00:00Z",
       "next_trigger_at": "2026-10-05T09:00:00.123456Z",
       "created_at": "2026-09-01T10:00:00Z",
@@ -40,7 +39,6 @@ private let routineJSON = #"""
     @Test func decodesServerRoutine() throws {
         let routine = try JSONCoding.decoder.decode(Routine.self, from: Data(routineJSON.utf8))
         #expect(routine.name == "Weekly digest")
-        #expect(routine.triggerType == .cron)
         #expect(routine.kind == nil)
         #expect(routine.canManage == true)
         #expect(routine.runtimeGroupId == "0199a1b2-0000-7000-8000-0000000000dd")
@@ -50,16 +48,20 @@ private let routineJSON = #"""
         #expect(routine.tags == ["digest"])
         #expect(routine.lastTriggeredAt == ISO8601.parse("2026-09-28T09:00:00Z"))
         #expect(routine.nextTriggerAt == ISO8601.parse("2026-10-05T09:00:00.123Z"))
-        let metadata = try #require(routine.typedMetadata)
-        #expect(metadata.cronSchedules == ["0 9 * * 1", "0 17 * * 5"])
-        #expect(metadata.timezone == "Europe/London")
-        #expect(metadata.repositories == [RoutineRepositoryRef(repo: "acme/app", ref: "main")])
-        #expect(metadata.conditions?.map(\.type) == [.hasNewTasksSinceLastRun, "brand_new_condition"])
+        #expect(
+            routine.triggers == [
+                .schedule(RoutineScheduleTrigger(cron: "0 9 * * 1", timezone: "Europe/London", id: "0199a1b2-0000-7000-8000-000000000101")),
+                .schedule(
+                    RoutineScheduleTrigger(cron: "0 17 * * 5", timezone: "Europe/London", id: "0199a1b2-0000-7000-8000-000000000102")),
+            ])
+        #expect(routine.repositories == [TaskRepoRequest(repo: "acme/app", ref: "main")])
+        #expect(routine.conditions?.map(\.type) == [.hasNewTasksSinceLastRun, "brand_new_condition"])
+        #expect(routine.synthesis == nil)
 
         let minimal = try JSONCoding.decoder.decode(
-            Routine.self, from: Data(#"{"id":"a","name":"n","trigger_type":"manual","kind":"observation_clustering"}"#.utf8))
+            Routine.self, from: Data(#"{"id":"a","name":"n","kind":"observation_clustering"}"#.utf8))
         #expect(minimal.kind == .observationClustering)
-        #expect(minimal.metadata == nil)
+        #expect(minimal.triggers == nil)
         #expect(minimal.runtimeGroupId == nil)
         #expect(minimal.taskId == nil)
         #expect(minimal.nextTriggerAt == nil)
@@ -69,7 +71,7 @@ private let routineJSON = #"""
         let transport = MockTransport { request, index in
             index == 0
                 ? .response(.json(#"{"records":[\#(routineJSON)],"count":1,"total_count":2,"next":"cur-2"}"#))
-                : .response(.json(#"{"records":[{"id":"b","name":"second","trigger_type":"manual"}],"count":1,"next":null}"#))
+                : .response(.json(#"{"records":[{"id":"b","name":"second"}],"count":1,"next":null}"#))
         }
         let all = try await makeClient(transport).routines
             .list(RoutineListParams(limit: 1, kind: .observationSynthesis, enabled: true, scheduled: false))
@@ -91,7 +93,7 @@ private let routineJSON = #"""
         let transport = MockTransport { _, index in
             index == 0
                 ? .response(.json(#"{"records":[\#(routineJSON)],"count":1,"next":"cur-2"}"#))
-                : .response(.json(#"{"records":[{"id":"b","name":"second","trigger_type":"manual"}],"count":1,"next":null}"#))
+                : .response(.json(#"{"records":[{"id":"b","name":"second"}],"count":1,"next":null}"#))
         }
         let all = try await makeClient(transport).routines.list(RoutineListParams(taskId: "task-1")).collect()
         #expect(all.map(\.name) == ["Weekly digest", "second"])
@@ -104,8 +106,8 @@ private let routineJSON = #"""
         let transport = MockTransport(
             json: #"""
                 {"records":[
-                  {"id":"a","name":"Check-in","trigger_type":"cron","kind":"project_check_in","prompt":"p","owner_role":"operator"},
-                  {"id":"b","name":"Later","trigger_type":"cron","kind":"not_yet_invented"}
+                  {"id":"a","name":"Check-in","kind":"project_check_in","prompt":"p","owner_role":"operator"},
+                  {"id":"b","name":"Later","kind":"not_yet_invented"}
                 ],"count":2,"next":null}
                 """#)
         let all = try await makeClient(transport).routines.list().collect()
@@ -115,26 +117,27 @@ private let routineJSON = #"""
 
     @Test func createEncodesOnlySetFields() async throws {
         let transport = MockTransport(status: 201, json: routineJSON)
-        let metadata = try RoutineMetadata(cronSchedules: ["0 9 * * 1"], timezone: "UTC").jsonObject()
         let created = try await makeClient(transport).routines.create(
             RoutineCreate(
-                name: "Weekly digest", triggerType: .cron, cronSchedule: "0 9 * * 1",
-                prompt: "Summarize my week", metadata: metadata
+                name: "Weekly digest", prompt: "Summarize my week", repositories: [TaskRepoRequest(repo: "acme/app")],
+                conditions: [RoutineCondition(type: .hasNewTasksSinceLastRun)],
+                triggers: [.schedule(RoutineScheduleTrigger(cron: "0 9 * * 1", timezone: "UTC"))]
             ))
         #expect(created.name == "Weekly digest")
         #expect(transport.last?.request.method == "POST")
         #expect(transport.last?.path == "/v1/routines")
         #expect(
             transport.last?.json == [
-                "name": "Weekly digest", "trigger_type": "cron", "cron_schedule": "0 9 * * 1",
-                "prompt": "Summarize my week", "metadata": ["cron_schedules": ["0 9 * * 1"], "timezone": "UTC"],
+                "name": "Weekly digest", "prompt": "Summarize my week", "repositories": [["repo": "acme/app"]],
+                "conditions": [["type": "has_new_tasks_since_last_run"]],
+                "triggers": [["type": "schedule", "cron": "0 9 * * 1", "timezone": "UTC"]],
             ])
 
         _ = try await makeClient(transport).routines.create(
             RoutineCreate(
-                name: "Nudge", triggerType: .manual, prompt: "Check in", enabled: false
+                name: "Nudge", prompt: "Check in", enabled: false
             ))
-        #expect(transport.last?.json == ["name": "Nudge", "trigger_type": "manual", "prompt": "Check in", "enabled": false])
+        #expect(transport.last?.json == ["name": "Nudge", "prompt": "Check in", "enabled": false])
     }
 
     @Test func createsAOneOffReminderIntoAnExistingTask() async throws {
@@ -142,12 +145,12 @@ private let routineJSON = #"""
         let slot = try #require(ISO8601.parse("2026-10-10T09:00:00Z"))
         _ = try await makeClient(transport).routines.create(
             RoutineCreate(
-                name: "Friday check-in", triggerType: .manual, prompt: "How did the week go?", runtimeGroupId: "rg-1",
+                name: "Friday check-in", prompt: "How did the week go?", runtimeGroupId: "rg-1",
                 taskId: "task-1", nextTriggerAt: slot
             ))
         #expect(
             transport.last?.json == [
-                "name": "Friday check-in", "trigger_type": "manual", "prompt": "How did the week go?", "runtime_group_id": "rg-1",
+                "name": "Friday check-in", "prompt": "How did the week go?", "runtime_group_id": "rg-1",
                 "task_id": "task-1", "next_trigger_at": "2026-10-10T09:00:00.000Z",
             ])
     }

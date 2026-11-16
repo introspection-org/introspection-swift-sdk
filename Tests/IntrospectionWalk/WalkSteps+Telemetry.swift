@@ -369,13 +369,14 @@ extension Walk {
         // unarchived, which the trigger still refuses, so the trial is the one it posts into.
         routine = try await sa.routines.create(
             RoutineCreate(
-                name: WALK.routineName, triggerType: .manual, prompt: WALK.secondTurn(settings), runtimeGroupId: runtime.runtimeGroupId,
-                taskId: evalTask.id))
-        // The budget state postdates the recording: absent on replay, null live while no budget pauses the routine.
-        snap(try stable(routine, removing: ["budget_exhausted"])) {
+                name: WALK.routineName, prompt: WALK.secondTurn(settings), runtimeGroupId: runtime.runtimeGroupId, taskId: evalTask.id))
+        snap(try stable(routine)) {
             #"""
             {
               "can_manage" : true,
+              "conditions" : [
+
+              ],
               "created_at" : "[timestamp]",
               "created_by_member_id" : "[uuid]",
               "enabled" : true,
@@ -385,12 +386,14 @@ extension Walk {
               "owner_role" : "operator",
               "project_id" : "[uuid]",
               "prompt" : "Reply with the single word done. <<SCRIPT {\"reply\":\"done\"}>>",
+              "repositories" : [
+
+              ],
               "runtime_group_id" : "[uuid]",
               "tags" : [
 
               ],
               "task_id" : "[uuid]",
-              "trigger_type" : "manual",
               "triggers" : [
 
               ],
