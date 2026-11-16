@@ -233,6 +233,7 @@ public struct Runtime: Codable, Sendable, Hashable {
     /// Whether the runtime is on (`disabledAt` is nil). Turning it off applies to every version of it.
     public var enabled: Bool?
 
+    // jscpd:ignore-start: memberwise init of a public type; the assignments cannot be shared
     public init(
         id: String, orgId: String? = nil, projectId: String? = nil, runtimeGroupId: String? = nil,
         name: String? = nil, slug: String? = nil, description: String? = nil, kind: RuntimeKind? = nil,
@@ -271,6 +272,7 @@ public struct Runtime: Codable, Sendable, Hashable {
         self.disabledAt = disabledAt
         self.enabled = enabled
     }
+    // jscpd:ignore-end
 
     private enum CodingKeys: String, CodingKey {
         case disabledAt = "disabled_at"
