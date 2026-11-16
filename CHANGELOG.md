@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.24.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.23.0...v0.24.0) (2026-11-16)
+
+
+### Features
+
+* **routines:** a schedule trigger's memberIdleSeconds and the memberIdle skip reason ([#126](https://github.com/introspection-org/introspection-swift-sdk/issues/126)) ([cde1ae9](https://github.com/introspection-org/introspection-swift-sdk/commit/cde1ae9e3a56ba32fa6f5745171f81e510ff1963))
+
 ## [0.23.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.22.0...v0.23.0) (2026-11-16)
 
 
