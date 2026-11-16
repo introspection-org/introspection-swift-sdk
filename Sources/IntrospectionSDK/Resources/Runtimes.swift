@@ -228,7 +228,12 @@ public struct Runtime: Codable, Sendable, Hashable {
     public var imageCommitSubject: String?
     /// The recipe's GitHub repository (`owner/name`).
     public var imageRepository: String?
+    /// When the runtime was turned off, which turns off every version of it; nil while it is on.
+    public var disabledAt: Date?
+    /// Whether the runtime is on (`disabledAt` is nil). Turning it off applies to every version of it.
+    public var enabled: Bool?
 
+    // jscpd:ignore-start: memberwise init of a public type; the assignments cannot be shared
     public init(
         id: String, orgId: String? = nil, projectId: String? = nil, runtimeGroupId: String? = nil,
         name: String? = nil, slug: String? = nil, description: String? = nil, kind: RuntimeKind? = nil,
@@ -237,7 +242,8 @@ public struct Runtime: Codable, Sendable, Hashable {
         imageBuildStatus: RuntimeImageStatus? = nil, imageBuildErrorMessage: String? = nil,
         imageBuildMetadata: RuntimeImageBuildMetadata? = nil, createdByMemberId: String? = nil,
         yankedAt: Date? = nil, yankedReason: String? = nil, environmentRef: [String: String]? = nil,
-        mcpRequirements: [RuntimeMcpRequirement]? = nil, createdAt: Date? = nil, updatedAt: Date? = nil
+        mcpRequirements: [RuntimeMcpRequirement]? = nil, createdAt: Date? = nil, updatedAt: Date? = nil,
+        disabledAt: Date? = nil, enabled: Bool? = nil
     ) {
         self.id = id
         self.orgId = orgId
@@ -263,9 +269,13 @@ public struct Runtime: Codable, Sendable, Hashable {
         self.mcpRequirements = mcpRequirements
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+        self.disabledAt = disabledAt
+        self.enabled = enabled
     }
+    // jscpd:ignore-end
 
     private enum CodingKeys: String, CodingKey {
+        case disabledAt = "disabled_at"
         case runtimeGroupType = "runtime_group_type"
         case templateRef = "template_ref"
         case peeringId = "peering_id"
@@ -274,7 +284,7 @@ public struct Runtime: Codable, Sendable, Hashable {
         case imageCommitSubject = "image_commit_subject"
         case imageRepository = "image_repository"
         case gitCommitSha = "git_commit_sha"
-        case id, name, slug, description, kind, environments
+        case id, name, slug, description, kind, environments, enabled
         case orgId = "org_id"
         case projectId = "project_id"
         case runtimeGroupId = "runtime_group_id"

@@ -88,7 +88,7 @@ extension Walk {
         pinned.imageBuildMetadata?.extra = [:]
         // The server lists a runtime's environments in the order it was promoted to them, which varies by run.
         pinned.environments = pinned.environments?.sorted { $0.rawValue < $1.rawValue }
-        snap(try stable(pinned, removing: ["git_commit_sha"])) {
+        snap(try stable(pinned, removing: ["git_commit_sha", "enabled", "disabled_at"])) {
             """
             {
               "config_json" : {
