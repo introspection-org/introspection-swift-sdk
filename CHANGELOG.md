@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.23.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.22.0...v0.23.0) (2026-11-16)
+
+
+### ⚠ BREAKING CHANGES
+
+* RoutineTriggerSpec, RoutineTriggerFilter, RoutineTriggerSource, RoutineTriggerProvider, RoutineMetadata, RoutineRepositoryRef and RoutineBudgetExhausted are removed; a cron routine is `triggers: [.schedule(RoutineScheduleTrigger(cron:))]`.
+
+### Features
+
+* routine triggers as one union discriminated on type; schedules are triggers ([#124](https://github.com/introspection-org/introspection-swift-sdk/issues/124)) ([1b86978](https://github.com/introspection-org/introspection-swift-sdk/commit/1b869784cedd98a735cead6fb3db1ccaabcd7d25))
+
 ## [0.22.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.21.0...v0.22.0) (2026-11-16)
 
 
