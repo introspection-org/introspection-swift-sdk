@@ -151,16 +151,20 @@ import Testing
         #expect(await drift(runtime, as: Runtime.self, route: "/v1/runtimes/rt") == nil)
     }
 
-    @Test func routineModelsItsBudgetExhaustion() async throws {
-        let none = #"{"id":"r","name":"n","budget_exhausted":null}"#
-        #expect(await drift(none, as: Routine.self, route: "/v1/routines/r") == nil)
-        let free = try await client(none, strict: true).json("GET", "/v1/routines/r", as: Routine.self)
-        #expect(free.budgetExhausted == nil)
+    @Test func routineTriggerOfAnUnknownTypeIsNotDrift() async throws {
+        let body = #"""
+            {"id":"r","name":"n","triggers":[
+              {"id":"a","type":"schedule","cron":"0 9 * * *"},
+              {"id":"b","type":"introspection","event_types":["introspection.issue.created"],"anything":{"nested":[1]}}]}
+            """#
+        #expect(await drift(body, as: Routine.self, route: "/v1/routines/r") == nil)
+        let read = try await client(body, strict: true).json("GET", "/v1/routines/r", as: Routine.self)
+        #expect(read.triggers?.map(\.type) == ["schedule", "introspection"])
+        #expect(read.triggers?.last?.id == "b")
 
-        let paused = #"{"id":"r","name":"n","budget_exhausted":{"budget_id":"b","until":"2026-12-01T00:00:00Z"}}"#
-        #expect(await drift(paused, as: Routine.self, route: "/v1/routines/r") == nil)
-        let read = try await client(paused, strict: true).json("GET", "/v1/routines/r", as: Routine.self)
-        #expect(read.budgetExhausted == RoutineBudgetExhausted(budgetId: "b", until: ISO8601.parse("2026-12-01T00:00:00Z")!))
+        let drifted = #"{"id":"r","name":"n","triggers":[{"id":"a","type":"schedule","cron":"0 9 * * *","jitter":5}]}"#
+        let error = await drift(drifted, as: Routine.self, route: "/v1/routines/r")
+        #expect(error?.unmodelledFields == ["$.triggers[0].jitter"])
     }
 
     @Test func runtimeModelsItsEnabledState() async throws {

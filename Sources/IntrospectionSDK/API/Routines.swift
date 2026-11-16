@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: Enums
 
-/// How a routine is triggered.
+/// How a routine run was started, on `introspection.routines.triggered` / `.skipped` events.
 public struct RoutineTriggerType: RawRepresentable, Codable, Sendable, Hashable, ExpressibleByStringLiteral {
     public let rawValue: String
     public init(rawValue: String) { self.rawValue = rawValue }
@@ -11,7 +11,7 @@ public struct RoutineTriggerType: RawRepresentable, Codable, Sendable, Hashable,
     public func encode(to encoder: any Encoder) throws { try encoder.encodeSingle(rawValue) }
 
     public static let cron: RoutineTriggerType = "cron"
-    /// Runs by hand, or once at a client-set `nextTriggerAt` (a one-off reminder).
+    /// Run by hand, or once at a client-set `nextTriggerAt` (a one-off reminder).
     public static let manual: RoutineTriggerType = "manual"
 }
 
@@ -81,9 +81,9 @@ public struct RoutineSkipReason: RawRepresentable, Codable, Sendable, Hashable, 
     public static let triggerBusy: RoutineSkipReason = "trigger_busy"
 }
 
-// MARK: Metadata
+// MARK: Models
 
-/// One condition stored in a routine's metadata.
+/// A condition evaluated before a routine runs.
 public struct RoutineCondition: Codable, Sendable, Hashable {
     public var type: RoutineConditionType
     public var runtimeGroupId: String?
@@ -99,66 +99,46 @@ public struct RoutineCondition: Codable, Sendable, Hashable {
     }
 }
 
-/// A repository a task-backed routine clones (`owner/name` plus an optional ref).
-public struct RoutineRepositoryRef: Codable, Sendable, Hashable {
-    public var repo: String
-    public var ref: String?
-
-    public init(repo: String, ref: String? = nil) {
-        self.repo = repo
-        self.ref = ref
-    }
-}
-
-/// The typed shape of a routine's `metadata` object. The runtime group is the
-/// top-level `runtimeGroupId`; the server rejects it inside metadata.
+/// A routine's typed settings (`routine_metadata`). A PATCH replaces the whole object, so send every field to keep;
+/// keys this SDK does not model are kept in ``extra`` and sent back.
 public struct RoutineMetadata: Codable, Sendable, Hashable {
-    public var repositories: [RoutineRepositoryRef]?
-    /// Several cron expressions; `cron_schedule` on the routine is the single-schedule form.
-    public var cronSchedules: [String]?
-    /// IANA time zone the cron schedules are evaluated in.
-    public var timezone: String?
-    public var operatorDefault: String?
+    /// Repositories a task-backed run clones.
+    public var repositories: [TaskRepoRequest]?
     public var conditions: [RoutineCondition]?
+    /// `observationSynthesis` only: the most conversations a run samples; nil for no cap.
+    public var synthesisMaxConversations: Int?
+    /// Keys this SDK does not model, as received.
+    public var extra: JSONObject = [:]
 
     enum CodingKeys: String, CodingKey {
-        case repositories
-        case cronSchedules = "cron_schedules"
-        case timezone
-        case operatorDefault = "operator_default"
-        case conditions
+        case repositories, conditions
+        case synthesisMaxConversations = "synthesis_max_conversations"
     }
 
     public init(
-        repositories: [RoutineRepositoryRef]? = nil,
-        cronSchedules: [String]? = nil,
-        timezone: String? = nil,
-        operatorDefault: String? = nil,
-        conditions: [RoutineCondition]? = nil
+        repositories: [TaskRepoRequest]? = nil, conditions: [RoutineCondition]? = nil, synthesisMaxConversations: Int? = nil,
+        extra: JSONObject = [:]
     ) {
         self.repositories = repositories
-        self.cronSchedules = cronSchedules
-        self.timezone = timezone
-        self.operatorDefault = operatorDefault
         self.conditions = conditions
+        self.synthesisMaxConversations = synthesisMaxConversations
+        self.extra = extra
     }
 
-    /// As a JSON object for `RoutineCreate.metadata` / `RoutineUpdate.metadata`.
-    public func jsonObject() throws -> JSONObject {
-        try JSONValue.from(self).objectValue ?? [:]
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        repositories = try container.decodeIfPresent([TaskRepoRequest].self, forKey: .repositories)
+        conditions = try container.decodeIfPresent([RoutineCondition].self, forKey: .conditions)
+        synthesisMaxConversations = try container.decodeIfPresent(Int.self, forKey: .synthesisMaxConversations)
+        extra = try decoder.unknownMembers(besides: CodingKeys.self)
     }
-}
 
-// MARK: Models
-
-/// The budget pausing a routine's scheduled and event-started runs, until its period ends.
-public struct RoutineBudgetExhausted: Codable, Sendable, Hashable {
-    public let budgetId: String
-    public let until: Date
-
-    enum CodingKeys: String, CodingKey {
-        case budgetId = "budget_id"
-        case until
+    public func encode(to encoder: any Encoder) throws {
+        try encoder.encodeUnknownMembers(extra, besides: CodingKeys.self)
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(repositories, forKey: .repositories)
+        try container.encodeIfPresent(conditions, forKey: .conditions)
+        try container.encodeIfPresent(synthesisMaxConversations, forKey: .synthesisMaxConversations)
     }
 }
 
@@ -170,16 +150,12 @@ public struct Routine: Codable, Sendable, Hashable {
     public let name: String
     public let description: String?
     public let enabled: Bool?
-    public let triggerType: RoutineTriggerType?
-    public let cronSchedule: String?
     public let kind: RoutineKind?
     public let prompt: String?
-    /// Open-ended metadata; read the known fields with `typedMetadata`.
-    public let metadata: JSONObject?
     public let tags: [String]?
     public let lastTriggeredAt: Date?
-    /// The next slot: derived from the schedule for `cron`, client-set for a one-off `manual`
-    /// routine and cleared once that slot fires.
+    /// The next slot: the earliest across its `schedule` triggers, or a client-set one-off slot on a routine with
+    /// none, cleared once that slot fires.
     public let nextTriggerAt: Date?
     /// The runtime group it runs on (or clusters); nil for `observationSynthesis`.
     public let runtimeGroupId: String?
@@ -192,22 +168,18 @@ public struct Routine: Codable, Sendable, Hashable {
     public let canManage: Bool?
     /// `operator` for one that runs as a task (a prompt routine or `projectCheckIn`), nil otherwise.
     public let ownerRole: String?
-    /// Events that start a run, beside the schedule and a hand trigger.
+    /// Its schedules and the events that start a run.
     public let triggers: [RoutineTrigger]?
-    /// The budget pausing this routine's scheduled and event-started runs; nil while none does.
-    public let budgetExhausted: RoutineBudgetExhausted?
+    public let routineMetadata: RoutineMetadata?
     public let createdAt: Date?
     public let updatedAt: Date?
 
     enum CodingKeys: String, CodingKey {
         case id
-        case budgetExhausted = "budget_exhausted"
         case orgId = "org_id"
         case projectId = "project_id"
         case name, description, enabled
-        case triggerType = "trigger_type"
-        case cronSchedule = "cron_schedule"
-        case kind, prompt, metadata, tags
+        case kind, prompt, tags
         case lastTriggeredAt = "last_triggered_at"
         case nextTriggerAt = "next_trigger_at"
         case runtimeGroupId = "runtime_group_id"
@@ -217,24 +189,17 @@ public struct Routine: Codable, Sendable, Hashable {
         case canManage = "can_manage"
         case ownerRole = "owner_role"
         case triggers
+        case routineMetadata = "routine_metadata"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
-
-    /// `metadata` decoded into its typed shape, or nil if it does not fit.
-    public var typedMetadata: RoutineMetadata? {
-        guard let metadata else { return nil }
-        return try? JSONValue.object(metadata).decode(RoutineMetadata.self)
-    }
 }
 
-/// Body of `POST /v1/routines`. A one-off reminder is a `manual` routine with a future
-/// `nextTriggerAt`; a `cron` routine derives its own slots and must not send one.
+/// Body of `POST /v1/routines`. A schedule is a `.schedule` trigger; a one-off reminder is a routine with no schedule
+/// trigger and a future `nextTriggerAt`.
 public struct RoutineCreate: Encodable, Sendable, Hashable {
     public var name: String
-    public var triggerType: RoutineTriggerType
     public var description: String?
-    public var cronSchedule: String?
     /// Omit for a prompt routine (which then needs `prompt`).
     public var kind: RoutineKind?
     public var prompt: String?
@@ -242,110 +207,94 @@ public struct RoutineCreate: Encodable, Sendable, Hashable {
     public var runtimeGroupId: String?
     /// An existing task each firing posts the prompt into (prompt routines only).
     public var taskId: String?
-    /// A one-off slot for a `manual` routine; must be in the future.
+    /// A one-off slot for a routine with no schedule trigger; must be in the future.
     public var nextTriggerAt: Date?
-    /// Build with `RoutineMetadata.jsonObject()`.
-    public var metadata: JSONObject?
+    public var routineMetadata: RoutineMetadata?
     public var enabled: Bool?
-    /// Up to 20 event triggers, none with an `id`; a prompt routine that starts a task per run only.
-    public var triggers: [RoutineTriggerSpec]?
+    /// Up to 20, none with an `id`. Event triggers go on a prompt routine that starts a task per run; a platform
+    /// routine takes only `.schedule`.
+    public var triggers: [RoutineTrigger]?
 
     enum CodingKeys: String, CodingKey {
-        case name
-        case triggerType = "trigger_type"
-        case description
-        case cronSchedule = "cron_schedule"
-        case kind, prompt
+        case name, description, kind, prompt
         case runtimeGroupId = "runtime_group_id"
         case taskId = "task_id"
         case nextTriggerAt = "next_trigger_at"
-        case metadata, enabled, triggers
+        case routineMetadata = "routine_metadata"
+        case enabled, triggers
     }
 
     public init(
         name: String,
-        triggerType: RoutineTriggerType,
         description: String? = nil,
-        cronSchedule: String? = nil,
         kind: RoutineKind? = nil,
         prompt: String? = nil,
         runtimeGroupId: String? = nil,
         taskId: String? = nil,
         nextTriggerAt: Date? = nil,
-        metadata: JSONObject? = nil,
+        routineMetadata: RoutineMetadata? = nil,
         enabled: Bool? = nil,
-        triggers: [RoutineTriggerSpec]? = nil
+        triggers: [RoutineTrigger]? = nil
     ) {
         self.name = name
-        self.triggerType = triggerType
         self.description = description
-        self.cronSchedule = cronSchedule
         self.kind = kind
         self.prompt = prompt
         self.runtimeGroupId = runtimeGroupId
         self.taskId = taskId
         self.nextTriggerAt = nextTriggerAt
-        self.metadata = metadata
+        self.routineMetadata = routineMetadata
         self.enabled = enabled
         self.triggers = triggers
     }
 }
 
-/// Body of `PATCH /v1/routines/{id}`. Only set fields are sent and nil leaves a field as it is,
-/// so nothing can be cleared except `triggers`, which `[]` empties. `kind` is immutable; `metadata` replaces wholesale.
+/// Body of `PATCH /v1/routines/{id}`. Only set fields are sent and nil leaves a field as it is, so nothing can be
+/// cleared except a list, which `[]` empties. `kind` is immutable.
 public struct RoutineUpdate: Encodable, Sendable, Hashable {
     public var name: String?
     public var description: String?
-    public var cronSchedule: String?
-    /// Switches a prompt routine between `manual` and `cron`. `cron` needs a schedule in the same update
-    /// (`cronSchedule` or `metadata.cron_schedules`); `manual` drops the next slot.
-    public var triggerType: RoutineTriggerType?
     public var prompt: String?
     /// Moves a prompt routine to another runtime group.
     public var runtimeGroupId: String?
     public var taskId: String?
-    /// Schedules, moves or re-arms a `manual` routine's one-off slot; must be in the future.
+    /// Schedules, moves or re-arms the one-off slot of a routine with no schedule trigger; must be in the future.
     public var nextTriggerAt: Date?
-    public var metadata: JSONObject?
+    /// Replaces the whole object.
+    public var routineMetadata: RoutineMetadata?
     /// `false` pauses and keeps the slot.
     public var enabled: Bool?
-    /// Replaces the routine's triggers: an entry with an `id` keeps that trigger (see
-    /// `RoutineTriggerSpec(keeping:)`), one without is new, and every trigger left out is removed.
-    public var triggers: [RoutineTriggerSpec]?
+    /// Replaces the routine's triggers: an entry with an `id` keeps that trigger (pass a stored one back as it is),
+    /// one without is new, and every trigger left out is removed.
+    public var triggers: [RoutineTrigger]?
 
     enum CodingKeys: String, CodingKey {
-        case name, description
-        case cronSchedule = "cron_schedule"
-        case triggerType = "trigger_type"
-        case prompt
+        case name, description, prompt
         case runtimeGroupId = "runtime_group_id"
         case taskId = "task_id"
         case nextTriggerAt = "next_trigger_at"
-        case metadata, enabled, triggers
+        case routineMetadata = "routine_metadata"
+        case enabled, triggers
     }
 
     public init(
         name: String? = nil,
         description: String? = nil,
-        cronSchedule: String? = nil,
-        triggerType: RoutineTriggerType? = nil,
         prompt: String? = nil,
         runtimeGroupId: String? = nil,
         taskId: String? = nil,
         nextTriggerAt: Date? = nil,
-        metadata: JSONObject? = nil,
+        routineMetadata: RoutineMetadata? = nil,
         enabled: Bool? = nil,
-        triggers: [RoutineTriggerSpec]? = nil
+        triggers: [RoutineTrigger]? = nil
     ) {
         self.name = name
         self.description = description
-        self.cronSchedule = cronSchedule
-        self.triggerType = triggerType
         self.prompt = prompt
         self.runtimeGroupId = runtimeGroupId
         self.taskId = taskId
         self.nextTriggerAt = nextTriggerAt
-        self.metadata = metadata
+        self.routineMetadata = routineMetadata
         self.enabled = enabled
         self.triggers = triggers
     }

@@ -174,7 +174,10 @@ let inbox = try await runner.issues.list(IssueListParams(relation: [.assignee, .
 
 ### Routine triggers
 
-A routine runs on its schedule, by hand, or when an event arrives. To start
+A routine runs by hand or on its `triggers`: each is a schedule
+(`.schedule(RoutineScheduleTrigger(cron: "0 9 * * 1-5", timezone: "Europe/London"))`)
+or an event (`.slack`, `.github`, `.linear`, `.webhook`), discriminated on
+`type`; a `type` this SDK does not know decodes as `.unknown`. To start
 one from your own systems, create a `webhook` connector. It is created
 without a secret, and refuses every call until you issue one: a Standard
 Webhooks secret (`whsec_...`) that your systems sign each body with (with the
@@ -214,13 +217,13 @@ holds the event itself:
 ```swift
 let routine = try await client.routines.create(
     RoutineCreate(
-        name: "Triage failed deploys", triggerType: .manual,
+        name: "Triage failed deploys",
         prompt: "Deploy @parameters.deploy_id of @parameters.service failed. Find out why.",
         runtimeGroupId: runtimeGroupId,
         triggers: [
-            .connector(
-                "ci-alerts", eventTypes: ["deploy.failed"],
-                filter: RoutineTriggerFilter(payloadFields: ["environment": ["production"]]))
+            .webhook(
+                RoutineWebhookTrigger(
+                    connectorSlug: "ci-alerts", eventTypes: ["deploy.failed"], payloadFields: ["environment": ["production"]]))
         ]))
 ```
 
@@ -241,8 +244,8 @@ let run = try await client.routines.trigger(routine.id, parameters: ["deploy_id"
 let synthesis = try await client.routines.trigger(synthesisRoutine, parameters: ["conversation_ids": [.string(conversationId)]])
 ```
 
-`RoutineUpdate(triggers:)` replaces the routine's triggers: keep one with
-`RoutineTriggerSpec(keeping:)`, and `[]` removes them all.
+`RoutineUpdate(triggers:)` replaces the routine's triggers: pass a stored
+trigger back as it is (it carries its `id`) to keep it, and `[]` removes them all.
 
 ## End users signed in with Introspection
 

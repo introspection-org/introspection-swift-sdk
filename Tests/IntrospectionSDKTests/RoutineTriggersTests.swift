@@ -3,17 +3,20 @@ import Testing
 
 @testable import IntrospectionSDK
 
-private let triggerJSON = #"""
-    {
-      "created_at": "2026-11-01T10:00:00Z", "updated_at": "2026-11-01T10:00:00Z",
-      "org_id": "0199a1b2-0000-7000-8000-0000000000aa", "project_id": "0199a1b2-0000-7000-8000-0000000000bb",
-      "id": "0199a1b2-0000-7000-8000-000000000101", "routine_id": "0199a1b2-0000-7000-8000-000000000001",
-      "source": "connector", "provider": "webhook", "connector_slug": "ci-alerts",
-      "event_types": ["deploy.failed"],
-      "filter": {"channel_ids": null, "emoji": null, "team_ids": null, "to_states": null, "repository_ids": null,
-                 "branches": null, "payload_fields": {"environment": ["production"]}},
-      "enabled": true
-    }
+private let triggersJSON = #"""
+    [
+      {"id": "0199a1b2-0000-7000-8000-000000000101", "type": "schedule", "cron": "0 9 * * 1-5", "timezone": "Australia/Sydney"},
+      {"id": "0199a1b2-0000-7000-8000-000000000102", "type": "slack", "event_types": ["slack.reaction.added"],
+       "channel_ids": ["C1"], "emoji": ["eyes"]},
+      {"id": "0199a1b2-0000-7000-8000-000000000103", "type": "github", "event_types": ["github.push"],
+       "repository_ids": ["R1"], "branches": ["main"]},
+      {"id": "0199a1b2-0000-7000-8000-000000000104", "type": "linear", "event_types": ["linear.issue.created"],
+       "to_states": ["Todo"]},
+      {"id": "0199a1b2-0000-7000-8000-000000000105", "type": "webhook", "connector_slug": "ci-alerts",
+       "event_types": ["deploy.failed"], "payload_fields": {"environment": ["production"]}},
+      {"id": "0199a1b2-0000-7000-8000-000000000106", "type": "jira", "event_types": ["jira.issue.created"],
+       "project_keys": ["OPS"]}
+    ]
     """#
 
 private let triggeredRoutineJSON = #"""
@@ -22,91 +25,201 @@ private let triggeredRoutineJSON = #"""
       "org_id": "0199a1b2-0000-7000-8000-0000000000aa", "project_id": "0199a1b2-0000-7000-8000-0000000000bb",
       "id": "0199a1b2-0000-7000-8000-000000000001", "name": "Triage failed deploys", "description": null,
       "enabled": true, "runtime_group_id": "rg-1", "task_id": null, "created_by_member_id": "m1",
-      "execution_blocked_reason": null, "can_manage": true, "tags": [], "trigger_type": "manual",
-      "cron_schedule": null, "kind": null, "prompt": "Deploy @parameters.deploy_id failed.", "metadata": null,
-      "last_triggered_at": null, "next_trigger_at": null, "owner_role": "operator",
-      "triggers": [\#(triggerJSON)]
+      "execution_blocked_reason": null, "can_manage": true, "tags": [],
+      "kind": null, "prompt": "Deploy @parameters.deploy_id failed.",
+      "last_triggered_at": null, "next_trigger_at": "2026-11-03T22:00:00Z", "owner_role": "operator",
+      "routine_metadata": {"repositories": [], "conditions": [], "synthesis_max_conversations": null},
+      "triggers": \#(triggersJSON)
     }
     """#
 
 @Suite struct RoutineTriggersTests {
-    @Test func decodesARoutineAndItsTriggers() throws {
+    @Test func decodesEveryTriggerTypeStrictly() throws {
         let body = Data(triggeredRoutineJSON.utf8)
         #expect(try StrictSchema.unmodelled(Routine.self, in: body).isEmpty)
         let routine = try JSONCoding.decoder.decode(Routine.self, from: body)
-        let trigger = try #require(routine.triggers?.first)
-        #expect(trigger.id == "0199a1b2-0000-7000-8000-000000000101")
-        #expect(trigger.routineId == routine.id)
-        #expect(trigger.source == .connector)
-        #expect(trigger.provider == .webhook)
-        #expect(trigger.connectorSlug == "ci-alerts")
-        #expect(trigger.eventTypes == ["deploy.failed"])
-        #expect(trigger.filter == RoutineTriggerFilter(payloadFields: ["environment": ["production"]]))
-        #expect(trigger.enabled == true)
-        #expect(trigger.createdAt == ISO8601.parse("2026-11-01T10:00:00Z"))
-
-        let minimal = try JSONCoding.decoder.decode(
-            Routine.self, from: Data(#"{"id":"a","name":"n","trigger_type":"manual"}"#.utf8))
-        #expect(minimal.triggers == nil)
+        let triggers = try #require(routine.triggers)
+        #expect(triggers.count == 6)
+        #expect(
+            triggers[0]
+                == .schedule(
+                    RoutineScheduleTrigger(cron: "0 9 * * 1-5", timezone: "Australia/Sydney", id: "0199a1b2-0000-7000-8000-000000000101")))
+        #expect(
+            triggers[1]
+                == .slack(
+                    RoutineSlackTrigger(
+                        eventTypes: [.slackReactionAdded], channelIds: ["C1"], emoji: ["eyes"], id: "0199a1b2-0000-7000-8000-000000000102"))
+        )
+        #expect(
+            triggers[2]
+                == .github(
+                    RoutineGitHubTrigger(
+                        eventTypes: [.githubPush], repositoryIds: ["R1"], branches: ["main"], id: "0199a1b2-0000-7000-8000-000000000103")))
+        #expect(
+            triggers[3]
+                == .linear(
+                    RoutineLinearTrigger(
+                        eventTypes: [.linearIssueCreated], toStates: ["Todo"], id: "0199a1b2-0000-7000-8000-000000000104")))
+        #expect(
+            triggers[4]
+                == .webhook(
+                    RoutineWebhookTrigger(
+                        connectorSlug: "ci-alerts", eventTypes: ["deploy.failed"], payloadFields: ["environment": ["production"]],
+                        id: "0199a1b2-0000-7000-8000-000000000105")))
+        #expect(triggers.map(\.type) == ["schedule", "slack", "github", "linear", "webhook", "jira"])
+        #expect(triggers.map(\.id) == (1...6).map { "0199a1b2-0000-7000-8000-00000000010\($0)" })
     }
 
-    @Test func createEncodesTriggers() async throws {
+    @Test func decodesAnUnknownTypeAndSendsItBackUnchanged() async throws {
+        let transport = MockTransport(json: triggeredRoutineJSON)
+        let api = makeClient(transport).routines
+        let routine = try await api.get("r1")
+        let unknown = try #require(routine.triggers?.last)
+        guard case let .unknown(type, id, raw) = unknown else {
+            Issue.record("expected .unknown, got \(unknown)")
+            return
+        }
+        #expect(type == "jira")
+        #expect(id == "0199a1b2-0000-7000-8000-000000000106")
+        #expect(raw["project_keys"] == ["OPS"])
+
+        _ = try await api.update("r1", RoutineUpdate(triggers: [unknown]))
+        let expected: JSONValue = [
+            "triggers": [
+                [
+                    "id": "0199a1b2-0000-7000-8000-000000000106", "type": "jira", "event_types": ["jira.issue.created"],
+                    "project_keys": ["OPS"],
+                ]
+            ]
+        ]
+        #expect(transport.last?.json == expected)
+    }
+
+    @Test func omittedFilterKeysDecodeAsNilAndAreNotSent() async throws {
+        let sparse = #"""
+            {"id": "r", "name": "n", "triggers": [
+              {"id": "a", "type": "schedule", "cron": "0 9 * * *"},
+              {"id": "b", "type": "slack", "event_types": ["slack.app.mentioned"]},
+              {"id": "c", "type": "github", "event_types": ["github.push"]},
+              {"id": "d", "type": "linear", "event_types": ["linear.cycle.completed"]},
+              {"id": "e", "type": "webhook", "connector_slug": "orders", "event_types": ["*"]}
+            ]}
+            """#
+        #expect(try StrictSchema.unmodelled(Routine.self, in: Data(sparse.utf8)).isEmpty)
+        let transport = MockTransport(json: sparse)
+        let api = makeClient(transport).routines
+        let triggers = try #require(try await api.get("r").triggers)
+        #expect(
+            triggers == [
+                .schedule(RoutineScheduleTrigger(cron: "0 9 * * *", id: "a")),
+                .slack(RoutineSlackTrigger(eventTypes: [.slackAppMentioned], id: "b")),
+                .github(RoutineGitHubTrigger(eventTypes: [.githubPush], id: "c")),
+                .linear(RoutineLinearTrigger(eventTypes: [.linearCycleCompleted], id: "d")),
+                .webhook(RoutineWebhookTrigger(connectorSlug: "orders", eventTypes: [.wildcard], id: "e")),
+            ])
+
+        _ = try await api.update("r", RoutineUpdate(triggers: triggers))
+        let expected: JSONValue = [
+            "triggers": [
+                ["id": "a", "type": "schedule", "cron": "0 9 * * *"],
+                ["id": "b", "type": "slack", "event_types": ["slack.app.mentioned"]],
+                ["id": "c", "type": "github", "event_types": ["github.push"]],
+                ["id": "d", "type": "linear", "event_types": ["linear.cycle.completed"]],
+                ["id": "e", "type": "webhook", "connector_slug": "orders", "event_types": ["*"]],
+            ]
+        ]
+        #expect(transport.last?.json == expected)
+    }
+
+    @Test func createEncodesEachTriggerTypeWithoutAnId() async throws {
         let transport = MockTransport(status: 201, json: triggeredRoutineJSON)
         _ = try await makeClient(transport).routines.create(
             RoutineCreate(
-                name: "Triage failed deploys", triggerType: .manual, prompt: "Deploy @parameters.deploy_id failed.",
-                runtimeGroupId: "rg-1",
+                name: "Triage failed deploys", prompt: "Deploy @parameters.deploy_id failed.", runtimeGroupId: "rg-1",
                 triggers: [
-                    .connector(
-                        "ci-alerts", eventTypes: ["deploy.failed"],
-                        filter: RoutineTriggerFilter(payloadFields: ["environment": ["production"]])),
-                    RoutineTriggerSpec(
-                        provider: .slack, eventTypes: [.slackMessagePosted], source: .integration,
-                        filter: RoutineTriggerFilter(channelIds: ["C1"]), enabled: false),
+                    .schedule(RoutineScheduleTrigger(cron: "0 9 * * 1-5", timezone: "Australia/Sydney")),
+                    .slack(RoutineSlackTrigger(eventTypes: [.slackMessagePosted], channelIds: ["C1"])),
+                    .github(RoutineGitHubTrigger(eventTypes: [.githubPullRequestMerged], branches: ["main"])),
+                    .linear(RoutineLinearTrigger(eventTypes: [.linearIssueStatusChanged], toStates: ["Done"])),
+                    .webhook(
+                        RoutineWebhookTrigger(
+                            connectorSlug: "ci-alerts", eventTypes: ["deploy.failed"], payloadFields: ["environment": ["production"]])),
                 ]))
         #expect(transport.last?.path == "/v1/routines")
         let expected: JSONValue = [
-            "name": "Triage failed deploys", "trigger_type": "manual", "prompt": "Deploy @parameters.deploy_id failed.",
-            "runtime_group_id": "rg-1",
+            "name": "Triage failed deploys", "prompt": "Deploy @parameters.deploy_id failed.", "runtime_group_id": "rg-1",
             "triggers": [
+                ["type": "schedule", "cron": "0 9 * * 1-5", "timezone": "Australia/Sydney"],
+                ["type": "slack", "event_types": ["slack.message.posted"], "channel_ids": ["C1"]],
+                ["type": "github", "event_types": ["github.pull_request.merged"], "branches": ["main"]],
+                ["type": "linear", "event_types": ["linear.issue.status_changed"], "to_states": ["Done"]],
                 [
-                    "source": "connector", "provider": "webhook", "connector_slug": "ci-alerts", "event_types": ["deploy.failed"],
-                    "filter": ["payload_fields": ["environment": ["production"]]],
-                ],
-                [
-                    "source": "integration", "provider": "slack", "event_types": ["slack.message.posted"],
-                    "filter": ["channel_ids": ["C1"]], "enabled": false,
+                    "type": "webhook", "connector_slug": "ci-alerts", "event_types": ["deploy.failed"],
+                    "payload_fields": ["environment": ["production"]],
                 ],
             ],
         ]
         #expect(transport.last?.json == expected)
     }
 
-    @Test func updateKeepsNamedTriggersAndClearsWithAnEmptyList() async throws {
+    @Test func updateKeepsStoredTriggersAndClearsWithAnEmptyList() async throws {
         let transport = MockTransport(json: triggeredRoutineJSON)
         let api = makeClient(transport).routines
-        let routine = try await api.get("r1")
-        let stored = try #require(routine.triggers?.first)
+        let stored = try #require(try await api.get("r1").triggers?.first)
 
-        let merged = RoutineTriggerSpec(
-            provider: .github, eventTypes: [.githubPullRequestMerged], filter: RoutineTriggerFilter(branches: ["main"]))
-        _ = try await api.update("r1", RoutineUpdate(triggers: [RoutineTriggerSpec(keeping: stored), merged]))
+        let added = RoutineTrigger.github(RoutineGitHubTrigger(eventTypes: [.githubPullRequestMerged], branches: ["main"]))
+        _ = try await api.update("r1", RoutineUpdate(triggers: [stored, added]))
         #expect(transport.last?.request.method == "PATCH")
         let expected: JSONValue = [
             "triggers": [
-                [
-                    "id": "0199a1b2-0000-7000-8000-000000000101", "source": "connector", "provider": "webhook",
-                    "connector_slug": "ci-alerts", "event_types": ["deploy.failed"],
-                    "filter": ["payload_fields": ["environment": ["production"]]],
-                    "enabled": true,
-                ],
-                ["provider": "github", "event_types": ["github.pull_request.merged"], "filter": ["branches": ["main"]]],
+                ["id": "0199a1b2-0000-7000-8000-000000000101", "type": "schedule", "cron": "0 9 * * 1-5", "timezone": "Australia/Sydney"],
+                ["type": "github", "event_types": ["github.pull_request.merged"], "branches": ["main"]],
             ]
         ]
         #expect(transport.last?.json == expected)
 
         _ = try await api.update("r1", RoutineUpdate(triggers: []))
         #expect(transport.last?.json == ["triggers": []])
+    }
+
+    @Test func aTriggerWithoutATypeFailsToDecode() {
+        #expect(throws: DecodingError.self) {
+            try JSONCoding.decoder.decode(RoutineTrigger.self, from: Data(#"{"id":"a","cron":"0 9 * * *"}"#.utf8))
+        }
+    }
+
+    @Test func routineMetadataRoundTrips() async throws {
+        let body =
+            #"{"id":"r","name":"n","kind":"observation_synthesis","routine_metadata":{"repositories":[],"conditions":[],"synthesis_max_conversations":50}}"#
+        #expect(try StrictSchema.unmodelled(Routine.self, in: Data(body.utf8)).isEmpty)
+        let transport = MockTransport(json: body)
+        let api = makeClient(transport).routines
+        #expect(try await api.get("r").routineMetadata == RoutineMetadata(repositories: [], conditions: [], synthesisMaxConversations: 50))
+
+        _ = try await api.update("r", RoutineUpdate(routineMetadata: RoutineMetadata(synthesisMaxConversations: 20)))
+        #expect(transport.last?.json == ["routine_metadata": ["synthesis_max_conversations": 20]])
+    }
+
+    @Test func routineMetadataKeepsUnknownKeysThroughAnUpdate() async throws {
+        let body = #"""
+            {"id":"r","name":"n","routine_metadata":{"repositories":[],"conditions":[],"synthesis_max_conversations":null,
+             "operator_default":"ark","future":{"nested":[1,true]}}}
+            """#
+        #expect(try StrictSchema.unmodelled(Routine.self, in: Data(body.utf8)).isEmpty)
+        let transport = MockTransport(json: body)
+        let api = makeClient(transport).routines
+        var metadata = try #require(try await api.get("r").routineMetadata)
+        #expect(metadata.extra == ["operator_default": "ark", "future": ["nested": [1, true]]])
+
+        metadata.synthesisMaxConversations = 10
+        _ = try await api.update("r", RoutineUpdate(routineMetadata: metadata))
+        let expected: JSONValue = [
+            "routine_metadata": [
+                "repositories": [], "conditions": [], "synthesis_max_conversations": 10, "operator_default": "ark",
+                "future": ["nested": [1, true]],
+            ]
+        ]
+        #expect(transport.last?.json == expected)
     }
 
     @Test func manualTriggerForcedToAttachUploadsParametersWithoutReadingTheRoutine() async throws {
@@ -223,7 +336,7 @@ private let triggeredRoutineJSON = #"""
     }
 
     @Test func manualTriggerReadsTheRoutineToDecideTheUpload() async throws {
-        let synthesisJSON = #"{"id":"r-syn","name":"n","trigger_type":"manual","kind":"observation_synthesis"}"#
+        let synthesisJSON = #"{"id":"r-syn","name":"n","kind":"observation_synthesis"}"#
         let transport = MockTransport { request, _ in
             switch request.url.path {
             case "/v1/routines/r-syn": return .response(.json(synthesisJSON))
@@ -256,9 +369,9 @@ private let triggeredRoutineJSON = #"""
         let transport = MockTransport(status: 202, json: triggerResponseJSON)
         let api = makeClient(transport).routines
         let synthesis = try JSONCoding.decoder.decode(
-            Routine.self, from: Data(#"{"id":"r-syn","name":"n","trigger_type":"manual","kind":"observation_synthesis"}"#.utf8))
+            Routine.self, from: Data(#"{"id":"r-syn","name":"n","kind":"observation_synthesis"}"#.utf8))
         let posting = try JSONCoding.decoder.decode(
-            Routine.self, from: Data(#"{"id":"r-post","name":"n","trigger_type":"manual","task_id":"t-1"}"#.utf8))
+            Routine.self, from: Data(#"{"id":"r-post","name":"n","task_id":"t-1"}"#.utf8))
 
         _ = try await api.trigger(synthesis, parameters: ["conversation_ids": ["conv-1"]])
         #expect(transport.requests.count == 1)

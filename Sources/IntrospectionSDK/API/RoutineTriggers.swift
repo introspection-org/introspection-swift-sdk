@@ -2,36 +2,6 @@ import Foundation
 
 // MARK: Enums
 
-/// What a routine trigger listens to: an organization integration, or a project connector by slug.
-public struct RoutineTriggerSource: RawRepresentable, Codable, Sendable, Hashable, ExpressibleByStringLiteral {
-    public let rawValue: String
-    public init(rawValue: String) { self.rawValue = rawValue }
-    public init(stringLiteral value: String) { rawValue = value }
-    public init(from decoder: any Decoder) throws { rawValue = try decoder.singleString() }
-    public func encode(to encoder: any Encoder) throws { try encoder.encodeSingle(rawValue) }
-
-    /// The organization's platform app install (Slack, GitHub).
-    public static let integration: RoutineTriggerSource = "integration"
-    /// A project connector named by `connectorSlug`, such as a `webhook` connector.
-    public static let connector: RoutineTriggerSource = "connector"
-}
-
-/// The provider whose events a routine trigger listens to.
-public struct RoutineTriggerProvider: RawRepresentable, Codable, Sendable, Hashable, ExpressibleByStringLiteral {
-    public let rawValue: String
-    public init(rawValue: String) { self.rawValue = rawValue }
-    public init(stringLiteral value: String) { rawValue = value }
-    public init(from decoder: any Decoder) throws { rawValue = try decoder.singleString() }
-    public func encode(to encoder: any Encoder) throws { try encoder.encodeSingle(rawValue) }
-
-    public static let slack: RoutineTriggerProvider = "slack"
-    /// Refused by the server until Linear events are forwarded.
-    public static let linear: RoutineTriggerProvider = "linear"
-    public static let github: RoutineTriggerProvider = "github"
-    /// A `webhook` connector: its event types are the sender's own names.
-    public static let webhook: RoutineTriggerProvider = "webhook"
-}
-
 /// An event type a routine trigger names: `{provider}.{object}.{action}` from the platform's catalogue, or, for a
 /// `webhook` connector, any name the sender uses.
 public struct RoutineTriggerEventType: RawRepresentable, Codable, Sendable, Hashable, ExpressibleByStringLiteral {
@@ -75,135 +45,174 @@ public struct RoutineRunSource: RawRepresentable, Codable, Sendable, Hashable, E
 
 // MARK: Models
 
-/// A trigger's filter: every key set must contain the event's value for it. Each provider allows its own keys
-/// (Slack `channelIds`, `emoji`; GitHub `repositoryIds`, `branches`; a webhook `payloadFields`).
-public struct RoutineTriggerFilter: Codable, Sendable, Hashable {
+/// What starts a routine besides Run now: a schedule or an event, discriminated on `type`. A response entry always
+/// carries `id`; in `RoutineCreate.triggers` / `RoutineUpdate.triggers` an `id` keeps that trigger and none adds one.
+public enum RoutineTrigger: Codable, Sendable, Hashable {
+    case schedule(RoutineScheduleTrigger)
+    case slack(RoutineSlackTrigger)
+    case github(RoutineGitHubTrigger)
+    case linear(RoutineLinearTrigger)
+    case webhook(RoutineWebhookTrigger)
+    /// A `type` this SDK does not model, as received; sent back unchanged in an update.
+    case unknown(type: String, id: String?, raw: JSONObject)
+
+    private enum CodingKeys: String, CodingKey { case type, id }
+
+    /// The trigger's id; nil on a new one.
+    public var id: String? {
+        switch self {
+        case let .schedule(trigger): return trigger.id
+        case let .slack(trigger): return trigger.id
+        case let .github(trigger): return trigger.id
+        case let .linear(trigger): return trigger.id
+        case let .webhook(trigger): return trigger.id
+        case let .unknown(_, id, _): return id
+        }
+    }
+
+    /// The wire `type`.
+    public var type: String {
+        switch self {
+        case .schedule: return "schedule"
+        case .slack: return "slack"
+        case .github: return "github"
+        case .linear: return "linear"
+        case .webhook: return "webhook"
+        case let .unknown(type, _, _): return type
+        }
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let type = try container.decode(String.self, forKey: .type)
+        switch type {
+        case "schedule": self = .schedule(try RoutineScheduleTrigger(from: decoder))
+        case "slack": self = .slack(try RoutineSlackTrigger(from: decoder))
+        case "github": self = .github(try RoutineGitHubTrigger(from: decoder))
+        case "linear": self = .linear(try RoutineLinearTrigger(from: decoder))
+        case "webhook": self = .webhook(try RoutineWebhookTrigger(from: decoder))
+        default:
+            self = .unknown(type: type, id: try container.decodeIfPresent(String.self, forKey: .id), raw: try JSONObject(from: decoder))
+        }
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        if case let .unknown(_, _, raw) = self {
+            try JSONValue.object(raw).encode(to: encoder)
+            return
+        }
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(type, forKey: .type)
+        switch self {
+        case let .schedule(trigger): try trigger.encode(to: encoder)
+        case let .slack(trigger): try trigger.encode(to: encoder)
+        case let .github(trigger): try trigger.encode(to: encoder)
+        case let .linear(trigger): try trigger.encode(to: encoder)
+        case let .webhook(trigger): try trigger.encode(to: encoder)
+        case .unknown: break
+        }
+    }
+}
+
+/// A `schedule` trigger: a 5-field cron expression.
+public struct RoutineScheduleTrigger: Codable, Sendable, Hashable {
+    public var id: String?
+    public var cron: String
+    /// IANA time zone the cron is evaluated in; UTC when unset.
+    public var timezone: String?
+
+    public init(cron: String, timezone: String? = nil, id: String? = nil) {
+        self.cron = cron
+        self.timezone = timezone
+        self.id = id
+    }
+}
+
+/// A `slack` trigger. `channelIds` is required for `slack.message.posted`.
+public struct RoutineSlackTrigger: Codable, Sendable, Hashable {
+    public var id: String?
+    public var eventTypes: [RoutineTriggerEventType]
     public var channelIds: [String]?
     public var emoji: [String]?
-    public var teamIds: [String]?
-    public var toStates: [String]?
+
+    enum CodingKeys: String, CodingKey {
+        case id, emoji
+        case eventTypes = "event_types"
+        case channelIds = "channel_ids"
+    }
+
+    public init(eventTypes: [RoutineTriggerEventType], channelIds: [String]? = nil, emoji: [String]? = nil, id: String? = nil) {
+        self.eventTypes = eventTypes
+        self.channelIds = channelIds
+        self.emoji = emoji
+        self.id = id
+    }
+}
+
+/// A `github` trigger.
+public struct RoutineGitHubTrigger: Codable, Sendable, Hashable {
+    public var id: String?
+    public var eventTypes: [RoutineTriggerEventType]
     public var repositoryIds: [String]?
     public var branches: [String]?
+
+    enum CodingKeys: String, CodingKey {
+        case id, branches
+        case eventTypes = "event_types"
+        case repositoryIds = "repository_ids"
+    }
+
+    public init(
+        eventTypes: [RoutineTriggerEventType], repositoryIds: [String]? = nil, branches: [String]? = nil, id: String? = nil
+    ) {
+        self.eventTypes = eventTypes
+        self.repositoryIds = repositoryIds
+        self.branches = branches
+        self.id = id
+    }
+}
+
+/// A `linear` trigger, scoped to the project's bound Linear teams.
+public struct RoutineLinearTrigger: Codable, Sendable, Hashable {
+    public var id: String?
+    public var eventTypes: [RoutineTriggerEventType]
+    public var toStates: [String]?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case eventTypes = "event_types"
+        case toStates = "to_states"
+    }
+
+    public init(eventTypes: [RoutineTriggerEventType], toStates: [String]? = nil, id: String? = nil) {
+        self.eventTypes = eventTypes
+        self.toStates = toStates
+        self.id = id
+    }
+}
+
+/// A `webhook` trigger on a project connector by its slug; its event types are the sender's own names, or `*` alone.
+public struct RoutineWebhookTrigger: Codable, Sendable, Hashable {
+    public var id: String?
+    public var connectorSlug: String
+    public var eventTypes: [RoutineTriggerEventType]
     /// A webhook body's top-level scalars by key; a non-string value compares as its JSON (`true`, `42`).
     public var payloadFields: [String: [String]]?
 
     enum CodingKeys: String, CodingKey {
-        case channelIds = "channel_ids"
-        case emoji
-        case teamIds = "team_ids"
-        case toStates = "to_states"
-        case repositoryIds = "repository_ids"
-        case branches
+        case id
+        case connectorSlug = "connector_slug"
+        case eventTypes = "event_types"
         case payloadFields = "payload_fields"
     }
 
     public init(
-        channelIds: [String]? = nil,
-        emoji: [String]? = nil,
-        teamIds: [String]? = nil,
-        toStates: [String]? = nil,
-        repositoryIds: [String]? = nil,
-        branches: [String]? = nil,
-        payloadFields: [String: [String]]? = nil
+        connectorSlug: String, eventTypes: [RoutineTriggerEventType], payloadFields: [String: [String]]? = nil, id: String? = nil
     ) {
-        self.channelIds = channelIds
-        self.emoji = emoji
-        self.teamIds = teamIds
-        self.toStates = toStates
-        self.repositoryIds = repositoryIds
-        self.branches = branches
-        self.payloadFields = payloadFields
-    }
-}
-
-/// A stored event trigger of a routine.
-public struct RoutineTrigger: Codable, Sendable, Hashable {
-    public let id: String
-    public let routineId: String?
-    public let orgId: String?
-    public let projectId: String?
-    public let source: RoutineTriggerSource
-    public let provider: RoutineTriggerProvider
-    /// The project connector, for a `connector` trigger.
-    public let connectorSlug: String?
-    public let eventTypes: [RoutineTriggerEventType]
-    public let filter: RoutineTriggerFilter?
-    public let enabled: Bool?
-    public let createdAt: Date?
-    public let updatedAt: Date?
-
-    enum CodingKeys: String, CodingKey {
-        case id
-        case routineId = "routine_id"
-        case orgId = "org_id"
-        case projectId = "project_id"
-        case source, provider
-        case connectorSlug = "connector_slug"
-        case eventTypes = "event_types"
-        case filter, enabled
-        case createdAt = "created_at"
-        case updatedAt = "updated_at"
-    }
-}
-
-/// One trigger in `RoutineCreate.triggers` / `RoutineUpdate.triggers`. With `id` it keeps that trigger, applying
-/// the fields given; without one it is a new trigger. Only a prompt routine that starts a task per run takes triggers.
-public struct RoutineTriggerSpec: Encodable, Sendable, Hashable {
-    public var provider: RoutineTriggerProvider
-    /// 1 to 50 distinct event types.
-    public var eventTypes: [RoutineTriggerEventType]
-    /// Server default `integration`.
-    public var source: RoutineTriggerSource?
-    /// Required for a `connector` trigger, and only for it.
-    public var connectorSlug: String?
-    public var filter: RoutineTriggerFilter?
-    public var enabled: Bool?
-    /// An existing trigger of this routine to keep (update only).
-    public var id: String?
-
-    enum CodingKeys: String, CodingKey {
-        case id, source, provider
-        case connectorSlug = "connector_slug"
-        case eventTypes = "event_types"
-        case filter, enabled
-    }
-
-    public init(
-        provider: RoutineTriggerProvider,
-        eventTypes: [RoutineTriggerEventType],
-        source: RoutineTriggerSource? = nil,
-        connectorSlug: String? = nil,
-        filter: RoutineTriggerFilter? = nil,
-        enabled: Bool? = nil,
-        id: String? = nil
-    ) {
-        self.provider = provider
-        self.eventTypes = eventTypes
-        self.source = source
         self.connectorSlug = connectorSlug
-        self.filter = filter
-        self.enabled = enabled
+        self.eventTypes = eventTypes
+        self.payloadFields = payloadFields
         self.id = id
-    }
-
-    /// A trigger on a project connector by its slug, such as a `webhook` connector's.
-    public static func connector(
-        _ connectorSlug: String,
-        eventTypes: [RoutineTriggerEventType],
-        provider: RoutineTriggerProvider = .webhook,
-        filter: RoutineTriggerFilter? = nil,
-        enabled: Bool? = nil
-    ) -> RoutineTriggerSpec {
-        RoutineTriggerSpec(
-            provider: provider, eventTypes: eventTypes, source: .connector, connectorSlug: connectorSlug, filter: filter,
-            enabled: enabled)
-    }
-
-    /// The spec that keeps a stored trigger as it is; a `RoutineUpdate.triggers` list drops every trigger it omits.
-    public init(keeping trigger: RoutineTrigger) {
-        self.init(
-            provider: trigger.provider, eventTypes: trigger.eventTypes, source: trigger.source, connectorSlug: trigger.connectorSlug,
-            filter: trigger.filter, enabled: trigger.enabled, id: trigger.id)
     }
 }
 
