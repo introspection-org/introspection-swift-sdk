@@ -231,7 +231,8 @@ private let routineJSON = #"""
              "runtime_group_id":"rg-1","runtime_id":"rt-1",
              "payload":{"routine_id":"a1","routine_name":"Weekly digest","prompt":"Summarize my week",
                         "trigger_type":"cron","slot":"2026-10-05T09:00:00Z","task_id":"t1","posted":true,
-                        "member_id":"m1","runtime_group_id":"rg-1","triggered_by_member_id":null}}
+                        "member_id":"m1","runtime_group_id":"rg-1","triggered_by_member_id":null,
+                        "run_id":"run-1"}}
             """#
         let skipped = #"""
             {"id":"0199a1b2-0000-5000-8000-000000000002","timestamp":"2026-10-06T09:00:00Z",
@@ -255,6 +256,7 @@ private let routineJSON = #"""
         #expect(run.taskId == "t1")
         #expect(run.memberId == "m1")
         #expect(run.triggeredByMemberId == nil)
+        #expect(run.runId == "run-1")
         #expect(events[0].routineSkipped == nil)
 
         let skip = try #require(events[1].routineSkipped)
