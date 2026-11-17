@@ -611,6 +611,9 @@ public struct RoutineTriggeredPayload: Codable, Sendable, Hashable {
     public var triggeredByMemberId: String?
     /// The event trigger and delivery it answered; nil for a scheduled or hand trigger.
     public var event: RoutineTriggerEventRef?
+    /// The run the trigger's turn executes on: the `introspection.run.id` its spans carry.
+    /// Nil on a row written before it was recorded.
+    public var runId: String?
 
     private enum CodingKeys: String, CodingKey {
         case prompt, slot, posted, event
@@ -621,6 +624,7 @@ public struct RoutineTriggeredPayload: Codable, Sendable, Hashable {
         case memberId = "member_id"
         case runtimeGroupId = "runtime_group_id"
         case triggeredByMemberId = "triggered_by_member_id"
+        case runId = "run_id"
     }
 }
 
