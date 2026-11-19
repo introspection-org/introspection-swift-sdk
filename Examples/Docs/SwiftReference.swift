@@ -16,8 +16,8 @@ enum SwiftReference {
         print(answer)
 
         let handle = try await runner.tasks.start(prompt: "Say hello.")
-        for try await event in handle.stream() where event.eventType == .textMessageContent {
-            print(event.delta ?? "", terminator: "")
+        for try await event in handle.stream() {
+            if case let .textMessageContent(content) = event.payload { print(content.delta, terminator: "") }
         }
         // #endregion docs:reference/swift/run-task
     }

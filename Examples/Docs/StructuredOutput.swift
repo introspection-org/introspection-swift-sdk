@@ -11,17 +11,18 @@ enum StructuredOutput {
         var submitId: String?
 
         for try await event in handle.stream() {
-            switch event.eventType {
-            case .toolCallStart where event.toolCallName == "submit_result":
-                submitId = event.toolCallId
-            case .toolCallArgs:
-                if let id = event.toolCallId { args[id, default: ""] += event.delta ?? "" }
-            case .messagesSnapshot:
+            switch event.payload {
+            case let .toolCallStart(start) where start.toolCallName == "submit_result":
+                submitId = start.toolCallId
+            case let .toolCallArgs(chunk):
+                args[chunk.toolCallId, default: ""] += chunk.delta
+            case let .messagesSnapshot(snapshot):
                 // A stream resumed past its replay buffer sends a snapshot with each call's complete arguments.
-                for call in (event.raw["messages"]?.arrayValue ?? []).flatMap({ $0["toolCalls"]?.arrayValue ?? [] }) {
-                    guard let id = call["id"]?.stringValue else { continue }
-                    if call["function"]?["name"]?.stringValue == "submit_result" { submitId = id }
-                    args[id] = call["function"]?["arguments"]?.stringValue
+                for case let .assistant(message) in snapshot.messages {
+                    for call in message.toolCalls ?? [] {
+                        if call.function.name == "submit_result" { submitId = call.id }
+                        args[call.id] = call.function.arguments
+                    }
                 }
             default:
                 break

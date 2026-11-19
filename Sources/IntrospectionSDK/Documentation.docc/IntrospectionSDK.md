@@ -72,8 +72,9 @@ The package has two products. `IntrospectionSDK`, documented here, is the client
 ### Streaming events and transcripts
 
 - ``AGUIEvent``
+- ``AGUIEventPayload``
 - ``AGUIEventType``
-- ``AGUIRunOutcomeType``
+- ``AGUI``
 - ``TranscriptAccumulator``
 - ``TranscriptEntry``
 

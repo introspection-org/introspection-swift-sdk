@@ -83,8 +83,8 @@ let client = IntrospectionClient(
 let runner = try await client.runtimes("customer-agent").run(identity: .init(userId: "user_123"))
 
 let handle = try await runner.tasks.start(prompt: "Say hello in one sentence.")
-for try await event in handle.stream() where event.eventType == .textMessageContent {
-    print(event.delta ?? "", terminator: "")
+for try await event in handle.stream() {
+    if case let .textMessageContent(content) = event.payload { print(content.delta, terminator: "") }
 }
 ```
 

@@ -149,19 +149,26 @@ public struct RunHandle: Sendable {
                 throw IntrospectionError(
                     kind: .streamIncomplete, message: "The replay buffer lost output; read the conversation transcript")
             }
-            switch event.eventType {
-            case .messagesSnapshot:
+            switch event.payload {
+            case let .messagesSnapshot(snapshot):
                 // A snapshot carries the whole run so far, so it replaces what was read.
-                text = (event.raw["messages"]?.arrayValue ?? [])
-                    .filter { $0["role"]?.stringValue == "assistant" }
-                    .compactMap { $0["content"]?.stringValue }
-                    .joined()
-            case .textMessageContent, .textMessageChunk:
-                text += event.delta ?? ""
-            case .runError:
-                throw IntrospectionError(kind: .runFailed, message: event.message ?? "The run failed", code: event.code)
-            case .runFinished where event.outcomeType == .cancelled:
-                throw IntrospectionError(kind: .runFailed, message: "The run was cancelled")
+                text = snapshot.messages.compactMap { message in
+                    guard case let .assistant(assistant) = message else { return nil }
+                    return assistant.content
+                }.joined()
+            case let .textMessageContent(content):
+                text += content.delta
+            case let .textMessageChunk(chunk):
+                text += chunk.delta ?? ""
+            case let .runError(error):
+                throw IntrospectionError(kind: .runFailed, message: error.message, code: error.code)
+            case let .runFinished(finished):
+                if case .cancelled = finished.outcome {
+                    throw IntrospectionError(kind: .runFailed, message: "The run was cancelled")
+                }
+            // A RUN_ERROR that does not satisfy its schema still fails the run.
+            case .unknown where event.eventType == .runError:
+                throw IntrospectionError(kind: .runFailed, message: "The run failed")
             default:
                 break
             }

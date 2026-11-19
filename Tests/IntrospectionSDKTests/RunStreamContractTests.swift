@@ -52,7 +52,7 @@ import Testing
                 events.append(event)
             }
         } catch let error as IntrospectionError { failure = error }
-        #expect(events.compactMap(\.delta) == scenario.deltas)
+        #expect(events.compactMap(\.textDelta) == scenario.deltas)
         #expect(failure?.kind == scenario.error.map { $0 == "run_failed" ? .runFailed : .streamIncomplete })
         #expect(await transport.cursors == scenario.cursors)
         #expect(await transport.reads == scenario.statuses.count)
