@@ -96,7 +96,10 @@ import Testing
         }
         let rows = [
             row("e1", #""action":"created","revision":1,"member_id":"m-1","data":{"title":"Checkout times out"}"#),
-            row("e2", #""action":"updated","revision":2,"member_id":"m-1","changes":{"status":{"before":"open"}}"#),
+            row(
+                "e2",
+                #""action":"updated","revision":2,"member_id":"m-1","changes":{"status":{"before":"open"},"attachments":{"added":[{"id":"a-1","kind":"event","event_id":"e-9"}],"removed":[]}}"#
+            ),
             row("e3", #""action":"commented","member_id":"m-1","actor_member_id":"m-7","actor_member_type":"agent","comment":"On it""#),
             row("e4", #""action":"deleted","revision":3,"member_id":null"#),
             row("e5", #""action":"archived","reason":"stale""#),
@@ -125,6 +128,8 @@ import Testing
         #expect(created.data["title"] == "Checkout times out")
         #expect(updated.revision == 2)
         #expect(updated.changes["status"] == IssueFieldChange(before: "open", after: nil))
+        #expect(updated.changes["attachments"]?.added == [.event(id: "a-1", IssueEventReference(eventId: "e-9"))])
+        #expect(updated.changes["attachments"]?.removed == [])
         #expect(commented.comment == "On it")
         #expect(commented.actorMemberId == "m-7")
         #expect(commented.actorMemberType == "agent")

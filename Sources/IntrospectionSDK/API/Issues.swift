@@ -68,7 +68,7 @@ public struct IssueInclude: RawRepresentable, Codable, Sendable, Hashable, Expre
 
     /// `members`.
     public static let members: IssueInclude = "members"
-    /// `links`, `files`, `events` and `spans`.
+    /// `attachments`.
     public static let attachments: IssueInclude = "attachments"
     /// `comments`, at most 500, on ``IssuesAPI/get(_:include:)`` only; the list and the writes refuse it with 422.
     public static let comments: IssueInclude = "comments"
@@ -136,6 +136,101 @@ public struct IssueSpanReference: Codable, Sendable, Hashable {
         self.traceId = traceId
         self.spanId = spanId
     }
+}
+
+/// One piece of an issue's evidence as read, discriminated on `kind`. Its `id` is what
+/// ``IssueUpdate/removeAttachments`` takes. A kind this SDK does not model, or a malformed item, decodes as
+/// `.unknown` and encodes back unchanged.
+public enum IssueAttachment: Codable, Sendable, Hashable {
+    case link(id: String, IssueLink)
+    case file(id: String, IssueFile)
+    case event(id: String, IssueEventReference)
+    case span(id: String, IssueSpanReference)
+    case unknown(JSONValue)
+
+    /// The attachment's id; nil for an `.unknown` item without one.
+    public var id: String? {
+        switch self {
+        case let .link(id, _), let .file(id, _), let .event(id, _), let .span(id, _): return id
+        case let .unknown(raw): return raw["id"]?.stringValue
+        }
+    }
+
+    /// The `kind` discriminator.
+    public var kind: String {
+        switch self {
+        case .link: return "link"
+        case .file: return "file"
+        case .event: return "event"
+        case .span: return "span"
+        case let .unknown(raw): return raw["kind"]?.stringValue ?? ""
+        }
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let raw = try JSONValue(from: decoder)
+        guard let id = raw["id"]?.stringValue else {
+            self = .unknown(raw)
+            return
+        }
+        func attempt<T: Decodable>(_ type: T.Type, _ wrap: (String, T) -> IssueAttachment) -> IssueAttachment {
+            (try? raw.decode(T.self)).map { wrap(id, $0) } ?? .unknown(raw)
+        }
+        switch raw["kind"]?.stringValue {
+        case "link": self = attempt(IssueLink.self, IssueAttachment.link)
+        case "file": self = attempt(IssueFile.self, IssueAttachment.file)
+        case "event": self = attempt(IssueEventReference.self, IssueAttachment.event)
+        case "span": self = attempt(IssueSpanReference.self, IssueAttachment.span)
+        default: self = .unknown(raw)
+        }
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        switch self {
+        case let .link(_, item): try item.encode(to: encoder)
+        case let .file(_, item): try item.encode(to: encoder)
+        case let .event(_, item): try item.encode(to: encoder)
+        case let .span(_, item): try item.encode(to: encoder)
+        case let .unknown(raw): return try raw.encode(to: encoder)
+        }
+        var container = encoder.container(keyedBy: AttachmentKey.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(kind, forKey: .kind)
+    }
+}
+
+/// An attachment to add to an issue. The server assigns its `id`, and skips one the issue already holds: a link
+/// by `url`, a file by `fileId`, an event by `eventId`, a span by `traceId` and `spanId`.
+public enum IssueAttachmentCreate: Encodable, Sendable, Hashable {
+    case link(IssueLink)
+    case file(IssueFile)
+    case event(IssueEventReference)
+    case span(IssueSpanReference)
+
+    /// The `kind` discriminator.
+    public var kind: String {
+        switch self {
+        case .link: return "link"
+        case .file: return "file"
+        case .event: return "event"
+        case .span: return "span"
+        }
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        switch self {
+        case let .link(item): try item.encode(to: encoder)
+        case let .file(item): try item.encode(to: encoder)
+        case let .event(item): try item.encode(to: encoder)
+        case let .span(item): try item.encode(to: encoder)
+        }
+        var container = encoder.container(keyedBy: AttachmentKey.self)
+        try container.encode(kind, forKey: .kind)
+    }
+}
+
+private enum AttachmentKey: String, CodingKey {
+    case id, kind
 }
 
 // MARK: Models
@@ -208,14 +303,8 @@ public struct Issue: Codable, Sendable, Hashable {
     public let closedAt: Date?
     /// With `.members`: the creator, then the assignee, the reviewer, and the followers in the order they were added.
     public let members: [IssueMember]?
-    /// With `.attachments`.
-    public let links: [IssueLink]?
-    /// With `.attachments`.
-    public let files: [IssueFile]?
-    /// With `.attachments`.
-    public let events: [IssueEventReference]?
-    /// With `.attachments`.
-    public let spans: [IssueSpanReference]?
+    /// With `.attachments`: the issue's evidence, in the order it was added.
+    public let attachments: [IssueAttachment]?
     /// With `.comments`: oldest first, at most 500. Page the issue's events for more.
     public let comments: [IssueComment]?
     /// What this read left out, such as the comments beyond the include's cap.
@@ -239,7 +328,7 @@ public struct Issue: Codable, Sendable, Hashable {
         case assigneeMemberId = "assignee_member_id"
         case reviewerMemberId = "reviewer_member_id"
         case closedAt = "closed_at"
-        case members, links, files, events, spans, comments, warnings
+        case members, attachments, comments, warnings
         case createdAt = "created_at"
         case updatedAtStamp = "updated_at"
     }
@@ -274,10 +363,8 @@ public struct IssueCreate: Encodable, Sendable, Hashable {
     /// The fixed worker task behind the issue chat and Slack replies.
     public var taskId: String
     public var priority: IssuePriority?
-    public var files: [IssueFile]?
-    public var links: [IssueLink]?
-    public var events: [IssueEventReference]?
-    public var spans: [IssueSpanReference]?
+    /// The issue's evidence, in order.
+    public var attachments: [IssueAttachmentCreate]?
     public var tags: [String]?
     /// Values are strings, numbers, booleans or null.
     public var metadata: JSONObject?
@@ -289,7 +376,7 @@ public struct IssueCreate: Encodable, Sendable, Hashable {
     enum CodingKeys: String, CodingKey {
         case title, description
         case taskId = "task_id"
-        case priority, files, links, events, spans, tags, metadata
+        case priority, attachments, tags, metadata
         case assigneeMemberId = "assignee_member_id"
         case reviewerMemberId = "reviewer_member_id"
         case followerMemberIds = "follower_member_ids"
@@ -300,36 +387,29 @@ public struct IssueCreate: Encodable, Sendable, Hashable {
         description: String,
         taskId: String,
         priority: IssuePriority? = nil,
-        files: [IssueFile]? = nil,
-        links: [IssueLink]? = nil,
-        events: [IssueEventReference]? = nil,
-        spans: [IssueSpanReference]? = nil,
+        attachments: [IssueAttachmentCreate]? = nil,
         tags: [String]? = nil,
         metadata: JSONObject? = nil,
         assigneeMemberId: String? = nil,
         reviewerMemberId: String? = nil,
         followerMemberIds: [String]? = nil
     ) {
-        // jscpd:ignore-start: memberwise init of a public type; the assignments cannot be shared
         self.title = title
         self.description = description
         self.taskId = taskId
         self.priority = priority
-        self.files = files
-        self.links = links
-        self.events = events
-        self.spans = spans
+        self.attachments = attachments
         self.tags = tags
         self.metadata = metadata
-        // jscpd:ignore-end
         self.assigneeMemberId = assigneeMemberId
         self.reviewerMemberId = reviewerMemberId
         self.followerMemberIds = followerMemberIds
     }
 }
 
-/// An edit to an issue (`PATCH /v1/issues/{id}`). Nil fields are omitted and stay unchanged; each list
-/// and `metadata` replaces its value wholesale, so `[]` (or `[:]`) clears it.
+/// An edit to an issue (`PATCH /v1/issues/{id}`). Nil fields are omitted and stay unchanged; `tags`, `metadata`
+/// and the followers replace their value wholesale, so `[]` (or `[:]`) clears one. Evidence changes by
+/// `addAttachments` and `removeAttachments`, which need no `ifMatch`.
 ///
 /// The API tells an omitted assignee or reviewer from a null one, so `assigneeMemberId: .some(nil)` unassigns
 /// the issue and leaving it `nil` leaves the assignee alone; `reviewerMemberId` is the same.
@@ -338,10 +418,10 @@ public struct IssueUpdate: Encodable, Sendable, Hashable {
     public var description: String?
     public var priority: IssuePriority?
     public var status: IssueStatus?
-    public var files: [IssueFile]?
-    public var links: [IssueLink]?
-    public var events: [IssueEventReference]?
-    public var spans: [IssueSpanReference]?
+    /// Appended in order, skipping any the issue already holds.
+    public var addAttachments: [IssueAttachmentCreate]?
+    /// Attachment ids to remove; an id the issue does not hold is ignored.
+    public var removeAttachments: [String]?
     public var tags: [String]?
     public var metadata: JSONObject?
     public var assigneeMemberId: String??
@@ -350,7 +430,9 @@ public struct IssueUpdate: Encodable, Sendable, Hashable {
     public var followerMemberIds: [String]?
 
     enum CodingKeys: String, CodingKey {
-        case title, description, priority, status, files, links, events, spans, tags, metadata
+        case title, description, priority, status, tags, metadata
+        case addAttachments = "add_attachments"
+        case removeAttachments = "remove_attachments"
         case assigneeMemberId = "assignee_member_id"
         case reviewerMemberId = "reviewer_member_id"
         case followerMemberIds = "follower_member_ids"
@@ -361,28 +443,22 @@ public struct IssueUpdate: Encodable, Sendable, Hashable {
         description: String? = nil,
         priority: IssuePriority? = nil,
         status: IssueStatus? = nil,
-        files: [IssueFile]? = nil,
-        links: [IssueLink]? = nil,
-        events: [IssueEventReference]? = nil,
-        spans: [IssueSpanReference]? = nil,
+        addAttachments: [IssueAttachmentCreate]? = nil,
+        removeAttachments: [String]? = nil,
         tags: [String]? = nil,
         metadata: JSONObject? = nil,
         assigneeMemberId: String?? = nil,
         reviewerMemberId: String?? = nil,
         followerMemberIds: [String]? = nil
     ) {
-        // jscpd:ignore-start: memberwise init of a public type; the assignments cannot be shared
         self.title = title
         self.description = description
         self.priority = priority
         self.status = status
-        self.files = files
-        self.links = links
-        self.events = events
-        self.spans = spans
+        self.addAttachments = addAttachments
+        self.removeAttachments = removeAttachments
         self.tags = tags
         self.metadata = metadata
-        // jscpd:ignore-end
         self.assigneeMemberId = assigneeMemberId
         self.reviewerMemberId = reviewerMemberId
         self.followerMemberIds = followerMemberIds
@@ -394,10 +470,8 @@ public struct IssueUpdate: Encodable, Sendable, Hashable {
         try container.encodeIfPresent(description, forKey: .description)
         try container.encodeIfPresent(priority, forKey: .priority)
         try container.encodeIfPresent(status, forKey: .status)
-        try container.encodeIfPresent(files, forKey: .files)
-        try container.encodeIfPresent(links, forKey: .links)
-        try container.encodeIfPresent(events, forKey: .events)
-        try container.encodeIfPresent(spans, forKey: .spans)
+        try container.encodeIfPresent(addAttachments, forKey: .addAttachments)
+        try container.encodeIfPresent(removeAttachments, forKey: .removeAttachments)
         try container.encodeIfPresent(tags, forKey: .tags)
         try container.encodeIfPresent(metadata, forKey: .metadata)
         // An omitted key leaves the member; an explicit null clears it.

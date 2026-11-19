@@ -10,13 +10,15 @@ private let issueJSON = #"""
       "org_id": "0199a1b2-0000-7000-8000-0000000000aa",
       "project_id": "0199a1b2-0000-7000-8000-0000000000bb",
       "id": "0199a1b2-0000-7000-8000-000000000001",
-      "files": [
-        {"file_id": "0199a1b2-0000-7000-8000-0000000000f1", "name": "trace.log", "checksum": "sha256:abc",
-         "source_event_ids": ["0199a1b2-0000-7000-8000-0000000000e1"]}
+      "attachments": [
+        {"id": "0199a1b2-0000-7000-8000-0000000000a1", "kind": "link", "url": "https://github.com/acme/app/pull/7",
+         "title": "Fix the retry"},
+        {"id": "0199a1b2-0000-7000-8000-0000000000a2", "kind": "file", "file_id": "0199a1b2-0000-7000-8000-0000000000f1",
+         "name": "trace.log", "checksum": "sha256:abc", "source_event_ids": ["0199a1b2-0000-7000-8000-0000000000e1"]},
+        {"id": "0199a1b2-0000-7000-8000-0000000000a3", "kind": "event", "event_id": "0199a1b2-0000-7000-8000-0000000000e2"},
+        {"id": "0199a1b2-0000-7000-8000-0000000000a4", "kind": "span", "trace_id": "0123456789abcdef0123456789abcdef",
+         "span_id": "0123456789abcdef"}
       ],
-      "links": [{"url": "https://github.com/acme/app/pull/7", "title": "Fix the retry"}],
-      "events": [{"event_id": "0199a1b2-0000-7000-8000-0000000000e2"}],
-      "spans": [{"trace_id": "0123456789abcdef0123456789abcdef", "span_id": "0123456789abcdef"}],
       "title": "Checkout times out",
       "description": "Payments retry forever after a 504.",
       "priority": "high",
@@ -47,6 +49,12 @@ private let issueJSON = #"""
     }
     """#
 
+private let serverLink = IssueLink(url: "https://github.com/acme/app/pull/7", title: "Fix the retry")
+private let serverFile = IssueFile(
+    fileId: "0199a1b2-0000-7000-8000-0000000000f1", name: "trace.log", checksum: "sha256:abc",
+    sourceEventIds: ["0199a1b2-0000-7000-8000-0000000000e1"])
+private let serverSpan = IssueSpanReference(traceId: "0123456789abcdef0123456789abcdef", spanId: "0123456789abcdef")
+
 /// An issue as a read without `include` returns it: the brief, and every related list null.
 private func briefJSON(_ id: String = "i", title: String = "t", status: String = "open", extra: String = "") -> String {
     #"{"id":"\#(id)","org_id":"o","project_id":"p","title":"\#(title)","description":"d","priority":"medium","status":"\#(status)","revision":1,"tags":[],"metadata":{}\#(extra)}"#
@@ -74,14 +82,14 @@ private func issueTransport(status: Int = 200) -> MockTransport {
         #expect(issue.displayIndex == 42)
         #expect(issue.displayKey == "I-42")
         #expect(
-            issue.files == [
-                IssueFile(
-                    fileId: "0199a1b2-0000-7000-8000-0000000000f1", name: "trace.log", checksum: "sha256:abc",
-                    sourceEventIds: ["0199a1b2-0000-7000-8000-0000000000e1"])
+            issue.attachments == [
+                .link(id: "0199a1b2-0000-7000-8000-0000000000a1", serverLink),
+                .file(id: "0199a1b2-0000-7000-8000-0000000000a2", serverFile),
+                .event(id: "0199a1b2-0000-7000-8000-0000000000a3", IssueEventReference(eventId: "0199a1b2-0000-7000-8000-0000000000e2")),
+                .span(id: "0199a1b2-0000-7000-8000-0000000000a4", serverSpan),
             ])
-        #expect(issue.links == [IssueLink(url: "https://github.com/acme/app/pull/7", title: "Fix the retry")])
-        #expect(issue.events == [IssueEventReference(eventId: "0199a1b2-0000-7000-8000-0000000000e2")])
-        #expect(issue.spans == [IssueSpanReference(traceId: "0123456789abcdef0123456789abcdef", spanId: "0123456789abcdef")])
+        #expect(issue.attachments?.map(\.kind) == ["link", "file", "event", "span"])
+        #expect(issue.attachments?.last?.id == "0199a1b2-0000-7000-8000-0000000000a4")
         #expect(issue.tags == ["customer:acme"])
         #expect(issue.metadata == ["source": "slack", "count": 3, "ratio": 0.5, "triaged": true, "owner": nil])
         #expect(issue.taskId == "0199a1b2-0000-7000-8000-0000000000dd")
@@ -107,10 +115,7 @@ private func issueTransport(status: Int = 200) -> MockTransport {
         #expect(brief.status == "brand_new")
         #expect(brief.revision == 1)
         #expect(brief.members == nil)
-        #expect(brief.links == nil)
-        #expect(brief.files == nil)
-        #expect(brief.events == nil)
-        #expect(brief.spans == nil)
+        #expect(brief.attachments == nil)
         #expect(brief.comments == nil)
         #expect(brief.metadata == [:])
         #expect(brief.displayKey == nil)
@@ -174,8 +179,10 @@ private func issueTransport(status: Int = 200) -> MockTransport {
         let created = try await api.create(
             IssueCreate(
                 title: "Checkout times out", description: "Payments retry forever.", taskId: "task-1", priority: .urgent,
-                files: [IssueFile(fileId: "f-1", sourceEventIds: ["e-1"])], links: [IssueLink(url: "https://example.com/pr/7")],
-                events: [IssueEventReference(eventId: "e-2")], spans: [IssueSpanReference(traceId: "t", spanId: "s")],
+                attachments: [
+                    .file(IssueFile(fileId: "f-1", sourceEventIds: ["e-1"])), .link(IssueLink(url: "https://example.com/pr/7")),
+                    .event(IssueEventReference(eventId: "e-2")), .span(IssueSpanReference(traceId: "t", spanId: "s")),
+                ],
                 tags: ["customer:acme"], metadata: ["count": 3, "triaged": false]
             ))
         #expect(created.revision == 3)
@@ -186,9 +193,13 @@ private func issueTransport(status: Int = 200) -> MockTransport {
         #expect(
             sent.json == [
                 "title": "Checkout times out", "description": "Payments retry forever.", "task_id": "task-1",
-                "priority": "urgent", "files": [["file_id": "f-1", "source_event_ids": ["e-1"]]],
-                "links": [["url": "https://example.com/pr/7"]], "events": [["event_id": "e-2"]],
-                "spans": [["trace_id": "t", "span_id": "s"]], "tags": ["customer:acme"],
+                "priority": "urgent",
+                "attachments": [
+                    ["kind": "file", "file_id": "f-1", "source_event_ids": ["e-1"]],
+                    ["kind": "link", "url": "https://example.com/pr/7"], ["kind": "event", "event_id": "e-2"],
+                    ["kind": "span", "trace_id": "t", "span_id": "s"],
+                ],
+                "tags": ["customer:acme"],
                 "metadata": ["count": 3, "triaged": false],
             ])
 
@@ -276,14 +287,10 @@ private func issueTransport(status: Int = 200) -> MockTransport {
         _ = try await api.update(
             "i-1",
             IssueUpdate(
-                title: "New title", description: "New brief", priority: .low, files: [], links: [], events: [], spans: [],
-                tags: [], metadata: [:]
+                title: "New title", description: "New brief", priority: .low, tags: [], metadata: [:]
             ))
         #expect(
-            transport.last?.json == [
-                "title": "New title", "description": "New brief", "priority": "low", "files": [],
-                "links": [], "events": [], "spans": [], "tags": [], "metadata": [:],
-            ])
+            transport.last?.json == ["title": "New title", "description": "New brief", "priority": "low", "tags": [], "metadata": [:]])
     }
 
     @Test func updateSendsIfMatchOnlyWhenGiven() async throws {
@@ -344,5 +351,34 @@ private func issueTransport(status: Int = 200) -> MockTransport {
         try await api.delete("i-2")
         #expect(transport.last?.request.headers["If-Match"] == nil)
         #expect(transport.last?.request.headers["Idempotency-Key"] == nil)
+    }
+
+    @Test func updateAddsAndRemovesAttachments() async throws {
+        let transport = issueTransport()
+        let api = makeClient(transport).issues
+        _ = try await api.update(
+            "i-1",
+            IssueUpdate(
+                addAttachments: [.link(IssueLink(url: "https://example.com/pr/8", title: "Proposed fix"))],
+                removeAttachments: ["a-1"]
+            ))
+        let sent = try #require(transport.last)
+        #expect(sent.request.headers["If-Match"] == nil)
+        #expect(
+            sent.json == [
+                "add_attachments": [["kind": "link", "url": "https://example.com/pr/8", "title": "Proposed fix"]],
+                "remove_attachments": ["a-1"],
+            ])
+    }
+
+    @Test func knownAttachmentRoundTrips() throws {
+        let attachment = IssueAttachment.file(id: "a-2", serverFile)
+        let encoded = try JSONCoding.decoder.decode(JSONValue.self, from: JSONCoding.encoder.encode(attachment))
+        #expect(
+            encoded == [
+                "id": "a-2", "kind": "file", "file_id": "0199a1b2-0000-7000-8000-0000000000f1", "name": "trace.log",
+                "checksum": "sha256:abc", "source_event_ids": ["0199a1b2-0000-7000-8000-0000000000e1"],
+            ])
+        #expect(try encoded.decode(IssueAttachment.self) == attachment)
     }
 }
