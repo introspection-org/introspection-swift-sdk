@@ -489,10 +489,15 @@ public enum IssueActivityPayload: Codable, Sendable, Hashable {
     }
 }
 
-/// One authored field's value on either side of an issue update; a null side is omitted and reads as nil.
+/// One authored field's value on either side of an issue update; a null side is omitted and reads as nil. The
+/// `attachments` change carries `added` and `removed` instead.
 public struct IssueFieldChange: Codable, Sendable, Hashable {
     public var before: JSONValue?
     public var after: JSONValue?
+    /// For `attachments`: the items the update attached.
+    public var added: [IssueAttachment]?
+    /// For `attachments`: the items the update removed.
+    public var removed: [IssueAttachment]?
 }
 
 /// An issue was created.
@@ -527,7 +532,8 @@ public struct IssueUpdatedPayload: Codable, Sendable, Hashable {
     public var actorMemberId: String?
     /// The actor's capacity: `agent`, `dev` or `impersonation`.
     public var actorMemberType: String?
-    /// Each changed field, by name; `members` holds the people on the issue before and after.
+    /// Each changed field, by name; `members` holds the people on the issue before and after, and `attachments`
+    /// the items added and removed.
     public var changes: [String: IssueFieldChange]
 
     private enum CodingKeys: String, CodingKey {

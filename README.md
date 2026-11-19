@@ -172,6 +172,17 @@ for comment in issue.comments ?? [] { print(comment.memberId ?? "", comment.comm
 let inbox = try await runner.issues.list(IssueListParams(relation: [.assignee, .reviewer])).collect()
 ```
 
+Evidence is one list of `attachments`, each a link, file, event or span with
+its own `id`. Add one without reading the issue first; the server skips one
+it already holds:
+
+```swift
+let fix = IssueAttachmentCreate.link(IssueLink(url: "https://github.com/acme/app/pull/12", title: "Proposed fix"))
+_ = try await runner.issues.update(issueId, IssueUpdate(addAttachments: [fix], removeAttachments: [staleAttachmentId]))
+```
+
+The `links`, `files`, `events` and `spans` lists are deprecated.
+
 ### Routine triggers
 
 A routine runs by hand or on its `triggers`: each is a schedule

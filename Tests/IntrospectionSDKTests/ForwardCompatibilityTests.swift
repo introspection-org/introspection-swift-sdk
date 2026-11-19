@@ -115,4 +115,21 @@ import Testing
         #expect(content.path == "docs/link")
         #expect(try reencoded(content) == decode(JSONValue.self, json))
     }
+
+    @Test func issueAttachmentKeepsAnUnknownKind() throws {
+        let json = #"{"id":"a-9","kind":"ticket","provider":"linear","external_id":"INT-1"}"#
+        let attachment = try decode(IssueAttachment.self, json)
+        #expect(attachment == .unknown(try decode(JSONValue.self, json)))
+        #expect(attachment.id == "a-9")
+        #expect(attachment.kind == "ticket")
+        #expect(try reencoded(attachment) == decode(JSONValue.self, json))
+
+        let withoutId = try decode(IssueAttachment.self, #"{"kind":"link","url":"u"}"#)
+        #expect(withoutId == .unknown(["kind": "link", "url": "u"]))
+        #expect(withoutId.id == nil)
+        let missingField = try decode(IssueAttachment.self, #"{"id":"a-1","kind":"span"}"#)
+        #expect(missingField == .unknown(["id": "a-1", "kind": "span"]))
+        #expect(missingField.kind == "span")
+        #expect(try decode(IssueAttachment.self, "[]") == .unknown([]))
+    }
 }

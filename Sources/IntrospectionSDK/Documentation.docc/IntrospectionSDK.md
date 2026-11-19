@@ -158,10 +158,11 @@ their own task-targeted routines.
 ### Issues
 
 Issues at `/v1/issues` on `client.issues` or `runner.issues`: a brief with its creator, assignee and reviewer. Its
-people (``IssueMember``), attachments (files, links, events, spans) and comments come back only when a read names them
-with ``IssueInclude``; a list that was not included is nil. `update` with an ``IssueUpdate`` applies the fields it
-names, and the last write wins; pass ``Issue/etag`` as `ifMatch` to `update` or `delete` to have the write refused with
-412 when the issue changed since it was read. To ask a person something, assign the issue, set it `waiting` and comment
+people (``IssueMember``), attachments (``IssueAttachment``: links, files, events and spans) and comments come back only
+when a read names them with ``IssueInclude``; a list that was not included is nil. `update` with an ``IssueUpdate``
+applies the fields it names, and the last write wins; pass ``Issue/etag`` as `ifMatch` to `update` or `delete` to have
+the write refused with 412 when the issue changed since it was read. ``IssueUpdate/addAttachments`` and
+``IssueUpdate/removeAttachments`` change the evidence without reading the issue first. To ask a person something, assign the issue, set it `waiting` and comment
 with ``IssueCommentsAPI/create(_:comment:)``.
 
 - ``IssuesAPI``
@@ -171,6 +172,12 @@ with ``IssueCommentsAPI/create(_:comment:)``.
 - ``IssueMemberRelation``
 - ``IssueComment``
 - ``IssueInclude``
+- ``IssueAttachment``
+- ``IssueAttachmentCreate``
+- ``IssueLink``
+- ``IssueFile``
+- ``IssueEventReference``
+- ``IssueSpanReference``
 - ``IssueCreate``
 - ``IssueUpdate``
 - ``IssueListParams``
