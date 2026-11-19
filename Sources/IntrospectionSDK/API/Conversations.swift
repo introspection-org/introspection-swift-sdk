@@ -966,6 +966,9 @@ public struct GenAIHistory: Codable, Sendable, Hashable {
     public var continuationMethod: String?
     public var hashHit: Bool?
     public var newMessages: GenAIHistoryRange?
+    /// How many leading input messages a run's `messages` loaded rather than a model call produced; nil where
+    /// none were.
+    public var loadedMessages: Int?
 
     private enum CodingKeys: String, CodingKey {
         case position
@@ -973,6 +976,7 @@ public struct GenAIHistory: Codable, Sendable, Hashable {
         case continuationMethod = "continuation_method"
         case hashHit = "hash_hit"
         case newMessages = "new_messages"
+        case loadedMessages = "loaded_messages"
     }
 }
 

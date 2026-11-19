@@ -217,6 +217,10 @@ import Testing
         let read = try await client(project, strict: true).json("GET", "/v1/projects/p", as: Project.self)
         #expect(read.connectionIntegrations == [.googleWorkspace, .microsoft365, "future_suite"])
 
+        let renamed = #"{"id":"p","name":"Main","slug":"main-2","previous_slugs":["main"],"description":null}"#
+        #expect(await drift(renamed, as: Project.self, route: "/v1/projects/p") == nil)
+        #expect(try await client(renamed, strict: true).json("GET", "/v1/projects/p", as: Project.self).previousSlugs == ["main"])
+
         let org = #"{"id":"o","name":"Acme","slug":"acme","hosted_git":true,"sign_in":null,"subscription_live":true}"#
         #expect(await drift(org, as: Organization.self, route: "/v1/organizations/me") == nil)
         #expect(try await client(org, strict: true).json("GET", "/v1/organizations/me", as: Organization.self).subscriptionLive == true)
