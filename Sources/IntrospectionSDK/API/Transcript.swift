@@ -318,61 +318,48 @@ public final class TranscriptAccumulator {
 
     /// Fold one event.
     public func push(_ event: AGUIEvent) {
-        switch event.type {
-        case "TEXT_MESSAGE_START":
-            guard let messageId = event.messageId else { return }
-            openMessage(messageId, role: event.role == "user" ? .user : .assistant)
-        case "TEXT_MESSAGE_CONTENT":
-            guard let messageId = event.messageId else { return }
-            appendText(messageId, event.delta ?? "")
-        case "TEXT_MESSAGE_CHUNK":
-            guard let messageId = event.messageId, !messageId.isEmpty else { return }
-            openMessage(messageId, role: event.role == "user" ? .user : .assistant)
-            if let delta = event.delta, !delta.isEmpty { appendText(messageId, delta) }
+        switch event.payload {
+        case let .textMessageStart(start):
+            openMessage(start.messageId, role: start.role == .user ? .user : .assistant)
+        case let .textMessageContent(content):
+            appendText(content.messageId, content.delta)
+        case let .textMessageChunk(chunk):
+            guard let messageId = chunk.messageId, !messageId.isEmpty else { return }
+            openMessage(messageId, role: chunk.role == .user ? .user : .assistant)
+            if let delta = chunk.delta, !delta.isEmpty { appendText(messageId, delta) }
         // Reasoning streams before the message it belongs to, so it buffers until the next assistant message opens.
-        case "REASONING_MESSAGE_CONTENT", "REASONING_MESSAGE_CHUNK":
-            if let delta = event.delta { pendingThinking += delta }
-        case "MESSAGES_SNAPSHOT":
-            applyMessagesSnapshot(event)
-        case "TOOL_CALL_START":
-            guard let callId = event.toolCallId else { return }
-            openTool(callId, name: event.toolCallName ?? "")
-        case "TOOL_CALL_ARGS":
-            guard let callId = event.toolCallId else { return }
-            appendArgs(callId, event.delta ?? "")
-        case "TOOL_CALL_CHUNK":
-            guard let callId = event.toolCallId, !callId.isEmpty else { return }
-            openTool(callId, name: event.toolCallName ?? "")
-            if let delta = event.delta, !delta.isEmpty { appendArgs(callId, delta) }
-        case "TOOL_CALL_END":
+        case let .reasoningMessageContent(content):
+            pendingThinking += content.delta
+        case let .reasoningMessageChunk(chunk):
+            pendingThinking += chunk.delta ?? ""
+        case let .messagesSnapshot(snapshot):
+            applyMessagesSnapshot(snapshot.messages)
+        case let .toolCallStart(start):
+            openTool(start.toolCallId, name: start.toolCallName)
+        case let .toolCallArgs(args):
+            appendArgs(args.toolCallId, args.delta)
+        case let .toolCallChunk(chunk):
+            guard let callId = chunk.toolCallId, !callId.isEmpty else { return }
+            openTool(callId, name: chunk.toolCallName ?? "")
+            if let delta = chunk.delta, !delta.isEmpty { appendArgs(callId, delta) }
+        case let .toolCallEnd(end):
             // END seals the arguments only; execution is still in flight.
-            guard let callId = event.toolCallId else { return }
-            maybeConvertToDelegation(callId)
-        case "TOOL_CALL_RESULT":
-            guard let callId = event.toolCallId else { return }
-            let isError = event.raw["isError"]?.boolValue == true
-            maybeConvertToDelegation(callId)
-            if let index = delegationIndex[callId] {
-                applyDelegationLaunchResult(at: index, content: event.content, isError: isError)
-                return
-            }
-            let index = openTool(callId, name: "")
-            updateTool(at: index) {
-                $0.result = event.content
-                $0.status = isError ? .error : .complete
-            }
-        case "RUN_FINISHED", "RUN_ERROR":
+            maybeConvertToDelegation(end.toolCallId)
+        case let .toolCallResult(result):
+            // The frame keeps `content` as sent, and `isError`, which AG-UI does not define.
+            applyToolResult(result.toolCallId, content: event.raw["content"], isError: event.raw["isError"]?.boolValue == true)
+        case .runFinished, .runError:
             // A running delegation stays open: its completion is the child run's, not this run's.
             for index in toolIndex.values {
                 updateTool(at: index) { if $0.status == .running { $0.status = .error } }
             }
             flushPendingThinking(event)
-        case "ACTIVITY_SNAPSHOT", "ACTIVITY_DELTA":
+        case .activitySnapshot, .activityDelta:
             onActivity?(event)
-        case "CUSTOM":
-            if event.name == CustomEventNames.messageIdentity,
-                let messageId = event.value?["messageId"]?.stringValue,
-                let responseId = event.value?["responseId"]?.stringValue,
+        case let .custom(custom):
+            if custom.name == CustomEventNames.messageIdentity,
+                let messageId = custom.value["messageId"]?.stringValue,
+                let responseId = custom.value["responseId"]?.stringValue,
                 let index = messageIndex[messageId]
             {
                 updateMessage(at: index) { $0.responseId = responseId }
@@ -383,6 +370,19 @@ public final class TranscriptAccumulator {
         }
     }
 
+    private func applyToolResult(_ callId: String, content: JSONValue?, isError: Bool) {
+        maybeConvertToDelegation(callId)
+        if let index = delegationIndex[callId] {
+            applyDelegationLaunchResult(at: index, content: content, isError: isError)
+            return
+        }
+        let index = openTool(callId, name: "")
+        updateTool(at: index) {
+            $0.result = content
+            $0.status = isError ? .error : .complete
+        }
+    }
+
     /// Fold a sequence of events.
     public func push<S: Sequence>(contentsOf events: S) where S.Element == AGUIEvent {
         for event in events { push(event) }
@@ -390,7 +390,9 @@ public final class TranscriptAccumulator {
 
     private func flushPendingThinking(_ event: AGUIEvent) {
         guard !pendingThinking.isEmpty else { return }
-        let index = lastAssistantIndex ?? openMessage("\(event.runId ?? "run"):reasoning", role: .assistant)
+        // Read from the frame: AG-UI's RUN_ERROR has no `runId`, though the runtime may send one.
+        let runId = event.raw["runId"]?.stringValue ?? "run"
+        let index = lastAssistantIndex ?? openMessage("\(runId):reasoning", role: .assistant)
         // openMessage drains the buffer itself when it opens an assistant entry.
         guard !pendingThinking.isEmpty else { return }
         let thinking = pendingThinking
@@ -456,22 +458,25 @@ public final class TranscriptAccumulator {
     }
 
     /// A baseline upsert: known ids update in place, new ones append.
-    private func applyMessagesSnapshot(_ event: AGUIEvent) {
-        for message in event.raw["messages"]?.arrayValue ?? [] {
-            guard let id = message["id"]?.stringValue, !id.isEmpty else { continue }
-            let role = message["role"]?.stringValue
-            if role == "user" || role == "assistant" {
-                let index = openMessage(id, role: role == "user" ? .user : .assistant)
-                if let content = message["content"]?.stringValue {
+    private func applyMessagesSnapshot(_ messages: [AGUI.Message]) {
+        for message in messages {
+            switch message {
+            case let .user(user) where !user.id.isEmpty:
+                let index = openMessage(user.id, role: .user)
+                if case let .text(content) = user.content {
                     updateMessage(at: index) { $0.text = content }
                 }
-            }
-            for call in message["toolCalls"]?.arrayValue ?? [] {
-                guard let callId = call["id"]?.stringValue, !callId.isEmpty else { continue }
-                let index = openTool(callId, name: call["function"]?["name"]?.stringValue ?? "")
-                if let arguments = call["function"]?["arguments"]?.stringValue {
-                    updateTool(at: index) { $0.arguments = arguments }
+            case let .assistant(assistant) where !assistant.id.isEmpty:
+                let index = openMessage(assistant.id, role: .assistant)
+                if let content = assistant.content {
+                    updateMessage(at: index) { $0.text = content }
                 }
+                for call in assistant.toolCalls ?? [] where !call.id.isEmpty {
+                    let index = openTool(call.id, name: call.function.name)
+                    updateTool(at: index) { $0.arguments = call.function.arguments }
+                }
+            default:
+                continue
             }
         }
     }

@@ -37,11 +37,16 @@ extension AGUIEvent {
     public static let resumeGapEventName = CustomEventNames.resumeGap
 
     /// Whether this is an SDK reconnect marker (see `RunStreamOptions.emitReconnectEvents`).
-    public var isReconnectMarker: Bool { eventType == .custom && name == Self.reconnectEventName }
+    public var isReconnectMarker: Bool { customName == Self.reconnectEventName }
 
     /// Whether this is the `resume_gap` marker a runtime older than `MESSAGES_SNAPSHOT` recovery
     /// sends when events were lost across a reconnect.
-    public var isResumeGap: Bool { eventType == .custom && name == Self.resumeGapEventName }
+    public var isResumeGap: Bool { customName == Self.resumeGapEventName }
+
+    private var customName: String? {
+        guard case let .custom(event) = payload else { return nil }
+        return event.name
+    }
 }
 
 /// The resumable AG-UI stream of one run, a port of the JS SDK's `streamResumable`.

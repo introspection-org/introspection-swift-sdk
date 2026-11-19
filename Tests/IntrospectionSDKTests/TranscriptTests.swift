@@ -109,12 +109,13 @@ private func event(_ value: JSONValue) -> AGUIEvent { AGUIEvent(raw: value) }
     @Test func accumulatorFoldsLiveStream() {
         var activity = 0
         var control: [String] = []
-        let accumulator = TranscriptAccumulator(onActivity: { _ in activity += 1 }, onControl: { control.append($0.name ?? "") })
+        let accumulator = TranscriptAccumulator(
+            onActivity: { _ in activity += 1 }, onControl: { control.append($0.raw["name"]?.stringValue ?? "") })
         accumulator.push(contentsOf: [
-            event(["type": "RUN_STARTED", "runId": "r1"]),
+            event(["type": "RUN_STARTED", "threadId": "t1", "runId": "r1"]),
             event(["type": "TEXT_MESSAGE_START", "messageId": "u1", "role": "user"]),
             event(["type": "TEXT_MESSAGE_CONTENT", "messageId": "u1", "delta": "hi"]),
-            event(["type": "REASONING_MESSAGE_CONTENT", "delta": "plan "]),
+            event(["type": "REASONING_MESSAGE_CONTENT", "messageId": "rs1", "delta": "plan "]),
             event(["type": "REASONING_MESSAGE_CHUNK", "delta": "more"]),
             event(["type": "TEXT_MESSAGE_START", "messageId": "a1", "role": "assistant"]),
             event(["type": "TEXT_MESSAGE_CONTENT", "messageId": "a1", "delta": "Hel"]),
@@ -124,18 +125,18 @@ private func event(_ value: JSONValue) -> AGUIEvent { AGUIEvent(raw: value) }
             event(["type": "TOOL_CALL_ARGS", "toolCallId": "c1", "delta": "{\"q\":"]),
             event(["type": "TOOL_CALL_ARGS", "toolCallId": "c1", "delta": "\"x\"}"]),
             event(["type": "TOOL_CALL_END", "toolCallId": "c1"]),
-            event(["type": "TOOL_CALL_RESULT", "toolCallId": "c1", "content": "2 hits", "isError": false]),
+            event(["type": "TOOL_CALL_RESULT", "messageId": "t1", "toolCallId": "c1", "content": "2 hits", "isError": false]),
             event(["type": "TOOL_CALL_START", "toolCallId": "c2", "toolCallName": "agent"]),
             event(["type": "TOOL_CALL_ARGS", "toolCallId": "c2", "delta": #"{"action":"start","name":"researcher","label":"Dig"}"#]),
             event(["type": "TOOL_CALL_END", "toolCallId": "c2"]),
             event([
-                "type": "TOOL_CALL_RESULT", "toolCallId": "c2",
+                "type": "TOOL_CALL_RESULT", "messageId": "t2", "toolCallId": "c2",
                 "content": #"{"details":{"agent":{"agent_run_id":"run-9","status":"running"}}}"#,
             ]),
             event(["type": "TOOL_CALL_START", "toolCallId": "c3", "toolCallName": "slow"]),
-            event(["type": "ACTIVITY_SNAPSHOT", "messageId": "x"]),
+            event(["type": "ACTIVITY_SNAPSHOT", "messageId": "x", "activityType": "plan", "content": [:]]),
             event(["type": "SOMETHING_NEW"]),
-            event(["type": "RUN_FINISHED", "runId": "r1"]),
+            event(["type": "RUN_FINISHED", "threadId": "t1", "runId": "r1"]),
         ])
 
         let entries = accumulator.entries
@@ -159,7 +160,7 @@ private func event(_ value: JSONValue) -> AGUIEvent { AGUIEvent(raw: value) }
 
     @Test func reasoningWithoutMessageIsKeptAtRunEnd() {
         let entries = foldAgui([
-            event(["type": "REASONING_MESSAGE_CONTENT", "delta": "thinking only"]),
+            event(["type": "REASONING_MESSAGE_CONTENT", "messageId": "rs1", "delta": "thinking only"]),
             event(["type": "RUN_ERROR", "runId": "r7", "message": "boom"]),
         ])
         #expect(entries.count == 1)
@@ -178,7 +179,7 @@ private func event(_ value: JSONValue) -> AGUIEvent { AGUIEvent(raw: value) }
                     ["id": "u0", "role": "user", "content": "earlier"],
                     [
                         "id": "a1", "role": "assistant", "content": "complete",
-                        "toolCalls": [["id": "c9", "function": ["name": "ls", "arguments": "{}"]]],
+                        "toolCalls": [["id": "c9", "type": "function", "function": ["name": "ls", "arguments": "{}"]]],
                     ],
                 ],
             ]),
@@ -186,6 +187,16 @@ private func event(_ value: JSONValue) -> AGUIEvent { AGUIEvent(raw: value) }
         #expect(entries.map(\.id) == ["a1", "u0", "tool:c9"])
         #expect(entries[0].message?.text == "complete")
         #expect(entries[2].tool?.arguments == "{}")
+    }
+
+    @Test func framesThatFailTheirSchemaAreNotFolded() {
+        let entries = foldAgui([
+            event(["type": "TEXT_MESSAGE_START", "messageId": "a1", "role": "assistant"]),
+            event(["type": "TEXT_MESSAGE_CONTENT", "messageId": "a1"]),
+            event(["type": "TOOL_CALL_RESULT", "toolCallId": "c1", "content": "no messageId"]),
+        ])
+        #expect(entries.map(\.id) == ["a1"])
+        #expect(entries[0].message?.text == "")
     }
 
     @Test func mergesStoredAndLiveTranscripts() {

@@ -11,18 +11,18 @@ A task is one conversation with an agent; each message you send starts a run on 
 ```swift
 let handle = try await runner.tasks.start(prompt: "Write a haiku about Swift.")
 for try await event in handle.stream() {
-    switch event.eventType {
-    case .textMessageContent, .textMessageChunk:
-        print(event.delta ?? "", terminator: "")
-    case .runError:
-        print("failed:", event.message ?? "")
+    switch event.payload {
+    case let .textMessageContent(content):
+        print(content.delta, terminator: "")
+    case let .runError(error):
+        print("failed:", error.message)
     default:
         break
     }
 }
 ```
 
-Each ``AGUIEvent`` keeps the full event as `raw` ``JSONValue`` and exposes the common fields (`delta`, `messageId`, `toolCallId`, `snapshot`, ...) as properties, so an event type added on the server still decodes.
+Each ``AGUIEvent`` decodes into ``AGUIEventPayload``, one case per AG-UI event type holding the `@ag-ui/core` model from ``AGUI``. A type the SDK does not know, or a frame that does not satisfy its AG-UI schema, is `.unknown`; `raw` always keeps the frame as sent, so nothing is lost.
 
 ``RunStreamOptions`` controls how long to wait for the run to become ready, the overall timeout and the reconnect budget.
 

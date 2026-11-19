@@ -31,8 +31,8 @@ let run = try await runner.tasks.start(
 )
 print("spawned task=\(run.run.taskId), run=\(run.run.id)")
 
-for try await event in run.stream() where event.eventType == .textMessageContent {
-    print(event.delta ?? "", terminator: "")
+for try await event in run.stream() {
+    if case let .textMessageContent(content) = event.payload { print(content.delta, terminator: "") }
 }
 print()
 
