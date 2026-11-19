@@ -181,8 +181,6 @@ let fix = IssueAttachmentCreate.link(IssueLink(url: "https://github.com/acme/app
 _ = try await runner.issues.update(issueId, IssueUpdate(addAttachments: [fix], removeAttachments: [staleAttachmentId]))
 ```
 
-The `links`, `files`, `events` and `spans` lists are deprecated.
-
 ### Routine triggers
 
 A routine runs by hand or on its `triggers`: each is a schedule

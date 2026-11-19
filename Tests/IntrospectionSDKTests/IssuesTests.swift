@@ -10,13 +10,6 @@ private let issueJSON = #"""
       "org_id": "0199a1b2-0000-7000-8000-0000000000aa",
       "project_id": "0199a1b2-0000-7000-8000-0000000000bb",
       "id": "0199a1b2-0000-7000-8000-000000000001",
-      "files": [
-        {"file_id": "0199a1b2-0000-7000-8000-0000000000f1", "name": "trace.log", "checksum": "sha256:abc",
-         "source_event_ids": ["0199a1b2-0000-7000-8000-0000000000e1"]}
-      ],
-      "links": [{"url": "https://github.com/acme/app/pull/7", "title": "Fix the retry"}],
-      "events": [{"event_id": "0199a1b2-0000-7000-8000-0000000000e2"}],
-      "spans": [{"trace_id": "0123456789abcdef0123456789abcdef", "span_id": "0123456789abcdef"}],
       "attachments": [
         {"id": "0199a1b2-0000-7000-8000-0000000000a1", "kind": "link", "url": "https://github.com/acme/app/pull/7",
          "title": "Fix the retry"},
@@ -387,44 +380,5 @@ private func issueTransport(status: Int = 200) -> MockTransport {
                 "checksum": "sha256:abc", "source_event_ids": ["0199a1b2-0000-7000-8000-0000000000e1"],
             ])
         #expect(try encoded.decode(IssueAttachment.self) == attachment)
-    }
-}
-
-/// The deprecated evidence lists keep their behaviour until the server drops them.
-@Suite struct DeprecatedIssueEvidenceTests {
-    @Test func decodesTheLists() throws {
-        let issue: any ReadsEvidenceLists = try JSONCoding.decoder.decode(Issue.self, from: Data(issueJSON.utf8))
-        #expect(issue.files == [serverFile])
-        #expect(issue.links == [serverLink])
-        #expect(issue.events == [IssueEventReference(eventId: "0199a1b2-0000-7000-8000-0000000000e2")])
-        #expect(issue.spans == [serverSpan])
-        let brief: any ReadsEvidenceLists = try JSONCoding.decoder.decode(Issue.self, from: Data(briefJSON().utf8))
-        #expect(brief.links == nil)
-        #expect(brief.files == nil)
-        #expect(brief.events == nil)
-        #expect(brief.spans == nil)
-    }
-
-    @Test func createSendsTheLists() async throws {
-        let transport = issueTransport(status: 201)
-        let body = withEvidenceLists(
-            IssueCreate(title: "t", description: "d", taskId: "task-1", tags: ["customer:acme"]),
-            files: [IssueFile(fileId: "f-1", sourceEventIds: ["e-1"])], links: [IssueLink(url: "https://example.com/pr/7")],
-            events: [IssueEventReference(eventId: "e-2")], spans: [IssueSpanReference(traceId: "t", spanId: "s")]
-        )
-        _ = try await makeClient(transport).issues.create(body)
-        #expect(
-            transport.last?.json == [
-                "title": "t", "description": "d", "task_id": "task-1", "files": [["file_id": "f-1", "source_event_ids": ["e-1"]]],
-                "links": [["url": "https://example.com/pr/7"]], "events": [["event_id": "e-2"]],
-                "spans": [["trace_id": "t", "span_id": "s"]], "tags": ["customer:acme"],
-            ])
-    }
-
-    @Test func updateSendsEmptyListsToClear() async throws {
-        let transport = issueTransport()
-        let body = withEvidenceLists(IssueUpdate(status: .closed), files: [], links: [], events: [], spans: [])
-        _ = try await makeClient(transport).issues.update("i-1", body)
-        #expect(transport.last?.json == ["status": "closed", "files": [], "links": [], "events": [], "spans": []])
     }
 }
