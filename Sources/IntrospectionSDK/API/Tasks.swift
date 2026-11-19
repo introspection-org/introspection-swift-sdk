@@ -41,6 +41,8 @@ public struct TaskKind: RawRepresentable, Codable, Sendable, Hashable, Expressib
 
     public static let agent: TaskKind = "agent"
     public static let eval: TaskKind = "eval"
+    /// An agent run against a simulated user; it never reaches observations or pattern maps.
+    public static let simulate: TaskKind = "simulate"
     /// Created internally only; `POST /v1/tasks` rejects it.
     public static let process: TaskKind = "process"
 }

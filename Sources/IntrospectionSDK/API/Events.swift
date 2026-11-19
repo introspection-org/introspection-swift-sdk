@@ -362,12 +362,15 @@ public struct JudgementVerdictPayload: Codable, Sendable, Hashable {
     public var judgeProvider: String?
     public var contractVersion: String?
     public var sequenceHash: String?
+    /// A classifier judge's answers: each question's probability of true, 0-1, by question name. Nil for an LLM
+    /// judge.
+    public var scores: [String: Double]?
     public var inputTokens: Int?
     public var outputTokens: Int?
     public var totalTokens: Int?
 
     private enum CodingKeys: String, CodingKey {
-        case result, status, reasoning
+        case result, status, reasoning, scores
         case judgementId = "judgement_id"
         case judgeId = "judge_id"
         case judgeSlug = "judge_slug"
@@ -645,12 +648,15 @@ public struct RoutineSkippedPayload: Codable, Sendable, Hashable {
     public var reason: RoutineSkipReason?
     /// The event trigger and delivery skipped, such as one that arrived while the trigger was busy.
     public var event: RoutineTriggerEventRef?
+    /// The member who owns the skip: who triggered the run, else the routine's creator, else the Admin Agent.
+    public var memberId: String?
 
     private enum CodingKeys: String, CodingKey {
         case slot, reason, event
         case routineId = "routine_id"
         case triggerType = "trigger_type"
         case taskId = "task_id"
+        case memberId = "member_id"
     }
 }
 

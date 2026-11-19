@@ -238,7 +238,7 @@ private let routineJSON = #"""
             {"id":"0199a1b2-0000-5000-8000-000000000002","timestamp":"2026-10-06T09:00:00Z",
              "event_name":"introspection.routines.skipped","runtime_group_id":"rg-1",
              "payload":{"routine_id":"a1","trigger_type":"manual","slot":"2026-10-06T09:00:00Z","task_id":"t1",
-                        "reason":"target_busy"}}
+                        "reason":"target_busy","member_id":"m1"}}
             """#
         let transport = MockTransport(json: #"{"records":[\#(triggered),\#(skipped)],"count":2,"next":null}"#)
         let events = try await makeClient(transport).events
@@ -263,6 +263,7 @@ private let routineJSON = #"""
         #expect(skip.reason == .targetBusy)
         #expect(skip.triggerType == .manual)
         #expect(skip.taskId == "t1")
+        #expect(skip.memberId == "m1")
         #expect(events[1].routineTriggered == nil)
     }
 }

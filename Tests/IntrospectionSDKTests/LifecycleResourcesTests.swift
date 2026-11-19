@@ -119,6 +119,7 @@ private let approvalJSON = #"""
         let older = try JSONCoding.decoder.decode(Project.self, from: Data(#"{"id": "p-1", "name": "Walk"}"#.utf8))
         #expect(older.displayIdPrefixes == nil)
         #expect(older.connectionIntegrations == nil)
+        #expect(older.previousSlugs == nil)
     }
 
     @Test func projectConnectionIntegrationsAreSetOnCreateAndUpdate() async throws {
@@ -133,6 +134,11 @@ private let approvalJSON = #"""
 
         _ = try await projects.update("walk", ProjectUpdate(connectionIntegrations: []))
         #expect(transport.last?.json == ["connection_integrations": []])
+
+        var rename = ProjectUpdate()
+        rename.slug = "walk-2"
+        _ = try await projects.update("walk", rename)
+        #expect(transport.last?.json == ["slug": "walk-2"])
     }
 
     @Test func peeringsAreReadUnderTheProjectAndNarrowByRuntimeOrGrant() async throws {

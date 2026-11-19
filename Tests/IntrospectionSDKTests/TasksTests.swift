@@ -149,6 +149,14 @@ import Testing
         #expect(json["collect_sandbox_logs"] == nil)
     }
 
+    @Test func createSendsSimulateKind() async throws {
+        let transport = MockTransport { _, _ in
+            .response(.json(#"{"task":\#(TasksTests.taskJSON),"run":\#(TasksTests.runJSON)}"#, status: 201))
+        }
+        _ = try await makeClient(transport).tasks.create(TaskCreate(prompt: "Hi", kind: .simulate))
+        #expect(transport.last?.json?["kind"] == "simulate")
+    }
+
     @Test func getWithIncludeUpdateDeleteArchive() async throws {
         let transport = MockTransport { request, _ in
             switch request.method {

@@ -88,6 +88,8 @@ public struct Project: Codable, Sendable, Hashable {
     public var deploymentId: String?
     public var name: String?
     public var slug: String?
+    /// Slugs the project had before a rename; each still resolves to it.
+    public var previousSlugs: [String]?
     public var description: String?
     public var settings: JSONObject?
     public var createdByMemberId: String?
@@ -114,6 +116,7 @@ public struct Project: Codable, Sendable, Hashable {
         case id, name, slug, description, settings
         case orgId = "org_id"
         case deploymentId = "deployment_id"
+        case previousSlugs = "previous_slugs"
         case createdByMemberId = "created_by_member_id"
         case displayIdPrefixes = "display_id_prefixes"
         case connectionIntegrations = "connection_integrations"
@@ -200,6 +203,9 @@ public struct ProjectCreate: Encodable, Sendable, Hashable {
 /// The body of `PATCH /v1/projects/{project}`. A body with every field nil is refused as "no fields to update".
 public struct ProjectUpdate: Encodable, Sendable, Hashable {
     public var name: String?
+    /// A new slug; the current one keeps resolving to this project as a previous slug. Set it on the value: the
+    /// initializer predates it.
+    public var slug: String?
     public var description: String?
     public var settings: JSONObject?
     /// The prefixes to change; one left nil keeps its current value.
@@ -219,7 +225,7 @@ public struct ProjectUpdate: Encodable, Sendable, Hashable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case name, description, settings
+        case name, slug, description, settings
         case displayIdPrefixes = "display_id_prefixes"
         case connectionIntegrations = "connection_integrations"
     }

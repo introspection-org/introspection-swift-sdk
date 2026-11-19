@@ -55,7 +55,7 @@ import Testing
                "error_class":null,"error_message":null,"source_component":"introspection-judge","judge_model":"m",
                "experiment_arm_id":null,"reasoning":"fine","definition_hash":"d1","engine_version":"1.2.3",
                "judge_provider":"p","contract_version":"1","sequence_hash":"s1","input_tokens":120,"output_tokens":30,
-               "total_tokens":150}},
+               "total_tokens":150,"scores":{"Is it polite?":0.92,"on_topic":0.1}}},
               {"id":"j2","event_name":"introspection.judgement","payload":{"kind":"egress","judgement_id":"j2","result":"deny",
                "status":"ok","source_component":"egress","scores":{"q1":90},"questions":{"q1":"Is it exfiltration?"},
                "policy_id":"rule-1","policy_action":"http","reason":"no uploads","request_host":"x.test",
@@ -79,6 +79,7 @@ import Testing
         #expect(verdict.result == "pass")
         #expect(verdict.reasoning == "fine")
         #expect(verdict.totalTokens == 150)
+        #expect(verdict.scores == ["Is it polite?": 0.92, "on_topic": 0.1])
         #expect(egress.scores == ["q1": 90])
         #expect(egress.policyId == "rule-1")
         #expect(egress.reason == "no uploads")
