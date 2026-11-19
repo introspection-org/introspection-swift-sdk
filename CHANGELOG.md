@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.26.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.25.0...v0.26.0) (2026-11-19)
+
+
+### ⚠ BREAKING CHANGES
+
+* **issues:** Issue, IssueCreate and IssueUpdate no longer have links, files, events or spans, and the IssueCreate and IssueUpdate inits that took them are removed. Use Issue.attachments, IssueCreate.attachments and IssueUpdate.addAttachments / removeAttachments.
+* AGUIEvent's string accessors (messageId, role, delta, toolCallId, toolCallName, parentMessageId, content, threadId, runId, message, code, name, value, snapshot, timestamp, metadata, subagentRunId, outcome, outcomeType, interrupts) and AGUIRunOutcomeType are removed; read the typed payload instead.
+* AGUIEventType.thinkingStart, thinkingEnd, thinkingTextMessageStart, thinkingTextMessageContent and thinkingTextMessageEnd are removed; use the reasoning* constants.
+
+### Features
+
+* align the AG-UI surface with AG-UI 1.0 ([#130](https://github.com/introspection-org/introspection-swift-sdk/issues/130)) ([64d3477](https://github.com/introspection-org/introspection-swift-sdk/commit/64d34777f06b85a5a4f2e330b8803af2ce6dfe95))
+* **issues:** attachments discriminated on kind, with add and remove ([#133](https://github.com/introspection-org/introspection-swift-sdk/issues/133)) ([38ddd19](https://github.com/introspection-org/introspection-swift-sdk/commit/38ddd19cd9da12a6c09a6bfbdaaffd856f088ddc))
+* type AG-UI events with the exact @ag-ui/core@1.0.5 models ([#132](https://github.com/introspection-org/introspection-swift-sdk/issues/132)) ([1a00288](https://github.com/introspection-org/introspection-swift-sdk/commit/1a0028809ff8c1ee449af78ddb25b5648e7aee24))
+
 ## [0.25.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.24.0...v0.25.0) (2026-11-17)
 
 
