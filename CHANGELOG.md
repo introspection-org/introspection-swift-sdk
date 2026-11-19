@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.1](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.26.0...v0.26.1) (2026-11-19)
+
+
+### Bug Fixes
+
+* **api:** model cloud 0.87's project previous_slugs and slug rename, simulate tasks and judgement scores ([#134](https://github.com/introspection-org/introspection-swift-sdk/issues/134)) ([af1b360](https://github.com/introspection-org/introspection-swift-sdk/commit/af1b3607810ce9d7f00ddc9f7b11fafdef845951))
+
 ## [0.26.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.25.0...v0.26.0) (2026-11-19)
 
 
