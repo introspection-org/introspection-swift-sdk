@@ -35,6 +35,20 @@ public struct AGUIEvent: Sendable, Hashable, Codable {
     public var value: JSONValue? { raw["value"] }
     public var snapshot: JSONValue? { raw["snapshot"] }
     public var timestamp: Double? { raw["timestamp"]?.doubleValue }
+    /// Extra information attached to the event.
+    public var metadata: JSONObject? { raw["metadata"]?.objectValue }
+    /// The subagent invocation that produced the event; `nil` means the parent agent did.
+    public var subagentRunId: String? { raw["subagentRunId"]?.stringValue }
+    /// `RUN_FINISHED`: why the run ended, as sent.
+    public var outcome: JSONValue? { raw["outcome"] }
+    /// `RUN_FINISHED`: the outcome's type; an absent outcome means success. `nil` for other events.
+    public var outcomeType: AGUIRunOutcomeType? {
+        guard eventType == .runFinished else { return nil }
+        guard let outcome else { return .success }
+        return AGUIRunOutcomeType(rawValue: outcome["type"]?.stringValue ?? "")
+    }
+    /// `RUN_FINISHED` with an `interrupt` outcome: what the run is waiting for.
+    public var interrupts: [JSONValue]? { outcome?["interrupts"]?.arrayValue }
 
     /// A `CUSTOM` event with the given name.
     public static func custom(_ name: String, value: JSONValue) -> AGUIEvent {
@@ -57,11 +71,6 @@ public struct AGUIEventType: RawRepresentable, Sendable, Hashable, ExpressibleBy
     public static let textMessageContent: AGUIEventType = "TEXT_MESSAGE_CONTENT"
     public static let textMessageEnd: AGUIEventType = "TEXT_MESSAGE_END"
     public static let textMessageChunk: AGUIEventType = "TEXT_MESSAGE_CHUNK"
-    public static let thinkingStart: AGUIEventType = "THINKING_START"
-    public static let thinkingEnd: AGUIEventType = "THINKING_END"
-    public static let thinkingTextMessageStart: AGUIEventType = "THINKING_TEXT_MESSAGE_START"
-    public static let thinkingTextMessageContent: AGUIEventType = "THINKING_TEXT_MESSAGE_CONTENT"
-    public static let thinkingTextMessageEnd: AGUIEventType = "THINKING_TEXT_MESSAGE_END"
     public static let toolCallStart: AGUIEventType = "TOOL_CALL_START"
     public static let toolCallArgs: AGUIEventType = "TOOL_CALL_ARGS"
     public static let toolCallEnd: AGUIEventType = "TOOL_CALL_END"
@@ -70,6 +79,29 @@ public struct AGUIEventType: RawRepresentable, Sendable, Hashable, ExpressibleBy
     public static let stateSnapshot: AGUIEventType = "STATE_SNAPSHOT"
     public static let stateDelta: AGUIEventType = "STATE_DELTA"
     public static let messagesSnapshot: AGUIEventType = "MESSAGES_SNAPSHOT"
+    public static let activitySnapshot: AGUIEventType = "ACTIVITY_SNAPSHOT"
+    public static let activityDelta: AGUIEventType = "ACTIVITY_DELTA"
+    public static let reasoningStart: AGUIEventType = "REASONING_START"
+    public static let reasoningMessageStart: AGUIEventType = "REASONING_MESSAGE_START"
+    public static let reasoningMessageContent: AGUIEventType = "REASONING_MESSAGE_CONTENT"
+    public static let reasoningMessageEnd: AGUIEventType = "REASONING_MESSAGE_END"
+    public static let reasoningMessageChunk: AGUIEventType = "REASONING_MESSAGE_CHUNK"
+    public static let reasoningEnd: AGUIEventType = "REASONING_END"
+    public static let reasoningEncryptedValue: AGUIEventType = "REASONING_ENCRYPTED_VALUE"
+    public static let subagentStarted: AGUIEventType = "SUBAGENT_STARTED"
+    public static let subagentFinished: AGUIEventType = "SUBAGENT_FINISHED"
+    public static let subagentError: AGUIEventType = "SUBAGENT_ERROR"
     public static let raw: AGUIEventType = "RAW"
     public static let custom: AGUIEventType = "CUSTOM"
+}
+
+/// Why a run ended, from `RUN_FINISHED.outcome.type`. Unknown types are preserved.
+public struct AGUIRunOutcomeType: RawRepresentable, Sendable, Hashable, ExpressibleByStringLiteral {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+    public init(stringLiteral value: String) { rawValue = value }
+
+    public static let success: AGUIRunOutcomeType = "success"
+    public static let interrupt: AGUIRunOutcomeType = "interrupt"
+    public static let cancelled: AGUIRunOutcomeType = "cancelled"
 }
