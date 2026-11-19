@@ -332,13 +332,6 @@ public final class TranscriptAccumulator {
         // Reasoning streams before the message it belongs to, so it buffers until the next assistant message opens.
         case "REASONING_MESSAGE_CONTENT", "REASONING_MESSAGE_CHUNK":
             if let delta = event.delta { pendingThinking += delta }
-        case "THINKING_TEXT_MESSAGE_CONTENT":
-            let delta = event.delta ?? ""
-            if let index = lastAssistantIndex {
-                updateMessage(at: index) { $0.thinking = ($0.thinking ?? "") + delta }
-            } else {
-                pendingThinking += delta
-            }
         case "MESSAGES_SNAPSHOT":
             applyMessagesSnapshot(event)
         case "TOOL_CALL_START":

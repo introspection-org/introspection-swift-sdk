@@ -292,4 +292,27 @@ import Testing
         #expect(error.message == "Sandbox failed to start")
         #expect(error.code == "sandbox_failed")
     }
+
+    @Test func textThrowsWhenTheRunIsCancelled() async throws {
+        let sse = """
+            event: ag_ui
+            id: 1
+            data: {"type":"TEXT_MESSAGE_CONTENT","messageId":"m1","delta":"Hel"}
+
+            event: ag_ui
+            id: 2
+            data: {"type":"RUN_FINISHED","threadId":"t1","runId":"run-1","outcome":{"type":"cancelled"}}
+
+
+            """
+        let transport = MockTransport { request, _ in
+            if request.method == "POST" {
+                return .response(.json(#"{"task":\#(TasksTests.taskJSON),"run":\#(TasksTests.runJSON)}"#, status: 201))
+            }
+            return .stream(status: 200, headers: ["content-type": "text/event-stream"], chunks: [Data(sse.utf8)], error: nil)
+        }
+        let handle = try await makeClient(transport).tasks.start(prompt: "Hi")
+        let error = try await #require(throws: IntrospectionError.self) { try await handle.text() }
+        #expect(error.kind == .runFailed)
+    }
 }

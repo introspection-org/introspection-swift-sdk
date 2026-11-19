@@ -160,6 +160,8 @@ public struct RunHandle: Sendable {
                 text += event.delta ?? ""
             case .runError:
                 throw IntrospectionError(kind: .runFailed, message: event.message ?? "The run failed", code: event.code)
+            case .runFinished where event.outcomeType == .cancelled:
+                throw IntrospectionError(kind: .runFailed, message: "The run was cancelled")
             default:
                 break
             }
