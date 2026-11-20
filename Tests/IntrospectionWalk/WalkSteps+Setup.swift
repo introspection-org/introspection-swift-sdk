@@ -342,13 +342,17 @@ extension Walk {
         let versionedRecipe = try require(versioned)
         recipe = versionedRecipe
         // The slug carries the commit's hash, new whenever the recipe's repository moves. The agents and issue
-        // providers postdate the recording and depend on the recipe, so the snapshot leaves them out.
-        snap(try stable(recipe, removing: ["slug", "agents", "issue_providers"])) {
+        // providers postdate the recording and depend on the recipe, so the snapshot leaves them out; the
+        // description is the recipe's manifest's, so it is checked and pinned as a placeholder.
+        try check(recipe.description?.isEmpty == false, "the recipe takes its manifest's description")
+        var pinnedDescription: Recipe = recipe
+        pinnedDescription.description = "[manifest's]"
+        snap(try stable(pinnedDescription, removing: ["slug", "agents", "issue_providers"])) {
             """
             {
               "created_at" : "[timestamp]",
               "created_by_member_id" : "[uuid]",
-              "description" : "Harbor E2B task calling a development MCP server",
+              "description" : "[manifest's]",
               "git_commit_sha" : "[sha]",
               "git_ref" : "main",
               "id" : "[uuid]",

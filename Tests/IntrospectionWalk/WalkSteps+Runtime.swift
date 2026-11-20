@@ -88,17 +88,18 @@ extension Walk {
         pinned.imageBuildMetadata?.extra = [:]
         // The server lists a runtime's environments in the order it was promoted to them, which varies by run.
         pinned.environments = pinned.environments?.sorted { $0.rawValue < $1.rawValue }
-        snap(try stable(pinned, removing: ["git_commit_sha", "enabled", "disabled_at"])) {
+        // The push versions the runtime from the recipe's manifest: its description, and the connectors the
+        // manifest names (hello-mcp in the recording, none since). Both are checked and left to the manifest.
+        try check(runtime.description == recipe.description, "the runtime takes the manifest's description")
+        let connectors = runtime.configJson?["connectors"]
+        try check([nil, .array(["hello-mcp"])].contains(connectors), "the manifest's connectors: \(String(describing: connectors))")
+        pinned.description = "[manifest's]"
+        snap(try stable(pinned, removing: ["git_commit_sha", "enabled", "disabled_at", "config_json"])) {
             """
             {
-              "config_json" : {
-                "connectors" : [
-                  "hello-mcp"
-                ]
-              },
               "created_at" : "[timestamp]",
               "created_by_member_id" : "[uuid]",
-              "description" : "Harbor E2B task calling a development MCP server",
+              "description" : "[manifest's]",
               "environments" : [
                 "production",
                 "staging"
@@ -458,7 +459,12 @@ extension Walk {
         let conversation = try await settled(
             "conversation", mode: mode, read: { try await sa.conversations.get(conversationId) },
             poll: { try await saQuiet.conversations.get(conversationId) }, done: { _ in true })
-        snap(try stable(conversation)) {
+        // A customer runtime's conversations publish as introspection-agents since introspection-cloud 0.87; the
+        // recording predates that and carries the runtime's name.
+        try check(
+            ["introspection-agents", WALK.runtimeSlug].contains(conversation.serviceName ?? ""),
+            "the conversation's service name: \(conversation.serviceName ?? "none")")
+        snap(try stable(conversation, removing: ["service_name"])) {
             """
             {
               "agents" : [
@@ -496,7 +502,6 @@ extension Walk {
                 "group_id" : "[uuid]",
                 "id" : "[uuid]"
               },
-              "service_name" : "hello-mcp",
               "task_title" : "The walk's task",
               "updated_at" : "[timestamp]",
               "usage" : {
