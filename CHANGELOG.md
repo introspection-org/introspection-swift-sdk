@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.2](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.26.1...v0.26.2) (2026-11-20)
+
+
+### Miscellaneous Chores
+
+* release 0.26.2 with the cloud 0.87 walk snapshots ([#137](https://github.com/introspection-org/introspection-swift-sdk/issues/137)) ([164f268](https://github.com/introspection-org/introspection-swift-sdk/commit/164f26890511afcb312067cefe661c2d5c6be553))
+
 ## [0.26.1](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.26.0...v0.26.1) (2026-11-19)
 
 
