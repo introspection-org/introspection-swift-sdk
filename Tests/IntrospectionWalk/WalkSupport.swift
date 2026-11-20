@@ -281,13 +281,14 @@ func stable<T: Encodable>(_ value: T, removing keys: [String] = []) throws -> JS
 // MARK: Steps
 
 extension Walk {
-    /// A project's display ID prefixes and connection integrations postdate the recording: absent on replay, the
-    /// server defaults live. The snapshot leaves them out.
+    /// A project's display ID prefixes, connection integrations and previous slugs postdate the recording: absent
+    /// on replay, the server defaults live. The snapshot leaves them out.
     func stableProject(_ project: Project, removing keys: [String] = []) throws -> JSONValue {
         let defaults = DisplayIdPrefixes(issue: "I", report: "R", observation: "F", task: "T")
         try check([nil, defaults].contains(project.displayIdPrefixes), "the project's display ID prefixes are the defaults")
         try check([nil, []].contains(project.connectionIntegrations), "the project allows no member connections")
-        return try stable(project, removing: keys + ["display_id_prefixes", "connection_integrations"])
+        try check([nil, []].contains(project.previousSlugs), "a new project has no previous slugs")
+        return try stable(project, removing: keys + ["display_id_prefixes", "connection_integrations", "previous_slugs"])
     }
 
     /// A connector's OAuth metadata gained the provider's revocation endpoint after the recording: absent on replay,
