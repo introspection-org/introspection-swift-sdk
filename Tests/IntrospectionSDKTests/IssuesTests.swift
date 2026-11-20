@@ -220,6 +220,16 @@ private func issueTransport(status: Int = 200) -> MockTransport {
         #expect(transport.last?.query == ["include": ["members", "attachments"]])
     }
 
+    @Test func createWithoutATaskOmitsTaskId() async throws {
+        let transport = issueTransport(status: 201)
+        _ = try await makeClient(transport).issues.create(IssueCreate(title: "t", description: "d", priority: .low))
+        let sent = try #require(transport.last)
+        #expect(sent.request.method == "POST")
+        #expect(sent.path == "/v1/issues")
+        #expect(sent.json == ["title": "t", "description": "d", "priority": "low"])
+        #expect(!sent.bodyString.contains("task_id"))
+    }
+
     @Test func getEscapesTheId() async throws {
         let transport = issueTransport()
         let issue = try await makeClient(transport).issues.get("i/1")

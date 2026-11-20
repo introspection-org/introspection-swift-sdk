@@ -360,8 +360,9 @@ private struct WireTimestamp: Codable, Sendable, Hashable {
 public struct IssueCreate: Encodable, Sendable, Hashable {
     public var title: String
     public var description: String
-    /// The fixed worker task behind the issue chat and Slack replies.
-    public var taskId: String
+    /// The fixed worker task behind the issue chat and Slack replies; it must be the caller's own task, or the server
+    /// answers 403. Nil omits it: the issue has no task, and a project member or any agent task may create any number.
+    public var taskId: String?
     public var priority: IssuePriority?
     /// The issue's evidence, in order.
     public var attachments: [IssueAttachmentCreate]?
@@ -385,7 +386,7 @@ public struct IssueCreate: Encodable, Sendable, Hashable {
     public init(
         title: String,
         description: String,
-        taskId: String,
+        taskId: String? = nil,
         priority: IssuePriority? = nil,
         attachments: [IssueAttachmentCreate]? = nil,
         tags: [String]? = nil,
@@ -604,7 +605,7 @@ public struct IssuesAPI: Sendable {
         http.paginate("/v1/issues", query: params.query, start: params.next, as: Issue.self)
     }
 
-    /// Open an issue on its worker task. It starts `open`; repeating it for the same task is safe.
+    /// Open an issue, on its worker task when `taskId` is set. It starts `open`; repeating it for the same task is safe.
     public func create(_ body: IssueCreate, include: [IssueInclude]? = nil) async throws -> Issue {
         try await http.json("POST", "/v1/issues", query: includeQuery(include), body: try .encode(body), as: Issue.self)
     }
