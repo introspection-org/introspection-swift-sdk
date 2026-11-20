@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.27.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.26.2...v0.27.0) (2026-11-20)
+
+
+### ⚠ BREAKING CHANGES
+
+* **issues:** IssueCreate.taskId changes type from String to String?.
+
+### Features
+
+* **issues:** create an issue without a task ([#139](https://github.com/introspection-org/introspection-swift-sdk/issues/139)) ([73619f1](https://github.com/introspection-org/introspection-swift-sdk/commit/73619f169c14c9ef91c652a74ba5d1c56a82ae05))
+
 ## [0.26.2](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.26.1...v0.26.2) (2026-11-20)
 
 
