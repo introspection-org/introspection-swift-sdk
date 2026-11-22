@@ -71,11 +71,22 @@ extension Walk {
     func step7Runtime() async throws {
         // The push versioned the group at the recipe's commit; that version is the runtime the walk runs on.
         let params = RuntimeListParams(project: project.id, runtime: WALK.runtimeSlug)
-        let built: (Runtime?) -> Bool = { ["ready", "failed"].contains($0?.imageBuildStatus?.rawValue) }
+        let built: (Runtime?) -> Bool = { $0?.imageBuildStatus == .ready }
+        let failFast: (Runtime?) throws -> Runtime? = { runtime in
+            if let runtime, runtime.imageBuildStatus?.rawValue == "failed" {
+                throw WalkError("bake failed: \(runtime.imageBuildErrorMessage ?? "no error message")")
+            }
+            return runtime
+        }
+        // The owner's list, since the service account's is scoped to its lane and a failed version never takes one.
+        let ownerQuiet = IntrospectionClient(
+            configuration: .init(
+                controlPlaneURL: settings.baseApiUrl, transport: URLSessionTransport(),
+                options: Self.strict(.init(additionalHeaders: ["Cookie": "intro_cp_session=\(settings.cpSession)"]))))
         let versioned = try await settled(
             "push-versioned runtime bake", mode: mode, timeout: .seconds(1800), interval: .seconds(10),
             read: { try await sa.runtimes.list(params).all().first { $0.recipeId == recipe.id } },
-            poll: { try await saQuiet.runtimes.list(params).all().first { $0.recipeId == recipe.id } },
+            poll: { try failFast(try await ownerQuiet.runtimes.list(params).all().first { $0.recipeId == recipe.id }) },
             done: built)
         let versionedRuntime = try require(versioned)
         runtime = versionedRuntime
@@ -137,7 +148,8 @@ extension Walk {
         try check(created.runtimeGroupId == runtime.runtimeGroupId, "the new version joins the group")
         runtimeV2 = try await settled(
             "runtime bake", mode: mode, timeout: .seconds(1800), interval: .seconds(10),
-            read: { try await sa.runtimes.get(created.id) }, poll: { try await saQuiet.runtimes.get(created.id) },
+            read: { try await sa.runtimes.get(created.id) },
+            poll: { try require(try failFast(try await saQuiet.runtimes.get(created.id))) },
             done: { built($0) })
         try check(runtimeV2.imageBuildStatus == .ready, runtimeV2.imageBuildErrorMessage ?? "the second version baked")
         let described = try await sa.runtimes.update(runtimeV2.id, RuntimeUpdate(description: "the walk's own version"))
