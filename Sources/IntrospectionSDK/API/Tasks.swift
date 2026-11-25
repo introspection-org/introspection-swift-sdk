@@ -19,6 +19,8 @@ public struct TaskStatus: RawRepresentable, Codable, Sendable, Hashable, Express
     public static let idle: TaskStatus = "idle"
     public static let completed: TaskStatus = "completed"
     public static let failed: TaskStatus = "failed"
+    /// Post-run work (judges, an eval's verifier) before `completed`.
+    public static let finishing: TaskStatus = "finishing"
     public static let cancelling: TaskStatus = "cancelling"
     public static let cancelled: TaskStatus = "cancelled"
 
