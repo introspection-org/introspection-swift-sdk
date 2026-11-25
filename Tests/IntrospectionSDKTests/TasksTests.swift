@@ -51,6 +51,12 @@ import Testing
         #expect(!task.status.isTerminal)
     }
 
+    @Test func finishingTaskDecodes() throws {
+        let task = try JSONCoding.decoder.decode(IntrospectionTask.self, from: Data(#"{"id":"t1","status":"finishing"}"#.utf8))
+        #expect(task.status == .finishing)
+        #expect(!task.status.isTerminal)
+    }
+
     @Test func minimalTaskAndUnknownStatusDecode() throws {
         let task = try JSONCoding.decoder.decode(IntrospectionTask.self, from: Data(#"{"id":"t1","status":"hibernating","extra":1}"#.utf8))
         #expect(task.status.rawValue == "hibernating")
