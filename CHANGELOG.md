@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.28.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.27.0...v0.28.0) (2026-11-25)
+
+
+### Features
+
+* **tasks:** TaskStatus.finishing ([#142](https://github.com/introspection-org/introspection-swift-sdk/issues/142)) ([3052b1c](https://github.com/introspection-org/introspection-swift-sdk/commit/3052b1c6db30837b146c25303dcf79bdd74bdcd8))
+
 ## [0.27.0](https://github.com/introspection-org/introspection-swift-sdk/compare/v0.26.2...v0.27.0) (2026-11-20)
 
 
